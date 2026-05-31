@@ -191,7 +191,7 @@ export default function Home() {
       </div>
 
       {inProgressBooks.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-[#F2F2F7] via-[#F2F2F7] to-transparent">
+        <div className="fixed bottom-20 left-0 right-0 p-6 bg-gradient-to-t from-[#F2F2F7] via-[#F2F2F7] to-transparent">
           <button
             onClick={() => {
               if (inProgressBooks.length > 0 && !selectedBookId) {
