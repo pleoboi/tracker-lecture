@@ -208,6 +208,8 @@ export default function DashboardPage() {
 
           {/* TABLEAUX DE DONNEES */}
           <div className="flex flex-col gap-4 mt-2">
+            
+            {/* Tableau Pages */}
             <div className="bg-[#111111] rounded-2xl shadow-sm border border-gray-800 overflow-hidden">
               <table className="w-full text-sm text-left">
                 <thead className="bg-[#1A1A1A] text-gray-400 text-[10px] uppercase tracking-widest">
@@ -230,6 +232,31 @@ export default function DashboardPage() {
                 </tbody>
               </table>
             </div>
+
+            {/* Tableau Livres */}
+            <div className="bg-[#111111] rounded-2xl shadow-sm border border-gray-800 overflow-hidden">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-[#1A1A1A] text-gray-400 text-[10px] uppercase tracking-widest">
+                  <tr>
+                    <th className="px-4 py-4 font-bold border-b border-gray-800">Mois</th>
+                    <th className="px-4 py-4 font-bold border-b border-gray-800 text-right">Livres terminés</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/50">
+                  {stats.chartData.map((data, index) => (
+                    <tr key={index} className="hover:bg-[#151515] transition-colors">
+                      <td className="px-4 py-3 text-gray-300 font-medium">{data.name}</td>
+                      <td className="px-4 py-3 text-right font-black text-green-400">{data.books}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-[#052e16] border-t-2 border-green-900/30">
+                    <td className="px-4 py-4 text-gray-300 font-bold uppercase text-[10px] tracking-widest">Total</td>
+                    <td className="px-4 py-4 text-right text-green-400 font-black">{stats.totalBooksCompleted}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
           </div>
 
           {/* SECTION STATISTIQUES GRANULAIRES */}
