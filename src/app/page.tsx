@@ -12,6 +12,7 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [pages, setPages] = useState("");
+  const [coverUrl, setCoverUrl] = useState("");
 
   // Formulaire : Session
   const [selectedBookId, setSelectedBookId] = useState("");
@@ -37,15 +38,29 @@ export default function Home() {
     }
   };
 
+  const deleteBook = async (id: number) => {
+    const { error } = await supabase.from("books").delete().eq("id", id);
+    if (!error) {
+      setBooks(books.filter((book) => book.id !== id));
+    }
+  };
+
   const addBook = async () => {
-    if (!title || !author) {
-      alert("Erreur : Le titre et l'auteur sont obligatoires !");
+    if (!title || !author || !pages) {
+      alert("Erreur : Le titre, l'auteur et le nombre de pages sont obligatoires !");
       return;
     }
     
     const { data, error } = await supabase
       .from("books")
-      .insert([{ title, author, pages: parseInt(pages) || 0, status: "in_progress", progress: 0 }])
+      .insert([{ 
+        title, 
+        author, 
+        pages: parseInt(pages) || 0,
+        status: "in_progress", 
+        progress: 0,
+        cover_url: coverUrl
+      }])
       .select();
 
     if (error) {
@@ -56,40 +71,32 @@ export default function Home() {
     if (data) {
       setBooks([data[0], ...books]);
       setIsBookModalOpen(false);
-      setTitle(""); setAuthor(""); setPages("");
-    }
-  };
-
-  const deleteBook = async (id: number) => {
-    const { error } = await supabase.from("books").delete().eq("id", id);
-    if (!error) {
-      setBooks(books.filter((book) => book.id !== id));
+      setTitle(""); 
+      setAuthor(""); 
+      setPages("");
+      setCoverUrl("");
     }
   };
 
   const saveReadingSession = async () => {
     if (!selectedBookId) {
-      alert("Erreur : Tu dois sélectionner un livre !");
-      return;
-    }
-    if (!endPage) {
-      alert("Erreur : Tu dois indiquer la page où tu t'es arrêté !");
+      alert("Erreur : Aucun livre n'est sélectionné dans la liste.");
       return;
     }
 
-    const bookIdNum = parseInt(selectedBookId);
-    const targetBook = books.find(b => b.id === bookIdNum);
+    const targetBook = books.find(b => String(b.id) === String(selectedBookId));
     
     if (!targetBook) {
       alert("Erreur : Le livre sélectionné n'existe pas.");
       return;
     }
 
-    const currentProgress = targetBook.progress;
+    const currentProgress = targetBook.progress || 0;
     const newEndPage = parseInt(endPage);
+    const bookIdToSave = targetBook.id;
 
-    if (newEndPage <= currentProgress) {
-      alert(`Erreur mathématique : Ta page de fin (${newEndPage}) doit être supérieure à ta progression actuelle (${currentProgress}).`);
+    if (isNaN(newEndPage) || newEndPage <= currentProgress) {
+      alert(`Erreur : Ta page de fin doit être un nombre supérieur à ta progression actuelle (${currentProgress}).`);
       return;
     }
     if (newEndPage > targetBook.pages && targetBook.pages > 0) {
@@ -103,7 +110,7 @@ export default function Home() {
       .from("reading_logs")
       .insert([
         {
-          book_id: bookIdNum,
+          book_id: bookIdToSave,
           date: logDate,
           end_page: newEndPage,
           pages_read: pagesReadToday
@@ -122,7 +129,7 @@ export default function Home() {
         progress: newEndPage,
         status: isFinished ? "completed" : "in_progress"
       })
-      .eq("id", bookIdNum);
+      .eq("id", bookIdToSave);
 
     if (bookError) {
       alert("Erreur lors de la mise à jour du livre : " + bookError.message);
@@ -191,7 +198,7 @@ export default function Home() {
       </div>
 
       {inProgressBooks.length > 0 && (
-        <div className="fixed bottom-20 left-0 right-0 p-6 bg-gradient-to-t from-[#F2F2F7] via-[#F2F2F7] to-transparent">
+        <div className="fixed bottom-20 left-0 right-0 p-6 bg-gradient-to-t from-[#F2F2F7] via-[#F2F2F7] to-transparent z-40">
           <button
             onClick={() => {
               if (inProgressBooks.length > 0 && !selectedBookId) {
@@ -218,7 +225,11 @@ export default function Home() {
               <input type="text" placeholder="Titre du livre" value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-black outline-none focus:border-blue-500" />
               <input type="text" placeholder="Auteur" value={author} onChange={(e) => setAuthor(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-black outline-none focus:border-blue-500" />
               <input type="number" placeholder="Nombre de pages total" value={pages} onChange={(e) => setPages(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 text-black outline-none focus:border-blue-500" />
-              <button onClick={addBook} className="w-full bg-black text-white font-bold py-3 rounded-xl mt-2 hover:bg-gray-800">Créer le livre</button>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-bold uppercase tracking-wider text-gray-400">URL de l'image (optionnel)</label>
+                <input type="text" placeholder="https://.../image.jpg" value={coverUrl} onChange={(e) => setCoverUrl(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3.5 text-black placeholder-gray-400 focus:outline-none focus:border-blue-500 font-medium" />
+              </div>
+              <button onClick={addBook} className="w-full bg-black text-white font-bold py-3 rounded-xl mt-2 hover:bg-gray-800 transition-colors">Créer le livre</button>
             </div>
           </div>
         </div>

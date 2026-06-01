@@ -10,6 +10,8 @@ interface Book {
   total_pages: number;
   cover_url?: string;
   created_at: string;
+  progress: number;
+  status: string;
 }
 
 export default function BibliothequePage() {
@@ -22,7 +24,6 @@ export default function BibliothequePage() {
   }, []);
 
   const fetchLibrary = async () => {
-    // Tri décroissant : les livres créés ou lus récemment apparaissent en premier
     const { data } = await supabase
       .from("books")
       .select("*")
@@ -48,7 +49,6 @@ export default function BibliothequePage() {
           <p className="text-gray-400 font-medium">Ta bibliothèque est encore vide.</p>
         </div>
       ) : (
-        /* Grille de livres style Letterboxd */
         <div className="grid grid-cols-3 gap-4">
           {books.map((book) => (
             <div 
@@ -63,7 +63,6 @@ export default function BibliothequePage() {
                     alt={book.title} 
                     className="w-full h-full object-cover"
                     onError={(e) => {
-                      // Fallback si l'adresse de l'image est morte
                       (e.target as HTMLElement).style.display = 'none';
                     }}
                   />
@@ -71,6 +70,9 @@ export default function BibliothequePage() {
                   <div className="w-full h-full flex items-center justify-center text-center p-2 text-xs text-gray-400 font-medium">
                     Pas d'image
                   </div>
+                )}
+                {book.status === "completed" && (
+                  <div className="absolute top-1 right-1 bg-green-500 w-3 h-3 rounded-full border-2 border-white shadow-sm"></div>
                 )}
               </div>
               <h2 className="text-xs font-bold text-black mt-2 truncate leading-tight">{book.title}</h2>
@@ -80,10 +82,9 @@ export default function BibliothequePage() {
         </div>
       )}
 
-      {/* Affichage détaillé (Modal) */}
       {selectedBook && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fade-in">
-          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl relative animate-scale-up">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-6 z-50">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-6 shadow-xl relative max-h-[80vh] overflow-y-auto">
             <button 
               onClick={() => setSelectedBook(null)}
               className="absolute top-4 right-4 bg-gray-100 text-gray-500 hover:text-black w-8 h-8 rounded-full flex items-center justify-center font-bold text-lg"
@@ -92,18 +93,45 @@ export default function BibliothequePage() {
             </button>
 
             <div className="flex gap-4 mt-4">
-              <div className="w-24 aspect-[2/3] bg-gray-100 rounded-xl overflow-hidden flex-shrink-0 border border-gray-200">
-                {selectedBook.cover_url && (
+              <div className="w-24 aspect-[2/3] bg-gray-100 rounded-xl overflow-hidden flex-shrink-0 border border-gray-200 relative">
+                {selectedBook.cover_url ? (
                   <img src={selectedBook.cover_url} alt={selectedBook.title} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-[10px] text-gray-400 p-2 text-center">Sans image</div>
                 )}
               </div>
-              <div className="flex flex-col justify-center">
-                <h2 className="text-xl font-bold text-black leading-tight">{selectedBook.title}</h2>
-                <p className="text-gray-500 font-medium mt-1">{selectedBook.author}</p>
-                <div className="mt-4 inline-flex bg-gray-100 text-gray-700 px-3 py-1 rounded-lg text-xs font-bold w-max">
+              <div className="flex flex-col justify-center min-w-0 w-full">
+                <h2 className="text-xl font-bold text-black leading-tight truncate">{selectedBook.title}</h2>
+                <p className="text-gray-500 font-medium mt-1 truncate">{selectedBook.author}</p>
+                <div className="mt-3 inline-flex bg-gray-100 text-gray-700 px-2.5 py-1 rounded-lg text-xs font-bold w-max">
                   {selectedBook.total_pages} pages au total
                 </div>
               </div>
+            </div>
+
+            <div className="mt-6 pt-5 border-t border-gray-100">
+              <div className="flex justify-between items-center mb-2">
+                <h3 className="text-sm font-bold text-black uppercase tracking-wider text-gray-400">Progression</h3>
+                <span className="text-xs font-bold text-blue-600">
+                  {selectedBook.total_pages > 0 ? Math.min(Math.round((selectedBook.progress / selectedBook.total_pages) * 100), 100) : 0}%
+                </span>
+              </div>
+              <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden mb-1">
+                <div 
+                  className="h-full bg-blue-500 rounded-full transition-all duration-500"
+                  style={{ width: `${selectedBook.total_pages > 0 ? Math.min(Math.round((selectedBook.progress / selectedBook.total_pages) * 100), 100) : 0}%` }}
+                ></div>
+              </div>
+              <p className="text-xs text-gray-400 font-medium text-right">{selectedBook.progress} / {selectedBook.total_pages} pages lues</p>
+            </div>
+
+            <div className="mt-5 pt-5 border-t border-gray-100 flex justify-between items-center">
+              <span className="text-xs text-gray-500 font-medium">Statut</span>
+              {selectedBook.status === "completed" ? (
+                <span className="bg-green-100 text-green-700 text-xs font-bold px-2.5 py-1 rounded-lg">Terminé</span>
+              ) : (
+                <span className="bg-blue-100 text-blue-700 text-xs font-bold px-2.5 py-1 rounded-lg">En cours</span>
+              )}
             </div>
           </div>
         </div>
