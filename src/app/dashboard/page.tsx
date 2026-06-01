@@ -11,10 +11,16 @@ export default function DashboardPage() {
     pagesDiff: 0,
     booksDiff: 0,
     chartData: [] as any[],
+    avgPagesPerBook: 0,
+    longestBook: { title: "-", pages: 0 },
+    shortestBook: { title: "-", pages: 0 },
+    avgPagesPerDay: 0,
+    bestDay: { date: "-", pages: 0 },
+    worstDay: { date: "-", pages: 0 },
   });
   const [isLoading, setIsLoading] = useState(true);
 
-  // Tes objectifs annuels
+  // Objectifs annuels
   const GOAL_PAGES = 25000;
   const GOAL_BOOKS = 60;
 
@@ -25,8 +31,6 @@ export default function DashboardPage() {
   const fetchStats = async () => {
     const today = new Date();
     const startOfYear = new Date(today.getFullYear(), 0, 1);
-    
-    // Calcul du jour exact de l'année (ex: 1er Juin = 152e jour)
     const dayOfYear = Math.floor((today.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24)) + 1;
     
     const expectedPagesToDate = Math.round((GOAL_PAGES / 365) * dayOfYear);
@@ -38,22 +42,62 @@ export default function DashboardPage() {
     let totalPages = 0;
     let totalCompletedBooks = 0;
 
-    const months = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
+    const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
     const monthlyData = months.map(m => ({ name: m, pages: 0, books: 0 }));
 
+    let avgPagesPerBook = 0;
+    let longestBook = { title: "-", pages: 0 };
+    let shortestBook = { title: "-", pages: 0 };
+    let bestDay = { date: "-", pages: 0 };
+    let worstDay = { date: "-", pages: 0 };
+
     if (logsData && booksData) {
-      // Calcul des pages
+      // 1. Calculs globaux et mensuels des pages
+      const dailyMap = new Map<string, number>();
+
       logsData.forEach(log => {
-        totalPages += (log.pages_read || 0);
+        const pages = log.pages_read || 0;
+        totalPages += pages;
+        
         const logDate = new Date(log.date);
         if (logDate.getFullYear() === today.getFullYear()) {
-          monthlyData[logDate.getMonth()].pages += (log.pages_read || 0);
+          monthlyData[logDate.getMonth()].pages += pages;
         }
+
+        // Agrégation par jour pour trouver le meilleur/pire jour
+        const dateStr = logDate.toISOString().split('T')[0];
+        dailyMap.set(dateStr, (dailyMap.get(dateStr) || 0) + pages);
       });
 
-      // Calcul des livres terminés
+      // 2. Recherche du meilleur et pire jour
+      if (dailyMap.size > 0) {
+        let maxP = -1;
+        let minP = Infinity;
+        let maxD = "";
+        let minD = "";
+
+        dailyMap.forEach((pages, date) => {
+          if (pages > maxP) { maxP = pages; maxD = date; }
+          if (pages < minP) { minP = pages; minD = date; }
+        });
+
+        const formatDate = (d: string) => new Date(d).toLocaleDateString("fr-FR", { day: '2-digit', month: '2-digit', year: 'numeric' });
+        bestDay = { date: formatDate(maxD), pages: maxP };
+        worstDay = { date: formatDate(minD), pages: minP };
+      }
+
+      // 3. Calculs sur les livres terminés
       const completedBooks = booksData.filter(b => b.status === "completed");
       totalCompletedBooks = completedBooks.length;
+
+      if (completedBooks.length > 0) {
+        const sortedByPages = [...completedBooks].sort((a, b) => b.pages - a.pages);
+        longestBook = { title: sortedByPages[0].title, pages: sortedByPages[0].pages };
+        shortestBook = { title: sortedByPages[sortedByPages.length - 1].title, pages: sortedByPages[sortedByPages.length - 1].pages };
+        
+        const sumPages = completedBooks.reduce((acc, b) => acc + b.pages, 0);
+        avgPagesPerBook = Math.round(sumPages / completedBooks.length);
+      }
 
       completedBooks.forEach(book => {
         const bookLogs = logsData
@@ -75,6 +119,12 @@ export default function DashboardPage() {
       pagesDiff: totalPages - expectedPagesToDate,
       booksDiff: totalCompletedBooks - expectedBooksToDate,
       chartData: monthlyData,
+      avgPagesPerBook,
+      longestBook,
+      shortestBook,
+      avgPagesPerDay: Math.round(totalPages / dayOfYear),
+      bestDay,
+      worstDay
     });
     
     setIsLoading(false);
@@ -102,7 +152,7 @@ export default function DashboardPage() {
         <div className="flex justify-center py-10 opacity-50 text-gray-500 font-medium">Analyse en cours...</div>
       ) : (
         <>
-          {/* BLOC PAGES */}
+          {/* SECTION GRAPHIQUES ET AVANCE/RETARD */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-4">
             <div className="flex justify-between items-start">
               <div>
@@ -131,7 +181,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* BLOC LIVRES */}
           <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-4">
             <div className="flex justify-between items-start">
               <div>
@@ -157,6 +206,101 @@ export default function DashboardPage() {
                   <Area type="monotone" dataKey="books" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#colorBooks)" />
                 </AreaChart>
               </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* TABLEAUX DE DONNEES (Façon Excel) */}
+          <div className="flex flex-col gap-4">
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-blue-100 text-blue-900">
+                  <tr>
+                    <th className="px-4 py-3 font-bold border-b border-blue-200">Mois</th>
+                    <th className="px-4 py-3 font-bold border-b border-blue-200 text-right">Pages lues</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {stats.chartData.map((data, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-gray-700">{data.name}</td>
+                      <td className="px-4 py-2 text-right font-medium text-gray-900">{data.pages}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-blue-50 font-bold">
+                    <td className="px-4 py-3 text-blue-900">Total</td>
+                    <td className="px-4 py-3 text-right text-blue-900">{stats.totalPagesRead}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-blue-100 text-blue-900">
+                  <tr>
+                    <th className="px-4 py-3 font-bold border-b border-blue-200">Mois</th>
+                    <th className="px-4 py-3 font-bold border-b border-blue-200 text-right">Livres terminés</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {stats.chartData.map((data, index) => (
+                    <tr key={index} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-gray-700">{data.name}</td>
+                      <td className="px-4 py-2 text-right font-medium text-gray-900">{data.books}</td>
+                    </tr>
+                  ))}
+                  <tr className="bg-blue-50 font-bold">
+                    <td className="px-4 py-3 text-blue-900">Total</td>
+                    <td className="px-4 py-3 text-right text-blue-900">{stats.totalBooksCompleted}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* SECTION STATISTIQUES GRANULAIRES */}
+          <div className="grid grid-cols-2 gap-3 mt-2">
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Moyenne / Livre</span>
+              <span className="text-xl font-bold text-black leading-none">{stats.avgPagesPerBook} <span className="text-xs font-normal text-gray-500">pages</span></span>
+            </div>
+            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col justify-center">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Moyenne / Jour</span>
+              <span className="text-xl font-bold text-blue-600 leading-none">{stats.avgPagesPerDay} <span className="text-xs font-normal text-gray-500">pages</span></span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 divide-y divide-gray-100 mt-2">
+            <div className="p-4 flex flex-col">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Journée la plus productive</span>
+              <div className="flex justify-between items-end mt-1">
+                <span className="text-sm font-medium text-gray-800">{stats.bestDay.date}</span>
+                <span className="text-lg font-bold text-green-600">{stats.bestDay.pages} pages</span>
+              </div>
+            </div>
+            <div className="p-4 flex flex-col">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Journée la moins productive</span>
+              <div className="flex justify-between items-end mt-1">
+                <span className="text-sm font-medium text-gray-800">{stats.worstDay.date}</span>
+                <span className="text-lg font-bold text-red-500">{stats.worstDay.pages} pages</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 divide-y divide-gray-100 mt-2">
+            <div className="p-4 flex flex-col">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Livre le plus long</span>
+              <div className="flex justify-between items-end mt-1 gap-2">
+                <span className="text-sm font-medium text-gray-800 truncate">{stats.longestBook.title}</span>
+                <span className="text-base font-bold text-black whitespace-nowrap">{stats.longestBook.pages} p.</span>
+              </div>
+            </div>
+            <div className="p-4 flex flex-col">
+              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Livre le plus court</span>
+              <div className="flex justify-between items-end mt-1 gap-2">
+                <span className="text-sm font-medium text-gray-800 truncate">{stats.shortestBook.title}</span>
+                <span className="text-base font-bold text-black whitespace-nowrap">{stats.shortestBook.pages} p.</span>
+              </div>
             </div>
           </div>
         </>
