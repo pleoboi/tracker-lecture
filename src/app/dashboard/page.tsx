@@ -20,7 +20,6 @@ export default function DashboardPage() {
   });
   const [isLoading, setIsLoading] = useState(true);
 
-  // Objectifs annuels
   const GOAL_PAGES = 25000;
   const GOAL_BOOKS = 60;
 
@@ -52,7 +51,6 @@ export default function DashboardPage() {
     let worstDay = { date: "-", pages: 0 };
 
     if (logsData && booksData) {
-      // 1. Calculs globaux et mensuels des pages
       const dailyMap = new Map<string, number>();
 
       logsData.forEach(log => {
@@ -64,12 +62,10 @@ export default function DashboardPage() {
           monthlyData[logDate.getMonth()].pages += pages;
         }
 
-        // Agrégation par jour pour trouver le meilleur/pire jour
         const dateStr = logDate.toISOString().split('T')[0];
         dailyMap.set(dateStr, (dailyMap.get(dateStr) || 0) + pages);
       });
 
-      // 2. Recherche du meilleur et pire jour
       if (dailyMap.size > 0) {
         let maxP = -1;
         let minP = Infinity;
@@ -86,7 +82,6 @@ export default function DashboardPage() {
         worstDay = { date: formatDate(minD), pages: minP };
       }
 
-      // 3. Calculs sur les livres terminés
       const completedBooks = booksData.filter(b => b.status === "completed");
       totalCompletedBooks = completedBooks.length;
 
@@ -133,7 +128,7 @@ export default function DashboardPage() {
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-gray-900 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-lg">
+        <div className="bg-black border border-gray-800 text-blue-400 text-xs font-bold px-3 py-2 rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.2)]">
           <p>{`${label} : ${payload[0].value}`}</p>
         </div>
       );
@@ -142,25 +137,26 @@ export default function DashboardPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#F2F2F7] p-6 pb-32 font-sans flex flex-col gap-6">
+    <main className="min-h-screen bg-[#0A0A0A] p-6 pb-32 font-sans flex flex-col gap-6 text-gray-200 antialiased selection:bg-blue-500/30">
       <header className="pt-6">
-        <h1 className="text-3xl font-bold tracking-tight text-black">Performances</h1>
-        <p className="text-gray-500 mt-1">Analyse brute de ton exécution</p>
+        <h1 className="text-3xl font-black tracking-tight text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">Performances</h1>
+        <p className="text-gray-500 mt-1 uppercase tracking-widest text-xs font-bold">Analyse brute de ton exécution</p>
       </header>
 
       {isLoading ? (
-        <div className="flex justify-center py-10 opacity-50 text-gray-500 font-medium">Analyse en cours...</div>
+        <div className="flex justify-center py-10 text-blue-500 font-bold animate-pulse tracking-widest text-sm uppercase">Synchronisation...</div>
       ) : (
         <>
           {/* SECTION GRAPHIQUES ET AVANCE/RETARD */}
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-4">
+          <div className="bg-[#111111] p-5 rounded-2xl shadow-[0_0_20px_rgba(59,130,246,0.05)] border border-gray-800 flex flex-col gap-4 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-20"></div>
             <div className="flex justify-between items-start">
               <div>
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Total pages lues</h3>
-                <span className="text-3xl font-bold text-black">{stats.totalPagesRead} <span className="text-sm font-medium text-gray-400">/ 25000</span></span>
+                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Total pages lues</h3>
+                <span className="text-3xl font-black text-white">{stats.totalPagesRead} <span className="text-sm font-medium text-gray-600">/ 25000</span></span>
               </div>
-              <div className={`px-3 py-1.5 rounded-lg text-xs font-bold ${stats.pagesDiff >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                {stats.pagesDiff >= 0 ? `+${stats.pagesDiff} pages d'avance` : `${stats.pagesDiff} pages de retard`}
+              <div className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider border ${stats.pagesDiff >= 0 ? 'bg-green-500/10 text-green-400 border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.1)]' : 'bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]'}`}>
+                {stats.pagesDiff >= 0 ? `+${stats.pagesDiff} pages` : `${stats.pagesDiff} pages`}
               </div>
             </div>
             
@@ -169,26 +165,27 @@ export default function DashboardPage() {
                 <AreaChart data={stats.chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorPages" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
                       <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9ca3af' }} dy={10} />
-                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#e5e7eb', strokeWidth: 2, strokeDasharray: '4 4' }} />
-                  <Area type="monotone" dataKey="pages" stroke="#3b82f6" strokeWidth={3} fillOpacity={1} fill="url(#colorPages)" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#52525b', fontWeight: 'bold' }} dy={10} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#27272a', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                  <Area type="monotone" dataKey="pages" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorPages)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-4">
+          <div className="bg-[#111111] p-5 rounded-2xl shadow-[0_0_20px_rgba(34,197,94,0.05)] border border-gray-800 flex flex-col gap-4 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent opacity-20"></div>
             <div className="flex justify-between items-start">
               <div>
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Livres terminés</h3>
-                <span className="text-3xl font-bold text-black">{stats.totalBooksCompleted} <span className="text-sm font-medium text-gray-400">/ 60</span></span>
+                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Livres terminés</h3>
+                <span className="text-3xl font-black text-white">{stats.totalBooksCompleted} <span className="text-sm font-medium text-gray-600">/ 60</span></span>
               </div>
-              <div className={`px-3 py-1.5 rounded-lg text-xs font-bold ${stats.booksDiff >= 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                {stats.booksDiff >= 0 ? `+${stats.booksDiff} d'avance` : `${stats.booksDiff} de retard`}
+              <div className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider border ${stats.booksDiff >= 0 ? 'bg-green-500/10 text-green-400 border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.1)]' : 'bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]'}`}>
+                {stats.booksDiff >= 0 ? `+${stats.booksDiff} livres` : `${stats.booksDiff} livres`}
               </div>
             </div>
 
@@ -197,61 +194,38 @@ export default function DashboardPage() {
                 <AreaChart data={stats.chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorBooks" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.3}/>
+                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.4}/>
                       <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
                     </linearGradient>
                   </defs>
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#9ca3af' }} dy={10} />
-                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#e5e7eb', strokeWidth: 2, strokeDasharray: '4 4' }} />
-                  <Area type="monotone" dataKey="books" stroke="#22c55e" strokeWidth={3} fillOpacity={1} fill="url(#colorBooks)" />
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#52525b', fontWeight: 'bold' }} dy={10} />
+                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#27272a', strokeWidth: 1, strokeDasharray: '4 4' }} />
+                  <Area type="monotone" dataKey="books" stroke="#22c55e" strokeWidth={2} fillOpacity={1} fill="url(#colorBooks)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
 
-          {/* TABLEAUX DE DONNEES (Façon Excel) */}
-          <div className="flex flex-col gap-4">
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+          {/* TABLEAUX DE DONNEES */}
+          <div className="flex flex-col gap-4 mt-2">
+            <div className="bg-[#111111] rounded-2xl shadow-sm border border-gray-800 overflow-hidden">
               <table className="w-full text-sm text-left">
-                <thead className="bg-blue-100 text-blue-900">
+                <thead className="bg-[#1A1A1A] text-gray-400 text-[10px] uppercase tracking-widest">
                   <tr>
-                    <th className="px-4 py-3 font-bold border-b border-blue-200">Mois</th>
-                    <th className="px-4 py-3 font-bold border-b border-blue-200 text-right">Pages lues</th>
+                    <th className="px-4 py-4 font-bold border-b border-gray-800">Mois</th>
+                    <th className="px-4 py-4 font-bold border-b border-gray-800 text-right">Pages lues</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
+                <tbody className="divide-y divide-gray-800/50">
                   {stats.chartData.map((data, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 text-gray-700">{data.name}</td>
-                      <td className="px-4 py-2 text-right font-medium text-gray-900">{data.pages}</td>
+                    <tr key={index} className="hover:bg-[#151515] transition-colors">
+                      <td className="px-4 py-3 text-gray-300 font-medium">{data.name}</td>
+                      <td className="px-4 py-3 text-right font-black text-blue-400">{data.pages}</td>
                     </tr>
                   ))}
-                  <tr className="bg-blue-50 font-bold">
-                    <td className="px-4 py-3 text-blue-900">Total</td>
-                    <td className="px-4 py-3 text-right text-blue-900">{stats.totalPagesRead}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-blue-100 text-blue-900">
-                  <tr>
-                    <th className="px-4 py-3 font-bold border-b border-blue-200">Mois</th>
-                    <th className="px-4 py-3 font-bold border-b border-blue-200 text-right">Livres terminés</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {stats.chartData.map((data, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
-                      <td className="px-4 py-2 text-gray-700">{data.name}</td>
-                      <td className="px-4 py-2 text-right font-medium text-gray-900">{data.books}</td>
-                    </tr>
-                  ))}
-                  <tr className="bg-blue-50 font-bold">
-                    <td className="px-4 py-3 text-blue-900">Total</td>
-                    <td className="px-4 py-3 text-right text-blue-900">{stats.totalBooksCompleted}</td>
+                  <tr className="bg-[#0f172a] border-t-2 border-blue-900/30">
+                    <td className="px-4 py-4 text-gray-300 font-bold uppercase text-[10px] tracking-widest">Total</td>
+                    <td className="px-4 py-4 text-right text-blue-400 font-black">{stats.totalPagesRead}</td>
                   </tr>
                 </tbody>
               </table>
@@ -259,47 +233,51 @@ export default function DashboardPage() {
           </div>
 
           {/* SECTION STATISTIQUES GRANULAIRES */}
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Moyenne / Livre</span>
-              <span className="text-xl font-bold text-black leading-none">{stats.avgPagesPerBook} <span className="text-xs font-normal text-gray-500">pages</span></span>
+          <div className="grid grid-cols-2 gap-4 mt-2">
+            <div className="bg-[#111111] p-5 rounded-2xl shadow-sm border border-gray-800 flex flex-col justify-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 blur-2xl rounded-full"></div>
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Moyenne / Livre</span>
+              <span className="text-2xl font-black text-white leading-none">{stats.avgPagesPerBook} <span className="text-xs font-normal text-gray-600">p.</span></span>
             </div>
-            <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col justify-center">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">Moyenne / Jour</span>
-              <span className="text-xl font-bold text-blue-600 leading-none">{stats.avgPagesPerDay} <span className="text-xs font-normal text-gray-500">pages</span></span>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 divide-y divide-gray-100 mt-2">
-            <div className="p-4 flex flex-col">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Journée la plus productive</span>
-              <div className="flex justify-between items-end mt-1">
-                <span className="text-sm font-medium text-gray-800">{stats.bestDay.date}</span>
-                <span className="text-lg font-bold text-green-600">{stats.bestDay.pages} pages</span>
-              </div>
-            </div>
-            <div className="p-4 flex flex-col">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Journée la moins productive</span>
-              <div className="flex justify-between items-end mt-1">
-                <span className="text-sm font-medium text-gray-800">{stats.worstDay.date}</span>
-                <span className="text-lg font-bold text-red-500">{stats.worstDay.pages} pages</span>
-              </div>
+            <div className="bg-[#111111] p-5 rounded-2xl shadow-sm border border-gray-800 flex flex-col justify-center relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 blur-2xl rounded-full"></div>
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Moyenne / Jour</span>
+              <span className="text-2xl font-black text-blue-400 leading-none">{stats.avgPagesPerDay} <span className="text-xs font-normal text-gray-600">p.</span></span>
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 divide-y divide-gray-100 mt-2">
-            <div className="p-4 flex flex-col">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Livre le plus long</span>
-              <div className="flex justify-between items-end mt-1 gap-2">
-                <span className="text-sm font-medium text-gray-800 truncate">{stats.longestBook.title}</span>
-                <span className="text-base font-bold text-black whitespace-nowrap">{stats.longestBook.pages} p.</span>
+          <div className="bg-[#111111] rounded-2xl shadow-sm border border-gray-800 divide-y divide-gray-800/50 mt-2">
+            <div className="p-5 flex flex-col">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Livre le plus long</span>
+              <div className="flex justify-between items-end mt-2 gap-4">
+                <span className="text-sm font-medium text-gray-300 truncate">{stats.longestBook.title}</span>
+                <span className="text-base font-black text-white whitespace-nowrap">{stats.longestBook.pages} <span className="text-gray-600 text-xs font-normal">p.</span></span>
               </div>
             </div>
-            <div className="p-4 flex flex-col">
-              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Livre le plus court</span>
-              <div className="flex justify-between items-end mt-1 gap-2">
-                <span className="text-sm font-medium text-gray-800 truncate">{stats.shortestBook.title}</span>
-                <span className="text-base font-bold text-black whitespace-nowrap">{stats.shortestBook.pages} p.</span>
+            <div className="p-5 flex flex-col">
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Livre le plus court</span>
+              <div className="flex justify-between items-end mt-2 gap-4">
+                <span className="text-sm font-medium text-gray-300 truncate">{stats.shortestBook.title}</span>
+                <span className="text-base font-black text-white whitespace-nowrap">{stats.shortestBook.pages} <span className="text-gray-600 text-xs font-normal">p.</span></span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-[#111111] rounded-2xl shadow-sm border border-gray-800 divide-y divide-gray-800/50 mt-2">
+            <div className="p-5 flex flex-col relative overflow-hidden">
+              <div className="absolute inset-0 bg-green-500/5 opacity-0 hover:opacity-100 transition-opacity"></div>
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Journée record</span>
+              <div className="flex justify-between items-end mt-2">
+                <span className="text-sm font-medium text-gray-400">{stats.bestDay.date}</span>
+                <span className="text-lg font-black text-green-400 drop-shadow-[0_0_8px_rgba(34,197,94,0.3)]">{stats.bestDay.pages} p.</span>
+              </div>
+            </div>
+            <div className="p-5 flex flex-col relative overflow-hidden">
+              <div className="absolute inset-0 bg-red-500/5 opacity-0 hover:opacity-100 transition-opacity"></div>
+              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Pire journée</span>
+              <div className="flex justify-between items-end mt-2">
+                <span className="text-sm font-medium text-gray-400">{stats.worstDay.date}</span>
+                <span className="text-lg font-black text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.3)]">{stats.worstDay.pages} p.</span>
               </div>
             </div>
           </div>

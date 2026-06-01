@@ -12,32 +12,32 @@ export default function JournalPage() {
     fetchLogs();
   }, []);
 
-const fetchLogs = async () => {
-    // 1. On récupère les sessions pures (sans demander de jointure à Supabase)
+  const fetchLogs = async () => {
+    // 1. On récupère les sessions pures
     const { data: logsData, error: logsError } = await supabase
       .from("reading_logs")
       .select("*")
       .order("date", { ascending: false })
       .order("created_at", { ascending: false });
 
-    // 2. On récupère les livres
+    // 2. On récupère les livres AVEC LA COUVERTURE
     const { data: booksData } = await supabase
       .from("books")
-      .select("id, title, author");
+      .select("id, title, author, cover_url");
 
     if (logsError) {
       setDbError(logsError.message);
     } else if (logsData && booksData) {
-      // 3. L'assemblage de force : on associe les données manuellement
+      // 3. Assemblage
       const mergedLogs = logsData.map(log => {
         const book = booksData.find(b => b.id === log.book_id);
         return {
           ...log,
-          books: book || { title: "Livre inconnu", author: "" }
+          books: book || { title: "Livre inconnu", author: "", cover_url: null }
         };
       });
       setLogs(mergedLogs);
-      setDbError(null); // On efface toute erreur précédente
+      setDbError(null);
     }
     setIsLoading(false);
   };
@@ -63,9 +63,6 @@ const fetchLogs = async () => {
           <div className="bg-red-50 p-6 rounded-2xl border border-red-200 shadow-sm">
             <p className="text-red-800 font-bold mb-2">Supabase a rejeté la requête :</p>
             <p className="text-red-600 font-mono text-xs bg-red-100 p-2 rounded">{dbError}</p>
-            <p className="text-red-800 text-xs mt-4 font-medium">
-              Action : Tu dois aller dans Supabase &gt; SQL Editor et lier les tables `reading_logs` et `books`.
-            </p>
           </div>
         ) : logs.length === 0 ? (
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 text-center">
@@ -73,31 +70,48 @@ const fetchLogs = async () => {
           </div>
         ) : (
           logs.map((log) => (
-            <div key={log.id} className="relative bg-white p-5 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-1">
+            <div key={log.id} className="relative bg-white p-4 rounded-2xl shadow-sm border border-gray-200 flex flex-col gap-3">
               <button 
                 onClick={() => deleteLog(log.id)}
-                className="absolute top-4 right-4 text-gray-300 hover:text-red-500 text-xl font-bold p-1"
+                className="absolute top-3 right-4 text-gray-300 hover:text-red-500 text-xl font-bold p-1 z-10"
               >
                 &times;
               </button>
               
-              <div className="flex justify-between items-start pr-6">
-                <h2 className="text-lg font-bold text-black leading-tight">
-                  {log.books?.title || "Livre supprimé"}
-                </h2>
-              </div>
-              <p className="text-sm text-gray-500 font-medium">
-                {new Date(log.date).toLocaleDateString("fr-FR", { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
-              </p>
-              
-              <div className="flex gap-3 mt-3">
-                <div className="bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg border border-blue-100 flex flex-col">
-                  <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Pages lues</span>
-                  <span className="font-bold text-lg">+{log.pages_read}</span>
+              <div className="flex items-center gap-3 pr-6">
+                <div className="w-12 h-16 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0 border border-gray-200 relative">
+                  {log.books?.cover_url ? (
+                    <img 
+                      src={log.books.cover_url} 
+                      alt={log.books.title} 
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        (e.target as HTMLElement).style.display = 'none';
+                      }}
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[9px] text-gray-400 font-bold uppercase">Img</div>
+                  )}
                 </div>
-                <div className="bg-gray-50 text-gray-700 px-3 py-1.5 rounded-lg border border-gray-100 flex flex-col">
-                  <span className="text-[10px] font-bold uppercase tracking-wider opacity-70">Arrêté page</span>
-                  <span className="font-bold text-lg">{log.end_page}</span>
+                
+                <div className="flex flex-col justify-center min-w-0">
+                  <h2 className="text-base font-bold text-black leading-tight truncate">
+                    {log.books?.title || "Livre supprimé"}
+                  </h2>
+                  <p className="text-xs text-gray-500 font-medium mt-0.5">
+                    {new Date(log.date).toLocaleDateString("fr-FR", { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex gap-2">
+                <div className="flex-1 bg-blue-50 text-blue-700 px-3 py-2 rounded-xl border border-blue-100 flex flex-col items-center">
+                  <span className="text-[9px] font-bold uppercase tracking-wider opacity-70">Pages lues</span>
+                  <span className="font-bold text-lg leading-none mt-1">+{log.pages_read}</span>
+                </div>
+                <div className="flex-1 bg-gray-50 text-gray-700 px-3 py-2 rounded-xl border border-gray-100 flex flex-col items-center">
+                  <span className="text-[9px] font-bold uppercase tracking-wider opacity-70">Arrêté page</span>
+                  <span className="font-bold text-lg leading-none mt-1">{log.end_page}</span>
                 </div>
               </div>
             </div>
