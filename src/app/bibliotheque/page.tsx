@@ -7,7 +7,7 @@ interface Book {
   id: number;
   title: string;
   author: string;
-  total_pages: number;
+  pages: number;
   cover_url?: string;
   created_at: string;
   progress: number;
@@ -104,7 +104,7 @@ export default function BibliothequePage() {
                 <h2 className="text-xl font-bold text-black leading-tight truncate">{selectedBook.title}</h2>
                 <p className="text-gray-500 font-medium mt-1 truncate">{selectedBook.author}</p>
                 <div className="mt-3 inline-flex bg-gray-100 text-gray-700 px-2.5 py-1 rounded-lg text-xs font-bold w-max">
-                  {selectedBook.total_pages} pages au total
+                  {selectedBook.pages} pages au total
                 </div>
               </div>
             </div>
@@ -113,16 +113,16 @@ export default function BibliothequePage() {
               <div className="flex justify-between items-center mb-2">
                 <h3 className="text-sm font-bold text-black uppercase tracking-wider text-gray-400">Progression</h3>
                 <span className="text-xs font-bold text-blue-600">
-                  {selectedBook.total_pages > 0 ? Math.min(Math.round((selectedBook.progress / selectedBook.total_pages) * 100), 100) : 0}%
+                  {selectedBook.pages > 0 ? Math.min(Math.round((selectedBook.progress / selectedBook.pages) * 100), 100) : 0}%
                 </span>
               </div>
               <div className="h-2 w-full bg-gray-100 rounded-full overflow-hidden mb-1">
                 <div 
                   className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                  style={{ width: `${selectedBook.total_pages > 0 ? Math.min(Math.round((selectedBook.progress / selectedBook.total_pages) * 100), 100) : 0}%` }}
+                  style={{ width: `${selectedBook.pages > 0 ? Math.min(Math.round((selectedBook.progress / selectedBook.pages) * 100), 100) : 0}%` }}
                 ></div>
               </div>
-              <p className="text-xs text-gray-400 font-medium text-right">{selectedBook.progress} / {selectedBook.total_pages} pages lues</p>
+              <p className="text-xs text-gray-400 font-medium text-right">{selectedBook.progress} / {selectedBook.pages} pages lues</p>
             </div>
 
             <div className="mt-5 pt-5 border-t border-gray-100 flex justify-between items-center">
