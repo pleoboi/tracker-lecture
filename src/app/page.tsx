@@ -140,32 +140,58 @@ export default function HomePage() {
     if (!book) return;
 
     const targetEndPage = Number(endPageInput);
-    if (isNaN(targetEndPage) || targetEndPage <= book.progress || targetEndPage > book.pages) {
-      alert(`Erreur : Page d'arrêt invalide (${book.progress + 1} à ${book.pages}).`);
+    
+    if (isNaN(targetEndPage) || targetEndPage < 0 || targetEndPage > book.pages) {
+      alert(`Erreur : Page d'arrêt invalide (0 à ${book.pages}).`);
       return;
     }
 
     const pagesReadToday = targetEndPage - book.progress;
     const isCompleted = targetEndPage === book.pages;
+    const isCorrection = pagesReadToday < 0;
 
-    const { error: logError } = await supabase.from("reading_logs").insert({
-      book_id: book.id,
-      date: new Date().toISOString().split("T")[0],
-      pages_read: pagesReadToday,
-      end_page: targetEndPage
-    });
+    if (!isCorrection && pagesReadToday > 100 && !isCompleted) {
+      const confirmJump = window.confirm(`Attention : Tu déclares avoir lu ${pagesReadToday} pages en une seule session. Es-tu sûr de ce chiffre ?`);
+      if (!confirmJump) return;
+    }
 
-    if (logError) return;
+    if (!isCorrection && pagesReadToday > 0) {
+      const { error: logError } = await supabase.from("reading_logs").insert({
+        book_id: book.id,
+        date: new Date().toISOString().split("T")[0],
+        pages_read: pagesReadToday,
+        end_page: targetEndPage
+      });
+      if (logError) return;
+    }
 
     await supabase
       .from("books")
       .update({ progress: targetEndPage, status: isCompleted ? "completed" : "reading" })
       .eq("id", book.id);
 
-    setBookSuccess(`Session enregistrée : +${pagesReadToday} pages !`);
+    setBookSuccess(isCorrection ? `Correction : retour à la page ${targetEndPage}` : `Session enregistrée : +${pagesReadToday} pages !`);
     setEndPageInput("");
     setShowLogReading(false);
     setTimeout(() => setBookSuccess(null), 3000);
+    loadAllData();
+  };
+
+  const handleEditProgress = async (book: Book) => {
+    const newProgressStr = window.prompt(`Modifier la page pour "${book.title}" (actuellement ${book.progress} / ${book.pages}) :`, book.progress.toString());
+    if (newProgressStr === null) return; 
+
+    const newProgress = Number(newProgressStr);
+    if (isNaN(newProgress) || newProgress < 0 || newProgress > book.pages) {
+      alert("Erreur : Numéro de page invalide.");
+      return;
+    }
+
+    await supabase
+      .from("books")
+      .update({ progress: newProgress, status: newProgress === book.pages ? "completed" : "reading" })
+      .eq("id", book.id);
+
     loadAllData();
   };
 
@@ -199,8 +225,9 @@ export default function HomePage() {
   };
 
   const handleSportInputChange = (index: number, val: number) => {
+    const cleanVal = val < 0 ? 0 : val;
     const next = [...sportInputs];
-    next[index] = val;
+    next[index] = cleanVal;
     setSportInputs(next);
   };
 
@@ -292,7 +319,7 @@ export default function HomePage() {
               <h3 className="text-xs font-black text-white uppercase tracking-wider">Ajouter un ouvrage</h3>
               <input type="text" placeholder="Titre du livre (Obligatoire)" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} className="w-full bg-[#161616] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white" required />
               <input type="text" placeholder="Auteur" value={newAuthor} onChange={(e) => setNewAuthor(e.target.value)} className="w-full bg-[#161616] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white" />
-              <input type="number" placeholder="Nombre total de pages" value={newPages} onChange={(e) => setNewPages(e.target.value)} className="w-full bg-[#161616] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white" required />
+              <input type="number" min="1" placeholder="Nombre total de pages" value={newPages} onChange={(e) => setNewPages(e.target.value)} className="w-full bg-[#161616] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white" required />
               <input type="text" placeholder="URL de la couverture (Optionnel)" value={newCover} onChange={(e) => setNewCover(e.target.value)} className="w-full bg-[#161616] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white" />
               <button type="submit" className="w-full bg-white text-black font-black text-[10px] uppercase tracking-widest py-2 rounded-xl">Créer la fiche</button>
             </form>
@@ -302,10 +329,23 @@ export default function HomePage() {
           {showLogReading && (
             <form onSubmit={handleSaveReading} className="bg-[#111111] p-4 rounded-2xl border border-blue-900/40 flex flex-col gap-3 animate-fadeIn">
               <h3 className="text-xs font-black text-blue-400 uppercase tracking-wider">Enregistrer une session</h3>
-              <select value={selectedBookId} onChange={(e) => setSelectedBookId(e.target.value)} className="w-full bg-[#161616] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white font-bold">
+              <select 
+                value={selectedBookId} 
+                onChange={(e) => { setSelectedBookId(e.target.value); setEndPageInput(""); }} 
+                className="w-full bg-[#161616] border border-gray-800 rounded-xl px-3 py-2 text-xs text-white font-bold"
+              >
                 {allBooks.map(b => <option key={b.id} value={b.id.toString()}>{b.title}</option>)}
               </select>
-              <input type="number" placeholder="Page d'arrêt actuelle" value={endPageInput} onChange={(e) => setEndPageInput(e.target.value)} className="w-full bg-[#161616] border border-gray-800 rounded-xl px-3 py-2 text-center font-black text-sm text-white" required />
+              <input 
+                type="number" 
+                min="0" 
+                max={currentSelectedBook?.pages || 9999} 
+                placeholder="Page d'arrêt actuelle" 
+                value={endPageInput} 
+                onChange={(e) => setEndPageInput(e.target.value)} 
+                className="w-full bg-[#161616] border border-gray-800 rounded-xl px-3 py-2 text-center font-black text-sm text-white" 
+                required 
+              />
               <button type="submit" className="w-full bg-blue-600 text-white font-black text-[10px] uppercase tracking-widest py-2 rounded-xl">Valider les pages</button>
             </form>
           )}
@@ -327,9 +367,17 @@ export default function HomePage() {
                       <p className="text-[11px] text-gray-500 truncate mt-0.5">{book.author}</p>
                       
                       <div className="mt-3">
-                        <div className="flex justify-between text-[10px] text-gray-400 font-medium mb-1">
+                        <div className="flex justify-between items-center text-[10px] text-gray-400 font-medium mb-1">
                           <span>{book.progress} / {book.pages} p.</span>
-                          <span className="text-blue-400 font-bold">{pct}%</span>
+                          <div className="flex items-center gap-2">
+                            <button 
+                              onClick={() => handleEditProgress(book)} 
+                              className="text-gray-500 hover:text-white underline decoration-gray-600 underline-offset-2"
+                            >
+                              Modifier
+                            </button>
+                            <span className="text-blue-400 font-bold">{pct}%</span>
+                          </div>
                         </div>
                         <div className="w-full bg-black h-1.5 rounded-full overflow-hidden border border-gray-900">
                           <div className="bg-blue-500 h-full rounded-full" style={{ width: `${pct}%` }}></div>
@@ -381,7 +429,14 @@ export default function HomePage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <input type="number" value={sportInputs[idx]} disabled={sportChecked[idx]} onChange={(e) => handleSportInputChange(idx, Number(e.target.value))} className="w-14 bg-black border border-gray-800 rounded-lg py-0.5 text-center font-black text-xs text-white" />
+                      <input 
+                        type="number" 
+                        min="0"
+                        value={sportInputs[idx]} 
+                        disabled={sportChecked[idx]} 
+                        onChange={(e) => handleSportInputChange(idx, Number(e.target.value))} 
+                        className="w-14 bg-black border border-gray-800 rounded-lg py-0.5 text-center font-black text-xs text-white" 
+                      />
                       <span className="text-[10px] text-gray-500 w-7 font-bold">{ex.unit}</span>
                     </div>
                   </div>
