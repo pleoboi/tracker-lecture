@@ -1,49 +1,41 @@
-import type { Metadata } from "next";
-import Link from "next/link";
-import "./globals.css";
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import './globals.css'
+import Link from 'next/link'
+
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: "Mes Lectures",
-  description: "Tracker personnel de lecture",
-  manifest: "/manifest.json",
-  appleWebApp: {
-    capable: true,
-    statusBarStyle: "default",
-    title: "Lectures",
-  },
-};
+  title: 'Tracker Élite',
+  description: 'Exécution et Discipline',
+}
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
     <html lang="fr">
-      <body className="antialiased bg-[#F2F2F7] pb-24">
-        {/* Le contenu de tes pages s'affichera ici */}
+      <body className={`${inter.className} bg-[#0A0A0A] text-white pb-20`}>
         {children}
-
-        {/* Barre de navigation mobile (Tab Bar) */}
-        <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around items-center h-20 pb-4 px-1 z-50 shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
-  <Link href="/" className="flex flex-col items-center text-gray-500 hover:text-black transition-colors w-1/4 pt-2">
-    <span className="text-xl mb-1">📚</span>
-    <span className="text-[10px] font-bold uppercase tracking-wider">En cours</span>
-  </Link>
-  <Link href="/journal" className="flex flex-col items-center text-gray-500 hover:text-black transition-colors w-1/4 pt-2">
-    <span className="text-xl mb-1">📖</span>
-    <span className="text-[10px] font-bold uppercase tracking-wider">Journal</span>
-  </Link>
-  <Link href="/bibliotheque" className="flex flex-col items-center text-gray-500 hover:text-black transition-colors w-1/4 pt-2">
-    <span className="text-xl mb-1">🏛️</span>
-    <span className="text-[10px] font-bold uppercase tracking-wider">Bibliothèque</span>
-  </Link>
-  <Link href="/dashboard" className="flex flex-col items-center text-gray-500 hover:text-black transition-colors w-1/4 pt-2">
-    <span className="text-xl mb-1">📊</span>
-    <span className="text-[10px] font-bold uppercase tracking-wider">Stats</span>
-  </Link>
-</nav>
+        
+        {/* BARRE DE NAVIGATION GLOBALE RÉPARÉE */}
+        <nav className="fixed bottom-0 left-0 w-full bg-[#0A0A0A]/90 backdrop-blur-md border-t border-gray-800 flex justify-around items-center h-16 px-4 z-50">
+          <Link href="/" className="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors">
+            <span className="text-[10px] font-black uppercase tracking-widest">En cours</span>
+          </Link>
+          <Link href="/bibliotheque" className="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors">
+            <span className="text-[10px] font-black uppercase tracking-widest">Livres</span>
+          </Link>
+          <Link href="/journal" className="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors">
+            <span className="text-[10px] font-black uppercase tracking-widest">Journal</span>
+          </Link>
+          <Link href="/dashboard" className="flex flex-col items-center gap-1 text-gray-500 hover:text-white transition-colors">
+            <span className="text-[10px] font-black uppercase tracking-widest">Dashboard</span>
+          </Link>
+        </nav>
       </body>
     </html>
-  );
+  )
 }
