@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function DashboardPage() {
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [stats, setStats] = useState({
     totalBooksCompleted: 0,
     totalPagesRead: 0,
@@ -25,21 +26,28 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchStats();
-  }, []);
+  }, [selectedYear]);
 
   const fetchStats = async () => {
-    const today = new Date();
-    const startOfYear = new Date(today.getFullYear(), 0, 1);
-    const dayOfYear = Math.floor((today.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    setIsLoading(true);
+    const now = new Date();
+    const isCurrentYear = selectedYear === now.getFullYear();
     
+    // Calcul des jours écoulés. Si c'est une année passée, on prend 365 jours.
+    let dayOfYear = 365;
+    if (isCurrentYear) {
+      const startOfYear = new Date(selectedYear, 0, 1);
+      dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    }
+
     const expectedPagesToDate = Math.round((GOAL_PAGES / 365) * dayOfYear);
     const expectedBooksToDate = Math.round((GOAL_BOOKS / 365) * dayOfYear);
 
     const { data: booksData } = await supabase.from("books").select("*");
     const { data: logsData } = await supabase.from("reading_logs").select("*");
 
-    let totalPages = 0;
-    let totalCompletedBooks = 0;
+    let totalPagesYear = 0;
+    let totalCompletedBooksYear = 0;
 
     const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
     const monthlyData = months.map(m => ({ name: m, pages: 0, books: 0 }));
@@ -53,17 +61,17 @@ export default function DashboardPage() {
     if (logsData && booksData) {
       const dailyMap = new Map<string, number>();
 
+      // 1. Filtrage des logs sur l'année sélectionnée
       logsData.forEach(log => {
-        const pages = log.pages_read || 0;
-        totalPages += pages;
-        
         const logDate = new Date(log.date);
-        if (logDate.getFullYear() === today.getFullYear()) {
+        if (logDate.getFullYear() === selectedYear) {
+          const pages = log.pages_read || 0;
+          totalPagesYear += pages;
           monthlyData[logDate.getMonth()].pages += pages;
-        }
 
-        const dateStr = logDate.toISOString().split('T')[0];
-        dailyMap.set(dateStr, (dailyMap.get(dateStr) || 0) + pages);
+          const dateStr = logDate.toISOString().split('T')[0];
+          dailyMap.set(dateStr, (dailyMap.get(dateStr) || 0) + pages);
+        }
       });
 
       if (dailyMap.size > 0) {
@@ -82,42 +90,47 @@ export default function DashboardPage() {
         worstDay = { date: formatDate(minD), pages: minP };
       }
 
-      const completedBooks = booksData.filter(b => b.status === "completed");
-      totalCompletedBooks = completedBooks.length;
-
-      if (completedBooks.length > 0) {
-        const sortedByPages = [...completedBooks].sort((a, b) => b.pages - a.pages);
-        longestBook = { title: sortedByPages[0].title, pages: sortedByPages[0].pages };
-        shortestBook = { title: sortedByPages[sortedByPages.length - 1].title, pages: sortedByPages[sortedByPages.length - 1].pages };
+      // 2. Filtrage des livres complétés sur l'année sélectionnée
+      const completedBooksThisYear = booksData.filter(book => {
+        if (book.status !== "completed") return false;
         
-        const sumPages = completedBooks.reduce((acc, b) => acc + b.pages, 0);
-        avgPagesPerBook = Math.round(sumPages / completedBooks.length);
-      }
-
-      completedBooks.forEach(book => {
+        // Trouver la date de complétion via le dernier log du livre
         const bookLogs = logsData
           .filter(l => l.book_id === book.id)
           .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-        
+          
         if (bookLogs.length > 0) {
           const completionDate = new Date(bookLogs[0].date);
-          if (completionDate.getFullYear() === today.getFullYear()) {
+          if (completionDate.getFullYear() === selectedYear) {
             monthlyData[completionDate.getMonth()].books += 1;
+            return true;
           }
         }
+        return false;
       });
+
+      totalCompletedBooksYear = completedBooksThisYear.length;
+
+      if (completedBooksThisYear.length > 0) {
+        const sortedByPages = [...completedBooksThisYear].sort((a, b) => b.pages - a.pages);
+        longestBook = { title: sortedByPages[0].title, pages: sortedByPages[0].pages };
+        shortestBook = { title: sortedByPages[sortedByPages.length - 1].title, pages: sortedByPages[sortedByPages.length - 1].pages };
+        
+        const sumPages = completedBooksThisYear.reduce((acc, b) => acc + b.pages, 0);
+        avgPagesPerBook = Math.round(sumPages / completedBooksThisYear.length);
+      }
     }
 
     setStats({
-      totalBooksCompleted: totalCompletedBooks,
-      totalPagesRead: totalPages,
-      pagesDiff: totalPages - expectedPagesToDate,
-      booksDiff: totalCompletedBooks - expectedBooksToDate,
+      totalBooksCompleted: totalCompletedBooksYear,
+      totalPagesRead: totalPagesYear,
+      pagesDiff: totalPagesYear - expectedPagesToDate,
+      booksDiff: totalCompletedBooksYear - expectedBooksToDate,
       chartData: monthlyData,
       avgPagesPerBook,
       longestBook,
       shortestBook,
-      avgPagesPerDay: Math.round(totalPages / dayOfYear),
+      avgPagesPerDay: dayOfYear > 0 ? Math.round(totalPagesYear / dayOfYear) : 0,
       bestDay,
       worstDay
     });
@@ -138,9 +151,34 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-[#0A0A0A] p-6 pb-32 font-sans flex flex-col gap-6 text-gray-200 antialiased selection:bg-blue-500/30">
-      <header className="pt-6">
-        <h1 className="text-3xl font-black tracking-tight text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">Performances</h1>
-        <p className="text-gray-500 mt-1 uppercase tracking-widest text-xs font-bold">Analyse brute de ton exécution</p>
+      
+      {/* HEADER AVEC SELECTEUR D'ANNEE */}
+      <header className="pt-6 flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-black tracking-tight text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">Performances</h1>
+          <p className="text-gray-500 mt-1 uppercase tracking-widest text-xs font-bold">Analyse de ton exécution</p>
+        </div>
+        
+        <div className="flex items-center gap-3 bg-[#111111] p-1.5 rounded-xl border border-gray-800">
+          <button 
+            onClick={() => setSelectedYear(y => y - 1)}
+            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors font-bold"
+          >
+            &lt;
+          </button>
+          <span className="text-base font-black text-white w-12 text-center">{selectedYear}</span>
+          <button 
+            onClick={() => setSelectedYear(y => y + 1)}
+            disabled={selectedYear >= new Date().getFullYear()}
+            className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold transition-colors ${
+              selectedYear >= new Date().getFullYear() 
+                ? 'text-gray-700 cursor-not-allowed' 
+                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            }`}
+          >
+            &gt;
+          </button>
+        </div>
       </header>
 
       {isLoading ? (
@@ -209,7 +247,6 @@ export default function DashboardPage() {
           {/* TABLEAUX DE DONNEES */}
           <div className="flex flex-col gap-4 mt-2">
             
-            {/* Tableau Pages */}
             <div className="bg-[#111111] rounded-2xl shadow-sm border border-gray-800 overflow-hidden">
               <table className="w-full text-sm text-left">
                 <thead className="bg-[#1A1A1A] text-gray-400 text-[10px] uppercase tracking-widest">
@@ -226,14 +263,13 @@ export default function DashboardPage() {
                     </tr>
                   ))}
                   <tr className="bg-[#0f172a] border-t-2 border-blue-900/30">
-                    <td className="px-4 py-4 text-gray-300 font-bold uppercase text-[10px] tracking-widest">Total</td>
+                    <td className="px-4 py-4 text-gray-300 font-bold uppercase text-[10px] tracking-widest">Total {selectedYear}</td>
                     <td className="px-4 py-4 text-right text-blue-400 font-black">{stats.totalPagesRead}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
 
-            {/* Tableau Livres */}
             <div className="bg-[#111111] rounded-2xl shadow-sm border border-gray-800 overflow-hidden">
               <table className="w-full text-sm text-left">
                 <thead className="bg-[#1A1A1A] text-gray-400 text-[10px] uppercase tracking-widest">
@@ -250,7 +286,7 @@ export default function DashboardPage() {
                     </tr>
                   ))}
                   <tr className="bg-[#052e16] border-t-2 border-green-900/30">
-                    <td className="px-4 py-4 text-gray-300 font-bold uppercase text-[10px] tracking-widest">Total</td>
+                    <td className="px-4 py-4 text-gray-300 font-bold uppercase text-[10px] tracking-widest">Total {selectedYear}</td>
                     <td className="px-4 py-4 text-right text-green-400 font-black">{stats.totalBooksCompleted}</td>
                   </tr>
                 </tbody>
