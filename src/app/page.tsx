@@ -46,6 +46,7 @@ export default function HomePage() {
   // Formulaire log lecture
   const [selectedBookId, setSelectedBookId] = useState("");
   const [endPageInput, setEndPageInput] = useState("");
+  const [logDate, setLogDate] = useState(new Date().toISOString().split('T')[0]);
   const [bookSuccess, setBookSuccess] = useState<string | null>(null);
 
   // --- ÉTATS UNIVER SPORT ---
@@ -158,7 +159,7 @@ export default function HomePage() {
     if (!isCorrection && pagesReadToday > 0) {
       const { error: logError } = await supabase.from("reading_logs").insert({
         book_id: book.id,
-        date: new Date().toISOString().split("T")[0],
+        date: logDate,
         pages_read: pagesReadToday,
         end_page: targetEndPage
       });
@@ -172,6 +173,7 @@ export default function HomePage() {
 
     setBookSuccess(isCorrection ? `Correction : retour à la page ${targetEndPage}` : `Session enregistrée : +${pagesReadToday} pages !`);
     setEndPageInput("");
+    setLogDate(new Date().toISOString().split('T')[0]);
     setShowLogReading(false);
     setTimeout(() => setBookSuccess(null), 3000);
     loadAllData();
@@ -336,16 +338,27 @@ export default function HomePage() {
               >
                 {allBooks.map(b => <option key={b.id} value={b.id.toString()}>{b.title}</option>)}
               </select>
-              <input 
-                type="number" 
-                min="0" 
-                max={currentSelectedBook?.pages || 9999} 
-                placeholder="Page d'arrêt actuelle" 
-                value={endPageInput} 
-                onChange={(e) => setEndPageInput(e.target.value)} 
-                className="w-full bg-[#161616] border border-gray-800 rounded-xl px-3 py-2 text-center font-black text-sm text-white" 
-                required 
-              />
+              
+              <div className="flex gap-2">
+                <input 
+                  type="date" 
+                  value={logDate}
+                  onChange={(e) => setLogDate(e.target.value)}
+                  className="w-2/5 bg-[#161616] border border-gray-800 rounded-xl px-2 py-2 text-center text-xs text-white" 
+                  required
+                />
+                <input 
+                  type="number" 
+                  min="0" 
+                  max={currentSelectedBook?.pages || 9999} 
+                  placeholder="Page d'arrêt" 
+                  value={endPageInput} 
+                  onChange={(e) => setEndPageInput(e.target.value)} 
+                  className="w-3/5 bg-[#161616] border border-gray-800 rounded-xl px-3 py-2 text-center font-black text-sm text-white" 
+                  required 
+                />
+              </div>
+
               <button type="submit" className="w-full bg-blue-600 text-white font-black text-[10px] uppercase tracking-widest py-2 rounded-xl">Valider les pages</button>
             </form>
           )}
