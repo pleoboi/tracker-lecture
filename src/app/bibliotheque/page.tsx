@@ -79,7 +79,6 @@ export default function BibliothequePage() {
       {isLoading ? (
         <div className="text-center py-20 text-xs font-bold text-gray-600 uppercase tracking-widest animate-pulse">Chargement...</div>
       ) : (
-        /* GRILLE EN CARTES MASSIVES ET CLIQUABLES */
         <div className="grid grid-cols-2 gap-4 animate-fadeIn">
           {sortedBooks.length === 0 ? (
             <p className="col-span-2 text-center py-6 text-xs text-gray-500 font-medium">Ta bibliothèque est vide.</p>
@@ -132,13 +131,15 @@ export default function BibliothequePage() {
         </div>
       )}
 
-      {/* MODALE DE NOTATION GÉANTE AVEC ÉTOILES MASSIVES */}
+      {/* MODALE DE NOTATION AVEC STEPPERS POUR MOBILE */}
       {selectedRatingBook && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-6 z-50 animate-fadeIn" onClick={() => setSelectedRatingBook(null)}>
           <div className="bg-[#111111] border border-gray-800 rounded-3xl p-6 w-full max-w-sm flex flex-col items-center gap-5 relative" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => setSelectedRatingBook(null)} className="absolute top-4 right-4 text-gray-500 hover:text-white font-bold text-sm px-2">✕</button>
             <div className="text-center"><h2 className="text-sm font-black text-white px-4 line-clamp-2">{selectedRatingBook.title}</h2><p className="text-[11px] text-gray-500 mt-0.5">{selectedRatingBook.author}</p></div>
-            <div className="flex flex-col items-center gap-2 my-2">
+            
+            <div className="flex flex-col items-center gap-2 my-2 w-full">
+              {/* Étoiles de base */}
               <div className="flex gap-2">
                 {[1, 2, 3, 4, 5].map((star) => (
                   <button key={star} type="button" onClick={() => setLiveRating(star)} className="text-4xl transition-transform active:scale-95 focus:outline-none">
@@ -146,12 +147,34 @@ export default function BibliothequePage() {
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-2 mt-2">
-                <span className="text-xs font-bold text-gray-400">Précision :</span>
-                <input type="number" step="0.1" min="0" max="5" value={liveRating} onChange={(e) => { const val = parseFloat(e.target.value); if (!isNaN(val) && val >= 0 && val <= 5) { setLiveRating(Math.round(val * 10) / 10); } else if (e.target.value === "") { setLiveRating(0); } }} className="w-16 bg-[#161616] border border-gray-800 rounded-lg px-2 py-0.5 text-center font-black text-sm text-yellow-500" />
-                <span className="text-xs font-black text-gray-600">/ 5</span>
+              
+              {/* Ajustement précis avec boutons -0.1 et +0.1 */}
+              <div className="flex items-center justify-center gap-3 mt-3 w-full">
+                <button 
+                  type="button"
+                  onClick={() => setLiveRating(prev => Math.max(0, Math.round((prev - 0.1) * 10) / 10))}
+                  className="w-10 h-10 bg-gray-900 border border-gray-800 rounded-xl text-xs font-black text-white active:scale-95 transition-transform"
+                >
+                  -0.1
+                </button>
+                
+                <div className="flex items-center gap-1 bg-[#161616] border border-gray-800 rounded-xl px-4 py-2">
+                  <span className="text-sm font-black text-yellow-500 min-w-[24px] text-center">
+                    {liveRating.toFixed(1)}
+                  </span>
+                  <span className="text-xs font-bold text-gray-600">/ 5</span>
+                </div>
+
+                <button 
+                  type="button"
+                  onClick={() => setLiveRating(prev => Math.min(5, Math.round((prev + 0.1) * 10) / 10))}
+                  className="w-10 h-10 bg-gray-900 border border-gray-800 rounded-xl text-xs font-black text-white active:scale-95 transition-transform"
+                >
+                  +0.1
+                </button>
               </div>
             </div>
+            
             <button onClick={saveRating} className="w-full bg-yellow-500 text-black font-black text-xs uppercase tracking-widest py-3 rounded-xl transition-transform active:scale-[0.98]">Enregistrer la note</button>
           </div>
         </div>
