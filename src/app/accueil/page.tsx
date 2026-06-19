@@ -4,11 +4,16 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
-import type { Book } from "../../lib/types";
+import type { Book, ReadingLog } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
 import { Cover, ProgressBar, Button } from "../../components/ui";
-import LogReadingModal from "../../components/LogReadingModal";
 import AddBookModal from "../../components/AddBookModal";
+
+const today = new Intl.DateTimeFormat("fr-FR", {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+}).format(new Date());
 
 function greeting() {
   const h = new Date().getHours();
@@ -18,11 +23,18 @@ function greeting() {
   return "Bonsoir";
 }
 
-const today = new Intl.DateTimeFormat("fr-FR", {
-  weekday: "long",
-  day: "numeric",
-  month: "long",
-}).format(new Date());
+interface Profile {
+  id: string;
+  display_name: string;
+}
+
+interface ActivityLog extends ReadingLog {
+  memberName: string;
+  bookTitle: string;
+  bookCover: string | null;
+  bookAuthor: string;
+  bookId: number;
+}
 
 export default function AccueilPage() {
   const { user } = useAuth();
@@ -32,10 +44,16 @@ export default function AccueilPage() {
 
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showLog, setShowLog] = useState(false);
+  const [showAllReading, setShowAllReading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [logBookId, setLogBookId] = useState<number | undefined>(undefined);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Club activity
+  const [activity, setActivity] = useState<ActivityLog[]>([]);
+  const [activityLoading, setActivityLoading] = useState(true);
+
+  // Members
+  const [members, setMembers] = useState<Profile[]>([]);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -48,8 +66,74 @@ export default function AccueilPage() {
     setLoading(false);
   }, [userId]);
 
+  const loadClub = useCallback(async () => {
+    if (!userId) return;
+    setActivityLoading(true);
+
+    const [{ data: logsData }, { data: profilesData }] = await Promise.all([
+      supabase
+        .from("reading_logs")
+        .select("*")
+        .neq("user_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(10),
+      supabase.from("user_profiles").select("id, display_name"),
+    ]);
+
+    const logs = (logsData as ReadingLog[]) || [];
+    const profiles = (profilesData as Profile[]) || [];
+
+    setMembers(profiles.filter((p) => p.id !== userId));
+
+    if (logs.length === 0) {
+      setActivity([]);
+      setActivityLoading(false);
+      return;
+    }
+
+    const bookIds = [...new Set(logs.map((l) => l.book_id))];
+    const { data: bookData } = await supabase
+      .from("books")
+      .select("id, title, cover_url, author")
+      .in("id", bookIds);
+
+    const bookMap = new Map(
+      ((bookData as Pick<Book, "id" | "title" | "cover_url" | "author">[]) || []).map((b) => [
+        b.id,
+        b,
+      ])
+    );
+    const profileMap = new Map(profiles.map((p) => [p.id, p.display_name]));
+
+    const enriched: ActivityLog[] = logs
+      .map((log) => {
+        const bk = bookMap.get(log.book_id);
+        if (!bk) return null;
+        return {
+          ...log,
+          memberName: profileMap.get(log.user_id ?? "") ?? "Membre",
+          bookTitle: bk.title,
+          bookCover: bk.cover_url ?? null,
+          bookAuthor: bk.author,
+          bookId: bk.id,
+        };
+      })
+      .filter(Boolean) as ActivityLog[];
+
+    setActivity(enriched);
+    setActivityLoading(false);
+  }, [userId]);
+
   useEffect(() => {
     load();
+    loadClub();
+  }, [load, loadClub]);
+
+  // Écoute les mises à jour déclenchées depuis AppShell
+  useEffect(() => {
+    const onUpdate = () => load();
+    window.addEventListener("books-updated", onUpdate);
+    return () => window.removeEventListener("books-updated", onUpdate);
   }, [load]);
 
   const showToast = (m: string) => {
@@ -58,27 +142,26 @@ export default function AccueilPage() {
   };
 
   const reading = books.filter((b) => !isCompleted(b));
+  const displayedReading = showAllReading ? reading : reading.slice(0, 3);
+  const hasMore = reading.length > 3;
 
   return (
     <div className="animate-fadeIn flex flex-col gap-6 pt-4">
-      <header className="flex flex-col gap-1">
-        <p className="text-xs font-medium uppercase tracking-wider text-muted">{today}</p>
-        <h1 className="font-serif text-3xl font-black text-ink">
-          {greeting()}{displayName ? `, ${displayName}` : ""}
-        </h1>
+      {/* Header */}
+      <header className="flex items-start justify-between">
+        <div className="flex flex-col gap-1">
+          <p className="text-xs font-medium uppercase tracking-wider text-muted">{today}</p>
+          <h1 className="font-serif text-3xl font-black text-ink">
+            {greeting()}{displayName ? `, ${displayName}` : ""}
+          </h1>
+        </div>
+        {/* CTA desktop uniquement (mobile = bouton + dans la nav) */}
+        <div className="hidden gap-2 md:flex">
+          <Button variant="ghost" onClick={() => setShowAdd(true)} className="text-sm">
+            ＋ Livre
+          </Button>
+        </div>
       </header>
-
-      <div className="flex gap-3">
-        <Button
-          onClick={() => { setLogBookId(undefined); setShowLog(true); }}
-          className="flex-1"
-        >
-          ✎ Noter ma lecture
-        </Button>
-        <Button variant="ghost" onClick={() => setShowAdd(true)}>
-          ＋ Livre
-        </Button>
-      </div>
 
       {toast && (
         <div className="rounded-xl border border-[#cfe0cf] bg-[#eaf1ea] px-4 py-3 text-xs font-semibold text-success">
@@ -86,6 +169,7 @@ export default function AccueilPage() {
         </div>
       )}
 
+      {/* En cours */}
       {loading ? (
         <div className="py-20 text-center text-xs font-medium uppercase tracking-wider text-muted">
           Chargement…
@@ -99,28 +183,83 @@ export default function AccueilPage() {
           </Button>
         </div>
       ) : (
-        <section className="flex flex-col gap-4">
+        <section className="flex flex-col gap-3">
           <div className="flex items-center justify-between">
-            <h2 className="font-serif text-lg font-medium text-ink">En cours</h2>
-            <Link href="/bibliotheque" className="text-xs font-medium text-violet-deep">
-              Tout voir
+            <h2 className="font-serif text-lg font-medium text-ink">
+              En cours
+              <span className="ml-2 font-sans text-sm font-normal text-muted">({reading.length})</span>
+            </h2>
+            <Link href="/compte" className="text-xs font-medium text-violet-deep">
+              Bibliothèque →
             </Link>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {reading.map((b) => (
+            {displayedReading.map((b) => (
               <BookCard key={b.id} book={b} />
+            ))}
+          </div>
+          {hasMore && (
+            <button
+              onClick={() => setShowAllReading((v) => !v)}
+              className="mt-1 text-center text-xs font-medium text-violet-deep"
+            >
+              {showAllReading
+                ? "Voir moins ↑"
+                : `Voir ${reading.length - 3} de plus ↓`}
+            </button>
+          )}
+        </section>
+      )}
+
+      {/* Activité du club */}
+      <section className="flex flex-col gap-3">
+        <h2 className="font-serif text-lg font-medium text-ink">Activité du club</h2>
+        {activityLoading ? (
+          <div className="py-8 text-center text-xs font-medium text-muted">Chargement…</div>
+        ) : activity.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-line bg-card p-6 text-center">
+            <p className="text-sm text-muted">Pas encore d'activité de la part des autres membres.</p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {activity.map((log) => (
+              <ActivityCard key={log.id} log={log} />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Membres du club */}
+      {members.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-serif text-lg font-medium text-ink">Membres</h2>
+            <Link href="/membres" className="text-xs font-medium text-violet-deep">
+              Voir tout →
+            </Link>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
+            {members.map((m, i) => (
+              <Link
+                key={m.id}
+                href={`/membre/${m.id}`}
+                className="flex shrink-0 flex-col items-center gap-1.5"
+              >
+                <span
+                  className="flex h-12 w-12 items-center justify-center rounded-full font-serif text-base font-semibold text-cream"
+                  style={{ backgroundColor: MEMBER_COLORS[i % MEMBER_COLORS.length] }}
+                >
+                  {m.display_name[0]?.toUpperCase()}
+                </span>
+                <span className="max-w-[56px] truncate text-center text-[10.5px] font-medium text-muted">
+                  {m.display_name}
+                </span>
+              </Link>
             ))}
           </div>
         </section>
       )}
 
-      <LogReadingModal
-        open={showLog}
-        onClose={() => setShowLog(false)}
-        books={reading}
-        defaultBookId={logBookId}
-        onSaved={(m) => { showToast(m); load(); }}
-      />
       <AddBookModal
         open={showAdd}
         onClose={() => setShowAdd(false)}
@@ -129,6 +268,8 @@ export default function AccueilPage() {
     </div>
   );
 }
+
+const MEMBER_COLORS = ["#7c6ba0", "#6e7a5a", "#b07a4b", "#5b8a8b", "#8a5b6e"];
 
 function BookCard({ book }: { book: Book }) {
   const p = pct(book);
@@ -156,5 +297,39 @@ function BookCard({ book }: { book: Book }) {
         <ProgressBar value={p / 100} className="h-1.5" />
       </div>
     </Link>
+  );
+}
+
+function ActivityCard({ log }: { log: ActivityLog }) {
+  const initial = log.memberName[0]?.toUpperCase() ?? "?";
+  const dateStr = new Date(log.date).toLocaleDateString("fr-FR", {
+    day: "numeric",
+    month: "short",
+  });
+
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3">
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet font-serif text-xs font-semibold text-cream">
+        {initial}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13px] font-medium text-ink">
+          <span className="font-semibold">{log.memberName}</span>
+          {" "}a lu{" "}
+          <span className="font-semibold text-violet-deep">+{log.pages_read} p.</span>
+        </p>
+        <p className="truncate text-[11px] text-muted">{log.bookTitle}</p>
+      </div>
+      <div className="shrink-0 text-right">
+        <Cover
+          id={log.bookId}
+          title={log.bookTitle}
+          coverUrl={log.bookCover}
+          className="h-10 w-7"
+          rounded="rounded"
+        />
+        <p className="mt-1 text-[10px] text-muted">{dateStr}</p>
+      </div>
+    </div>
   );
 }

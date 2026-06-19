@@ -29,6 +29,7 @@ export default function AddToLibraryModal({
 }) {
   const { user } = useAuth();
   const [status, setStatus] = useState<"reading" | "completed">("reading");
+  const [startDate, setStartDate] = useState(todayISO());
   const [endDate, setEndDate] = useState(todayISO());
   const [pages, setPages] = useState("");
   const [saving, setSaving] = useState(false);
@@ -37,6 +38,7 @@ export default function AddToLibraryModal({
   useEffect(() => {
     if (open && book) {
       setStatus("reading");
+      setStartDate(todayISO());
       setEndDate(todayISO());
       setPages(String(book.pages));
       setError(null);
@@ -94,13 +96,21 @@ export default function AddToLibraryModal({
     }
 
     if (status === "completed") {
-      await supabase.from("reading_logs").insert({
-        book_id: inserted.id,
-        date: endDate,
-        pages_read: n,
-        end_page: n,
-        user_id: user.id,
-      });
+      if (startDate && startDate !== endDate && n > 1) {
+        // Deux sessions : une au début (1 page) et une à la fin (reste)
+        await supabase.from("reading_logs").insert([
+          { book_id: inserted.id, date: startDate, pages_read: 1, end_page: 1, user_id: user.id },
+          { book_id: inserted.id, date: endDate, pages_read: n - 1, end_page: n, user_id: user.id },
+        ]);
+      } else {
+        await supabase.from("reading_logs").insert({
+          book_id: inserted.id,
+          date: endDate,
+          pages_read: n,
+          end_page: n,
+          user_id: user.id,
+        });
+      }
     }
 
     setSaving(false);
@@ -153,16 +163,29 @@ export default function AddToLibraryModal({
           />
         </div>
 
-        {/* Date de fin */}
+        {/* Dates début + fin */}
         {status === "completed" && (
-          <div>
-            <FieldLabel>Date de fin de lecture</FieldLabel>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className={inputClass}
-            />
+          <div className="flex flex-col gap-3">
+            <div>
+              <FieldLabel>Date de début de lecture</FieldLabel>
+              <input
+                type="date"
+                value={startDate}
+                max={endDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div>
+              <FieldLabel>Date de fin de lecture</FieldLabel>
+              <input
+                type="date"
+                value={endDate}
+                min={startDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className={inputClass}
+              />
+            </div>
           </div>
         )}
 
