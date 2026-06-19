@@ -77,17 +77,36 @@ export default function DashboardPage() {
   const [logs, setLogs] = useState<ReadingLog[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
+  const [championDays, setChampionDays] = useState(0);
 
   const loadAll = useCallback(async () => {
     if (!userId) return;
-    const [g, { data: l }, { data: b }] = await Promise.all([
+    const [g, { data: l }, { data: b }, { data: allLogs }] = await Promise.all([
       loadGoals(userId),
       supabase.from("reading_logs").select("*").eq("user_id", userId),
       supabase.from("books").select("*").eq("user_id", userId),
+      supabase.from("reading_logs").select("user_id, pages_read, date"),
     ]);
     setGoals(g);
     setLogs((l as ReadingLog[]) || []);
     setBooks((b as Book[]) || []);
+
+    // Calcul des jours Champion du jour pour l'utilisateur courant
+    type LogRow = { user_id: string; pages_read: number; date: string };
+    const rows = (allLogs as LogRow[]) || [];
+    const dateMap = new Map<string, Map<string, number>>();
+    rows.forEach(({ date, user_id, pages_read }) => {
+      if (!dateMap.has(date)) dateMap.set(date, new Map());
+      const m = dateMap.get(date)!;
+      m.set(user_id, (m.get(user_id) || 0) + pages_read);
+    });
+    let count = 0;
+    for (const userMap of dateMap.values()) {
+      const maxPages = Math.max(...userMap.values());
+      if (maxPages > 0 && (userMap.get(userId) || 0) >= maxPages) count++;
+    }
+    setChampionDays(count);
+
     setLoading(false);
   }, [userId]);
 
@@ -242,6 +261,25 @@ export default function DashboardPage() {
             />
             <StatCard label="Moyenne / jour" value={String(avgPerDay)} unit="pages" accent="#6e7a5a" />
             <StatCard label="Journée record" value={String(recordDay)} unit="pages" accent="#d7a33f" />
+          </div>
+
+          {/* Champion du jour */}
+          <div className="flex items-center gap-4 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gold/15 text-2xl">
+              🏆
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-serif text-[15px] font-semibold text-ink">Trophées Champion du jour</p>
+              <p className="text-xs text-muted">
+                Jours où tu as lu le plus de pages parmi tous les membres
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="font-serif text-3xl font-black text-[#b8890a]">{championDays}</p>
+              <p className="text-[11px] font-medium text-muted">
+                {championDays > 1 ? "jours" : "jour"}
+              </p>
+            </div>
           </div>
 
           {/* Graphiques */}

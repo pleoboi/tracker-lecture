@@ -76,9 +76,21 @@ body {
   scrollbar-color: var(--color-line) transparent;
 }
 
-/* Empêche le zoom automatique iOS lors du focus sur un champ de saisie */
-@media (max-width: 768px) {
-  input, textarea, select {
+/* Empêche le zoom automatique iOS lors du focus sur un champ de saisie.
+   iOS zoome quand font-size < 16px ; on force 16px sur tous les appareils
+   tactiles (coarse pointer = doigt, hover: none = pas de souris). */
+@media (hover: none) and (pointer: coarse), (max-width: 768px) {
+  input,
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="url"],
+  input[type="search"],
+  input[type="date"],
+  input[type="tel"],
+  textarea,
+  select {
     font-size: 16px !important;
   }
 }

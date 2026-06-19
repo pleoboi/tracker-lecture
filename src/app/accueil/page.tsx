@@ -36,6 +36,12 @@ interface ActivityLog extends ReadingLog {
   bookId: number;
 }
 
+interface Champion {
+  userId: string;
+  name: string;
+  pages: number;
+}
+
 export default function AccueilPage() {
   const { user } = useAuth();
   const userId = user?.id;
@@ -51,6 +57,7 @@ export default function AccueilPage() {
   // Club activity
   const [activity, setActivity] = useState<ActivityLog[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
+  const [todayChampion, setTodayChampion] = useState<Champion | null>(null);
 
   // Members
   const [members, setMembers] = useState<Profile[]>([]);
@@ -70,7 +77,9 @@ export default function AccueilPage() {
     if (!userId) return;
     setActivityLoading(true);
 
-    const [{ data: logsData }, { data: profilesData }] = await Promise.all([
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    const [{ data: logsData }, { data: profilesData }, { data: todayAllLogs }] = await Promise.all([
       supabase
         .from("reading_logs")
         .select("*")
@@ -78,12 +87,34 @@ export default function AccueilPage() {
         .order("created_at", { ascending: false })
         .limit(10),
       supabase.from("user_profiles").select("id, display_name"),
+      supabase
+        .from("reading_logs")
+        .select("user_id, pages_read")
+        .eq("date", todayStr),
     ]);
 
     const logs = (logsData as ReadingLog[]) || [];
     const profiles = (profilesData as Profile[]) || [];
 
     setMembers(profiles.filter((p) => p.id !== userId));
+
+    // Calcul du champion du jour (toutes sessions confondues)
+    const pagesByUser = new Map<string, number>();
+    ((todayAllLogs as { user_id: string; pages_read: number }[]) || []).forEach((l) => {
+      pagesByUser.set(l.user_id, (pagesByUser.get(l.user_id) || 0) + l.pages_read);
+    });
+    const sorted = [...pagesByUser.entries()].sort((a, b) => b[1] - a[1]);
+    if (sorted.length > 0 && sorted[0][1] > 0) {
+      const [champId, champPages] = sorted[0];
+      const profileMap2 = new Map(profiles.map((p) => [p.id, p.display_name]));
+      setTodayChampion({
+        userId: champId,
+        name: profileMap2.get(champId) ?? "Membre",
+        pages: champPages,
+      });
+    } else {
+      setTodayChampion(null);
+    }
 
     if (logs.length === 0) {
       setActivity([]);
@@ -214,6 +245,12 @@ export default function AccueilPage() {
       {/* Activité du club */}
       <section className="flex flex-col gap-3">
         <h2 className="font-serif text-lg font-medium text-ink">Activité du club</h2>
+
+        {/* Champion du jour */}
+        {todayChampion && (
+          <ChampionBanner champion={todayChampion} isMe={todayChampion.userId === userId} />
+        )}
+
         {activityLoading ? (
           <div className="py-8 text-center text-xs font-medium text-muted">Chargement…</div>
         ) : activity.length === 0 ? (
@@ -223,7 +260,11 @@ export default function AccueilPage() {
         ) : (
           <div className="flex flex-col gap-2.5">
             {activity.map((log) => (
-              <ActivityCard key={log.id} log={log} />
+              <ActivityCard
+                key={log.id}
+                log={log}
+                isChampion={todayChampion?.userId === log.user_id}
+              />
             ))}
           </div>
         )}
@@ -300,27 +341,70 @@ function BookCard({ book }: { book: Book }) {
   );
 }
 
-function ActivityCard({ log }: { log: ActivityLog }) {
+function ChampionBanner({ champion, isMe }: { champion: Champion; isMe: boolean }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-3.5">
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-xl">
+        🏆
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-semibold text-ink">
+          {isMe ? "Tu es" : <><span className="font-bold">{champion.name}</span> est</>}{" "}
+          <span className="text-[#b8890a]">Champion du jour</span>
+        </p>
+        <p className="text-[11px] text-muted">
+          {champion.pages} pages lues aujourd&apos;hui
+        </p>
+      </div>
+      <span className="shrink-0 rounded-full border border-gold/40 bg-gold/10 px-2.5 py-1 text-[10.5px] font-bold text-[#b8890a]">
+        +1 🏅
+      </span>
+    </div>
+  );
+}
+
+function ActivityCard({ log, isChampion }: { log: ActivityLog; isChampion?: boolean }) {
   const initial = log.memberName[0]?.toUpperCase() ?? "?";
+  const todayStr = new Date().toISOString().split("T")[0];
+  const isToday = log.date === todayStr;
+  const showBadge = isChampion && isToday;
+
   const dateStr = new Date(log.date).toLocaleDateString("fr-FR", {
     day: "numeric",
     month: "short",
   });
 
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3">
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet font-serif text-xs font-semibold text-cream">
+    <div
+      className={`flex items-center gap-3 rounded-2xl border p-3 transition-colors ${
+        showBadge
+          ? "border-gold/40 bg-[#fdf7e9]"
+          : "border-line bg-card"
+      }`}
+    >
+      <span
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-serif text-xs font-semibold text-cream ${
+          showBadge ? "bg-gold" : "bg-violet"
+        }`}
+      >
         {initial}
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] font-medium text-ink">
           <span className="font-semibold">{log.memberName}</span>
           {" "}a lu{" "}
-          <span className="font-semibold text-violet-deep">+{log.pages_read} p.</span>
+          <span className={`font-semibold ${showBadge ? "text-[#b8890a]" : "text-violet-deep"}`}>
+            +{log.pages_read} p.
+          </span>
         </p>
         <p className="truncate text-[11px] text-muted">{log.bookTitle}</p>
       </div>
-      <div className="shrink-0 text-right">
+      <div className="flex shrink-0 flex-col items-end gap-1">
+        {showBadge && (
+          <span className="rounded-full bg-gold/20 px-2 py-0.5 text-[9.5px] font-bold text-[#b8890a]">
+            🏆 Champion
+          </span>
+        )}
         <Cover
           id={log.bookId}
           title={log.bookTitle}
@@ -328,7 +412,7 @@ function ActivityCard({ log }: { log: ActivityLog }) {
           className="h-10 w-7"
           rounded="rounded"
         />
-        <p className="mt-1 text-[10px] text-muted">{dateStr}</p>
+        <p className="text-[10px] text-muted">{dateStr}</p>
       </div>
     </div>
   );
