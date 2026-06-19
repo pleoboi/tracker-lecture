@@ -1,351 +1,290 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "../../lib/supabase";
-import { AreaChart, Area, XAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { useAuth } from "../../lib/auth-context";
+import type { Book, ReadingLog } from "../../lib/types";
+import { loadGoals, updateGoal, DEFAULT_GOALS, type Goals } from "../../lib/settings";
+import { GoalIndicator, ObjectiveChart, StatCard, RatingsChart } from "../../components/DashboardWidgets";
 
-export default function DashboardPage() {
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [stats, setStats] = useState({
-    totalBooksCompleted: 0,
-    totalPagesRead: 0,
-    pagesDiff: 0,
-    booksDiff: 0,
-    chartData: [] as any[],
-    avgPagesPerBook: 0,
-    longestBook: { title: "-", pages: 0 },
-    shortestBook: { title: "-", pages: 0 },
-    avgPagesPerDay: 0,
-    bestDay: { date: "-", pages: 0 },
-    worstDay: { date: "-", pages: 0 },
-  });
-  const [isLoading, setIsLoading] = useState(true);
+const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
+const MS_DAY = 86_400_000;
+const VIOLET = "var(--color-violet)";
+const VIOLET_LT = "#d8cfe6";
+const VIOLET_DEEP = "var(--color-violet-deep)";
 
-  const GOAL_PAGES = 25000;
-  const GOAL_BOOKS = 60;
+function GoalSetupCard({ label, onSet }: { label: string; onSet: (v: number) => void }) {
+  const [value, setValue] = useState("");
+  const [editing, setEditing] = useState(false);
 
-  useEffect(() => {
-    fetchStats();
-  }, [selectedYear]);
-
-  const fetchStats = async () => {
-    setIsLoading(true);
-    const now = new Date();
-    const isCurrentYear = selectedYear === now.getFullYear();
-    
-    // Calcul des jours écoulés. Si c'est une année passée, on prend 365 jours.
-    let dayOfYear = 365;
-    if (isCurrentYear) {
-      const startOfYear = new Date(selectedYear, 0, 1);
-      dayOfYear = Math.floor((now.getTime() - startOfYear.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-    }
-
-    const expectedPagesToDate = Math.round((GOAL_PAGES / 365) * dayOfYear);
-    const expectedBooksToDate = Math.round((GOAL_BOOKS / 365) * dayOfYear);
-
-    const { data: booksData } = await supabase.from("books").select("*");
-    const { data: logsData } = await supabase.from("reading_logs").select("*");
-
-    let totalPagesYear = 0;
-    let totalCompletedBooksYear = 0;
-
-    const months = ["Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"];
-    const monthlyData = months.map(m => ({ name: m, pages: 0, books: 0 }));
-
-    let avgPagesPerBook = 0;
-    let longestBook = { title: "-", pages: 0 };
-    let shortestBook = { title: "-", pages: 0 };
-    let bestDay = { date: "-", pages: 0 };
-    let worstDay = { date: "-", pages: 0 };
-
-    if (logsData && booksData) {
-      const dailyMap = new Map<string, number>();
-
-      // 1. Filtrage des logs sur l'année sélectionnée
-      logsData.forEach(log => {
-        const logDate = new Date(log.date);
-        if (logDate.getFullYear() === selectedYear) {
-          const pages = log.pages_read || 0;
-          totalPagesYear += pages;
-          monthlyData[logDate.getMonth()].pages += pages;
-
-          const dateStr = logDate.toISOString().split('T')[0];
-          dailyMap.set(dateStr, (dailyMap.get(dateStr) || 0) + pages);
-        }
-      });
-
-      if (dailyMap.size > 0) {
-        let maxP = -1;
-        let minP = Infinity;
-        let maxD = "";
-        let minD = "";
-
-        dailyMap.forEach((pages, date) => {
-          if (pages > maxP) { maxP = pages; maxD = date; }
-          if (pages < minP) { minP = pages; minD = date; }
-        });
-
-        const formatDate = (d: string) => new Date(d).toLocaleDateString("fr-FR", { day: '2-digit', month: '2-digit', year: 'numeric' });
-        bestDay = { date: formatDate(maxD), pages: maxP };
-        worstDay = { date: formatDate(minD), pages: minP };
-      }
-
-      // 2. Filtrage des livres complétés sur l'année sélectionnée
-      const completedBooksThisYear = booksData.filter(book => {
-        if (book.status !== "completed") return false;
-        
-        // Trouver la date de complétion via le dernier log du livre
-        const bookLogs = logsData
-          .filter(l => l.book_id === book.id)
-          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          
-        if (bookLogs.length > 0) {
-          const completionDate = new Date(bookLogs[0].date);
-          if (completionDate.getFullYear() === selectedYear) {
-            monthlyData[completionDate.getMonth()].books += 1;
-            return true;
-          }
-        }
-        return false;
-      });
-
-      totalCompletedBooksYear = completedBooksThisYear.length;
-
-      if (completedBooksThisYear.length > 0) {
-        const sortedByPages = [...completedBooksThisYear].sort((a, b) => b.pages - a.pages);
-        longestBook = { title: sortedByPages[0].title, pages: sortedByPages[0].pages };
-        shortestBook = { title: sortedByPages[sortedByPages.length - 1].title, pages: sortedByPages[sortedByPages.length - 1].pages };
-        
-        const sumPages = completedBooksThisYear.reduce((acc, b) => acc + b.pages, 0);
-        avgPagesPerBook = Math.round(sumPages / completedBooksThisYear.length);
-      }
-    }
-
-    setStats({
-      totalBooksCompleted: totalCompletedBooksYear,
-      totalPagesRead: totalPagesYear,
-      pagesDiff: totalPagesYear - expectedPagesToDate,
-      booksDiff: totalCompletedBooksYear - expectedBooksToDate,
-      chartData: monthlyData,
-      avgPagesPerBook,
-      longestBook,
-      shortestBook,
-      avgPagesPerDay: dayOfYear > 0 ? Math.round(totalPagesYear / dayOfYear) : 0,
-      bestDay,
-      worstDay
-    });
-    
-    setIsLoading(false);
-  };
-
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-black border border-gray-800 text-blue-400 text-xs font-bold px-3 py-2 rounded-lg shadow-[0_0_15px_rgba(59,130,246,0.2)]">
-          <p>{`${label} : ${payload[0].value}`}</p>
-        </div>
-      );
-    }
-    return null;
-  };
+  if (!editing) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line bg-card p-5 text-center">
+        <p className="font-serif text-[15px] font-medium text-ink">{label}</p>
+        <p className="text-xs text-muted">Pas d&apos;objectif défini pour cette année.</p>
+        <button
+          onClick={() => setEditing(true)}
+          className="flex items-center gap-1.5 rounded-xl bg-violet-soft px-4 py-2 text-xs font-semibold text-violet-deep"
+        >
+          Définir un objectif
+        </button>
+      </div>
+    );
+  }
 
   return (
-    <main className="min-h-screen bg-[#0A0A0A] p-6 pb-32 font-sans flex flex-col gap-6 text-gray-200 antialiased selection:bg-blue-500/30">
-      
-      {/* HEADER AVEC SELECTEUR D'ANNEE */}
-      <header className="pt-6 flex justify-between items-end">
+    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-5">
+      <p className="font-serif text-[15px] font-medium text-ink">{label}</p>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              const v = Number(value);
+              if (v > 0) { onSet(v); setEditing(false); }
+            }
+          }}
+          placeholder="Ex : 15 000"
+          autoFocus
+          className="flex-1 rounded-xl border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+        />
+        <button
+          onClick={() => { const v = Number(value); if (v > 0) { onSet(v); setEditing(false); } }}
+          className="rounded-xl bg-violet px-4 py-2 text-xs font-semibold text-cream"
+        >
+          Valider
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="rounded-xl border border-line px-3 py-2 text-xs font-medium text-muted"
+        >
+          Annuler
+        </button>
+      </div>
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  const { user } = useAuth();
+  const userId = user?.id;
+
+  const now = new Date();
+  const [year, setYear] = useState(now.getFullYear());
+  const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
+  const [logs, setLogs] = useState<ReadingLog[]>([]);
+  const [books, setBooks] = useState<Book[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadAll = useCallback(async () => {
+    if (!userId) return;
+    const [g, { data: l }, { data: b }] = await Promise.all([
+      loadGoals(userId),
+      supabase.from("reading_logs").select("*").eq("user_id", userId),
+      supabase.from("books").select("*").eq("user_id", userId),
+    ]);
+    setGoals(g);
+    setLogs((l as ReadingLog[]) || []);
+    setBooks((b as Book[]) || []);
+    setLoading(false);
+  }, [userId]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  const setGoal = async (key: keyof Goals, value: number) => {
+    if (!userId) return;
+    setGoals((prev) => ({ ...prev, [key]: value }));
+    await updateGoal(key, value, userId);
+  };
+
+  // ----- Calculs lecture -----
+  const isCurrentYear = year === now.getFullYear();
+  const pagesByMonth = Array(12).fill(0);
+  const booksByMonth = Array(12).fill(0);
+  const dayPages = new Map<string, number>();
+
+  logs.forEach((log) => {
+    const d = new Date(log.date);
+    if (d.getFullYear() === year) {
+      const key = d.toISOString().split("T")[0];
+      pagesByMonth[d.getMonth()] += log.pages_read || 0;
+      dayPages.set(key, (dayPages.get(key) || 0) + (log.pages_read || 0));
+    }
+  });
+
+  books.forEach((book) => {
+    if (book.status !== "completed") return;
+    const bookLogs = logs
+      .filter((l) => l.book_id === book.id)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    if (bookLogs.length) {
+      const end = new Date(bookLogs[0].date);
+      if (end.getFullYear() === year) booksByMonth[end.getMonth()] += 1;
+    }
+  });
+
+  const totalPages = pagesByMonth.reduce((a, b) => a + b, 0);
+  const totalBooks = booksByMonth.reduce((a, b) => a + b, 0);
+  const pagesThisMonth = isCurrentYear ? pagesByMonth[now.getMonth()] : 0;
+  const booksThisMonth = isCurrentYear ? booksByMonth[now.getMonth()] : 0;
+
+  const dayOfYear = isCurrentYear
+    ? Math.floor((now.getTime() - new Date(year, 0, 1).getTime()) / MS_DAY) + 1
+    : 365;
+  const daysInMonth = new Date(year, now.getMonth() + 1, 0).getDate();
+  const dayOfMonth = isCurrentYear ? now.getDate() : daysInMonth;
+
+  const avgPerDay = dayOfYear > 0 ? Math.round(totalPages / dayOfYear) : 0;
+  const recordDay = Math.max(0, ...Array.from(dayPages.values()));
+  const currentMonthIdx = isCurrentYear ? now.getMonth() : -1;
+
+  const yearPeriod = (cur: number, goal: number) => ({
+    cur,
+    goal,
+    expected: goal * (dayOfYear / 365),
+  });
+
+  const monthPeriod = (cur: number, goal: number) => ({
+    cur,
+    goal,
+    expected: goal * (dayOfMonth / daysInMonth),
+  });
+
+  const monthChart = (arr: number[]) => arr.map((v, i) => ({ name: MONTHS[i], value: v }));
+
+  // Répartition des notes
+  const ratingCounts = Array(10).fill(0);
+  let ratingSum = 0;
+  let ratedCount = 0;
+  books.forEach((b) => {
+    const r = b.rating || 0;
+    if (r > 0) {
+      const bucket = Math.min(9, Math.max(0, Math.round(r * 2) - 1));
+      ratingCounts[bucket] += 1;
+      ratingSum += r;
+      ratedCount += 1;
+    }
+  });
+  const ratingAvg = ratedCount > 0 ? ratingSum / ratedCount : 0;
+
+  return (
+    <div className="animate-fadeIn flex flex-col gap-5 pt-4">
+      <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black tracking-tight text-white drop-shadow-[0_0_15px_rgba(255,255,255,0.1)]">Performances</h1>
-          <p className="text-gray-500 mt-1 uppercase tracking-widest text-xs font-bold">Analyse de ton exécution</p>
+          <h1 className="font-serif text-3xl font-black text-ink">Statistiques</h1>
+          <p className="text-xs font-medium text-muted">Lecture {year}</p>
         </div>
-        
-        <div className="flex items-center gap-3 bg-[#111111] p-1.5 rounded-xl border border-gray-800">
-          <button 
-            onClick={() => setSelectedYear(y => y - 1)}
-            className="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors font-bold"
-          >
-            &lt;
+        <div className="flex items-center gap-2 rounded-xl border border-line bg-card px-2 py-1.5">
+          <button onClick={() => setYear((y) => y - 1)} className="px-1.5 text-sm font-bold text-muted">
+            ‹
           </button>
-          <span className="text-base font-black text-white w-12 text-center">{selectedYear}</span>
-          <button 
-            onClick={() => setSelectedYear(y => y + 1)}
-            disabled={selectedYear >= new Date().getFullYear()}
-            className={`w-8 h-8 flex items-center justify-center rounded-lg font-bold transition-colors ${
-              selectedYear >= new Date().getFullYear() 
-                ? 'text-gray-700 cursor-not-allowed' 
-                : 'text-gray-400 hover:text-white hover:bg-gray-800'
-            }`}
+          <span className="w-12 text-center text-sm font-semibold text-ink">{year}</span>
+          <button
+            onClick={() => setYear((y) => Math.min(y + 1, now.getFullYear()))}
+            disabled={year >= now.getFullYear()}
+            className="px-1.5 text-sm font-bold text-muted disabled:opacity-30"
           >
-            &gt;
+            ›
           </button>
         </div>
       </header>
 
-      {isLoading ? (
-        <div className="flex justify-center py-10 text-blue-500 font-bold animate-pulse tracking-widest text-sm uppercase">Synchronisation...</div>
+      {loading ? (
+        <div className="py-20 text-center text-xs font-medium uppercase tracking-wider text-muted">
+          Chargement…
+        </div>
       ) : (
         <>
-          {/* SECTION GRAPHIQUES ET AVANCE/RETARD */}
-          <div className="bg-[#111111] p-5 rounded-2xl shadow-[0_0_20px_rgba(59,130,246,0.05)] border border-gray-800 flex flex-col gap-4 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-20"></div>
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Total pages lues</h3>
-                <span className="text-3xl font-black text-white">{stats.totalPagesRead} <span className="text-sm font-medium text-gray-600">/ 25000</span></span>
-              </div>
-              <div className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider border ${stats.pagesDiff >= 0 ? 'bg-green-500/10 text-green-400 border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.1)]' : 'bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]'}`}>
-                {stats.pagesDiff >= 0 ? `+${stats.pagesDiff} pages` : `${stats.pagesDiff} pages`}
-              </div>
-            </div>
-            
-            <div className="h-40 w-full mt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={stats.chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorPages" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#52525b', fontWeight: 'bold' }} dy={10} />
-                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#27272a', strokeWidth: 1, strokeDasharray: '4 4' }} />
-                  <Area type="monotone" dataKey="pages" stroke="#3b82f6" strokeWidth={2} fillOpacity={1} fill="url(#colorPages)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+          {/* Objectifs */}
+          <div className="grid gap-4 md:grid-cols-2">
+            {goals.reading_pages_year !== null ? (
+              <GoalIndicator
+                title="Objectif pages"
+                accent="#8b79be"
+                unit="p."
+                year={yearPeriod(totalPages, goals.reading_pages_year)}
+                month={monthPeriod(pagesThisMonth, goals.reading_pages_year / 12)}
+              />
+            ) : (
+              <GoalSetupCard
+                label="Objectif pages"
+                onSet={(v) => setGoal("reading_pages_year", v)}
+              />
+            )}
+            {goals.reading_books_year !== null ? (
+              <GoalIndicator
+                title="Objectif livres"
+                accent="#6f5da6"
+                unit="livres"
+                year={yearPeriod(totalBooks, goals.reading_books_year)}
+                month={monthPeriod(booksThisMonth, goals.reading_books_year / 12)}
+              />
+            ) : (
+              <GoalSetupCard
+                label="Objectif livres"
+                onSet={(v) => setGoal("reading_books_year", v)}
+              />
+            )}
           </div>
 
-          <div className="bg-[#111111] p-5 rounded-2xl shadow-[0_0_20px_rgba(34,197,94,0.05)] border border-gray-800 flex flex-col gap-4 relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent opacity-20"></div>
-            <div className="flex justify-between items-start">
-              <div>
-                <h3 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Livres terminés</h3>
-                <span className="text-3xl font-black text-white">{stats.totalBooksCompleted} <span className="text-sm font-medium text-gray-600">/ 60</span></span>
-              </div>
-              <div className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider border ${stats.booksDiff >= 0 ? 'bg-green-500/10 text-green-400 border-green-500/20 shadow-[0_0_10px_rgba(34,197,94,0.1)]' : 'bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)]'}`}>
-                {stats.booksDiff >= 0 ? `+${stats.booksDiff} livres` : `${stats.booksDiff} livres`}
-              </div>
-            </div>
-
-            <div className="h-40 w-full mt-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={stats.chartData} margin={{ top: 5, right: 0, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorBooks" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#22c55e" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="#22c55e" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#52525b', fontWeight: 'bold' }} dy={10} />
-                  <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#27272a', strokeWidth: 1, strokeDasharray: '4 4' }} />
-                  <Area type="monotone" dataKey="books" stroke="#22c55e" strokeWidth={2} fillOpacity={1} fill="url(#colorBooks)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+          {/* Stats générales */}
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            <StatCard label="Pages cette année" value={totalPages.toLocaleString("fr-FR")} accent="#2b2733" />
+            <StatCard
+              label="Livres terminés"
+              value={String(totalBooks)}
+              unit={goals.reading_books_year !== null ? `/ ${goals.reading_books_year}` : undefined}
+              accent={VIOLET_DEEP}
+            />
+            <StatCard label="Moyenne / jour" value={String(avgPerDay)} unit="pages" accent="#6e7a5a" />
+            <StatCard label="Journée record" value={String(recordDay)} unit="pages" accent="#d7a33f" />
           </div>
 
-          {/* TABLEAUX DE DONNEES */}
-          <div className="flex flex-col gap-4 mt-2">
-            
-            <div className="bg-[#111111] rounded-2xl shadow-sm border border-gray-800 overflow-hidden">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-[#1A1A1A] text-gray-400 text-[10px] uppercase tracking-widest">
-                  <tr>
-                    <th className="px-4 py-4 font-bold border-b border-gray-800">Mois</th>
-                    <th className="px-4 py-4 font-bold border-b border-gray-800 text-right">Pages lues</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800/50">
-                  {stats.chartData.map((data, index) => (
-                    <tr key={index} className="hover:bg-[#151515] transition-colors">
-                      <td className="px-4 py-3 text-gray-300 font-medium">{data.name}</td>
-                      <td className="px-4 py-3 text-right font-black text-blue-400">{data.pages}</td>
-                    </tr>
-                  ))}
-                  <tr className="bg-[#0f172a] border-t-2 border-blue-900/30">
-                    <td className="px-4 py-4 text-gray-300 font-bold uppercase text-[10px] tracking-widest">Total {selectedYear}</td>
-                    <td className="px-4 py-4 text-right text-blue-400 font-black">{stats.totalPagesRead}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <div className="bg-[#111111] rounded-2xl shadow-sm border border-gray-800 overflow-hidden">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-[#1A1A1A] text-gray-400 text-[10px] uppercase tracking-widest">
-                  <tr>
-                    <th className="px-4 py-4 font-bold border-b border-gray-800">Mois</th>
-                    <th className="px-4 py-4 font-bold border-b border-gray-800 text-right">Livres terminés</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800/50">
-                  {stats.chartData.map((data, index) => (
-                    <tr key={index} className="hover:bg-[#151515] transition-colors">
-                      <td className="px-4 py-3 text-gray-300 font-medium">{data.name}</td>
-                      <td className="px-4 py-3 text-right font-black text-green-400">{data.books}</td>
-                    </tr>
-                  ))}
-                  <tr className="bg-[#052e16] border-t-2 border-green-900/30">
-                    <td className="px-4 py-4 text-gray-300 font-bold uppercase text-[10px] tracking-widest">Total {selectedYear}</td>
-                    <td className="px-4 py-4 text-right text-green-400 font-black">{stats.totalBooksCompleted}</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
+          {/* Graphiques */}
+          <div className="grid gap-4 md:grid-cols-2">
+            <ObjectiveChart
+              title="Pages lues / mois"
+              type="area"
+              data={monthChart(pagesByMonth)}
+              objective={goals.reading_pages_year !== null ? Math.round(goals.reading_pages_year / 12) : null}
+              unit="p."
+              color={VIOLET}
+              lightColor={VIOLET_LT}
+              currentMonth={currentMonthIdx}
+              onObjectiveChange={
+                goals.reading_pages_year !== null
+                  ? (v) => setGoal("reading_pages_year", v * 12)
+                  : undefined
+              }
+            />
+            <ObjectiveChart
+              title="Livres lus / mois"
+              type="area"
+              data={monthChart(booksByMonth)}
+              objective={
+                goals.reading_books_year !== null
+                  ? Math.max(1, Math.round(goals.reading_books_year / 12))
+                  : null
+              }
+              unit="livres"
+              color={VIOLET_DEEP}
+              lightColor={VIOLET_LT}
+              currentMonth={currentMonthIdx}
+              onObjectiveChange={
+                goals.reading_books_year !== null
+                  ? (v) => setGoal("reading_books_year", v * 12)
+                  : undefined
+              }
+            />
           </div>
 
-          {/* SECTION STATISTIQUES GRANULAIRES */}
-          <div className="grid grid-cols-2 gap-4 mt-2">
-            <div className="bg-[#111111] p-5 rounded-2xl shadow-sm border border-gray-800 flex flex-col justify-center relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 blur-2xl rounded-full"></div>
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Moyenne / Livre</span>
-              <span className="text-2xl font-black text-white leading-none">{stats.avgPagesPerBook} <span className="text-xs font-normal text-gray-600">p.</span></span>
-            </div>
-            <div className="bg-[#111111] p-5 rounded-2xl shadow-sm border border-gray-800 flex flex-col justify-center relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 blur-2xl rounded-full"></div>
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Moyenne / Jour</span>
-              <span className="text-2xl font-black text-blue-400 leading-none">{stats.avgPagesPerDay} <span className="text-xs font-normal text-gray-600">p.</span></span>
-            </div>
-          </div>
-
-          <div className="bg-[#111111] rounded-2xl shadow-sm border border-gray-800 divide-y divide-gray-800/50 mt-2">
-            <div className="p-5 flex flex-col">
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Livre le plus long</span>
-              <div className="flex justify-between items-end mt-2 gap-4">
-                <span className="text-sm font-medium text-gray-300 truncate">{stats.longestBook.title}</span>
-                <span className="text-base font-black text-white whitespace-nowrap">{stats.longestBook.pages} <span className="text-gray-600 text-xs font-normal">p.</span></span>
-              </div>
-            </div>
-            <div className="p-5 flex flex-col">
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Livre le plus court</span>
-              <div className="flex justify-between items-end mt-2 gap-4">
-                <span className="text-sm font-medium text-gray-300 truncate">{stats.shortestBook.title}</span>
-                <span className="text-base font-black text-white whitespace-nowrap">{stats.shortestBook.pages} <span className="text-gray-600 text-xs font-normal">p.</span></span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-[#111111] rounded-2xl shadow-sm border border-gray-800 divide-y divide-gray-800/50 mt-2">
-            <div className="p-5 flex flex-col relative overflow-hidden">
-              <div className="absolute inset-0 bg-green-500/5 opacity-0 hover:opacity-100 transition-opacity"></div>
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Journée record</span>
-              <div className="flex justify-between items-end mt-2">
-                <span className="text-sm font-medium text-gray-400">{stats.bestDay.date}</span>
-                <span className="text-lg font-black text-green-400 drop-shadow-[0_0_8px_rgba(34,197,94,0.3)]">{stats.bestDay.pages} p.</span>
-              </div>
-            </div>
-            <div className="p-5 flex flex-col relative overflow-hidden">
-              <div className="absolute inset-0 bg-red-500/5 opacity-0 hover:opacity-100 transition-opacity"></div>
-              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Pire journée</span>
-              <div className="flex justify-between items-end mt-2">
-                <span className="text-sm font-medium text-gray-400">{stats.worstDay.date}</span>
-                <span className="text-lg font-black text-red-400 drop-shadow-[0_0_8px_rgba(239,68,68,0.3)]">{stats.worstDay.pages} p.</span>
-              </div>
-            </div>
-          </div>
+          <RatingsChart counts={ratingCounts} average={ratingAvg} total={ratedCount} />
         </>
       )}
-    </main>
+    </div>
   );
 }

@@ -1,1 +1,77 @@
 @import "tailwindcss";
+
+/* ============================================================
+   Tracker Lecture — Direction « Bibliothèque chaleureuse »
+   Palette papier/crème, accent violet pâle, serif littéraire.
+   ============================================================ */
+
+@theme {
+  /* Couleurs */
+  --color-paper: #f4efe6; /* fond général */
+  --color-card: #fcf8f2; /* surfaces / cartes */
+  --color-cream: #f7f2ea; /* texte sur couvertures */
+  --color-ink: #2b2733; /* texte principal */
+  --color-ink-2: #574f63; /* texte secondaire */
+  --color-muted: #968da1; /* texte tertiaire / labels */
+  --color-line: #e7dfcf; /* bordures */
+
+  --color-violet: #8b79be; /* accent principal */
+  --color-violet-soft: #e9e2f4; /* fond accent doux */
+  --color-violet-deep: #6f5da6; /* accent foncé (texte) */
+  --color-violet-light: #d8cfe6; /* barres inactives */
+
+  --color-sage: #6e7a5a;
+  --color-gold: #d7a33f;
+  --color-success: #5e8c61;
+  --color-danger: #c0563f;
+
+  /* Couleurs de couvertures (placeholder par défaut) */
+  --color-spine-1: #8b79be;
+  --color-spine-2: #5b6ba8;
+  --color-spine-3: #9b5c8f;
+  --color-spine-4: #6e7a5a;
+  --color-spine-5: #4e8c8a;
+  --color-spine-6: #8c6a4a;
+
+  /* Typographie */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-fraunces), ui-serif, Georgia, serif;
+
+  /* Rayons */
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background-color: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Scrollbar discrète */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
