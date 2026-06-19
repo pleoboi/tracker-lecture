@@ -22,8 +22,8 @@ export default function BookDetailPage() {
   const [showLog, setShowLog] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
-  const [editingCover, setEditingCover] = useState(false);
-  const [coverDraft, setCoverDraft] = useState("");
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [infoDraft, setInfoDraft] = useState({ title: "", author: "", year: "", summary: "", coverUrl: "" });
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -39,7 +39,17 @@ export default function BookDetailPage() {
     ]);
     setBook(b as Book);
     setLogs((l as ReadingLog[]) || []);
-    setNotesDraft((b as Book)?.notes || "");
+    const loaded = b as Book;
+    setNotesDraft(loaded?.notes || "");
+    if (loaded) {
+      setInfoDraft({
+        title: loaded.title,
+        author: loaded.author,
+        year: loaded.published_year ? String(loaded.published_year) : "",
+        summary: loaded.summary || "",
+        coverUrl: loaded.cover_url || "",
+      });
+    }
     setLoading(false);
   }, [id, userId]);
 
@@ -60,12 +70,19 @@ export default function BookDetailPage() {
     setEditingNotes(false);
   };
 
-  const saveCover = async () => {
+  const saveInfo = async () => {
     if (!book) return;
-    const url = coverDraft.trim() || null;
-    await supabase.from("books").update({ cover_url: url }).eq("id", book.id);
-    setBook({ ...book, cover_url: url });
-    setEditingCover(false);
+    const year = infoDraft.year ? Number(infoDraft.year) : null;
+    const update = {
+      title: infoDraft.title.trim() || book.title,
+      author: infoDraft.author.trim() || book.author,
+      published_year: year,
+      summary: infoDraft.summary.trim() || null,
+      cover_url: infoDraft.coverUrl.trim() || null,
+    };
+    await supabase.from("books").update(update).eq("id", book.id);
+    setBook({ ...book, ...update });
+    setEditingInfo(false);
   };
 
   const deleteLog = async (logId: number) => {
@@ -132,26 +149,52 @@ export default function BookDetailPage() {
           rounded="rounded-lg"
         />
 
-        {editingCover ? (
+        {editingInfo ? (
           <div className="flex w-full max-w-sm flex-col gap-2">
             <input
-              value={coverDraft}
-              onChange={(e) => setCoverDraft(e.target.value)}
-              placeholder="Colle l'adresse d'une image (https://…)"
-              className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-xs text-ink outline-none focus:border-violet"
+              value={infoDraft.coverUrl}
+              onChange={(e) => setInfoDraft({ ...infoDraft, coverUrl: e.target.value })}
+              placeholder="URL couverture (https://…)"
+              className="w-full rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-violet"
               autoFocus
             />
+            <input
+              value={infoDraft.title}
+              onChange={(e) => setInfoDraft({ ...infoDraft, title: e.target.value })}
+              placeholder="Titre"
+              className="w-full rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+            />
+            <input
+              value={infoDraft.author}
+              onChange={(e) => setInfoDraft({ ...infoDraft, author: e.target.value })}
+              placeholder="Auteur"
+              className="w-full rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+            />
+            <input
+              value={infoDraft.year}
+              onChange={(e) => setInfoDraft({ ...infoDraft, year: e.target.value })}
+              placeholder="Année (ex. 2021)"
+              type="number"
+              className="w-full rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+            />
+            <textarea
+              value={infoDraft.summary}
+              onChange={(e) => setInfoDraft({ ...infoDraft, summary: e.target.value })}
+              placeholder="Résumé…"
+              rows={3}
+              className="w-full rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+            />
             <div className="flex gap-2">
-              <Button onClick={saveCover} className="flex-1 py-2">Enregistrer</Button>
-              <Button variant="ghost" onClick={() => setEditingCover(false)} className="flex-1 py-2">Annuler</Button>
+              <Button onClick={saveInfo} className="flex-1 py-2">Enregistrer</Button>
+              <Button variant="ghost" onClick={() => setEditingInfo(false)} className="flex-1 py-2">Annuler</Button>
             </div>
           </div>
         ) : (
           <button
-            onClick={() => { setCoverDraft(book.cover_url || ""); setEditingCover(true); }}
+            onClick={() => setEditingInfo(true)}
             className="text-xs font-medium text-violet-deep underline decoration-violet/40 underline-offset-2"
           >
-            Changer la couverture
+            Modifier les informations
           </button>
         )}
 

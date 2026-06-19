@@ -9,6 +9,7 @@ import type { Book, ReadingLog } from "../../../lib/types";
 import { pct } from "../../../lib/books";
 import { Cover, ProgressBar } from "../../../components/ui";
 import { ObjectiveChart } from "../../../components/DashboardWidgets";
+import AddToLibraryModal from "../../../components/AddToLibraryModal";
 
 const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 const VIOLET = "var(--color-violet)";
@@ -40,6 +41,8 @@ export default function MembrePage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [logs, setLogs] = useState<ReadingLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [addTarget, setAddTarget] = useState<Book | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -153,13 +156,13 @@ export default function MembrePage() {
             {reading.map((b) => (
               <div
                 key={b.id}
-                className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3"
+                className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3"
               >
                 <Cover
                   id={b.id}
                   title={b.title}
                   coverUrl={b.cover_url}
-                  className="h-[72px] w-[50px] shrink-0"
+                  className="h-[78px] w-[54px] shrink-0"
                   rounded="rounded-md"
                 />
                 <div className="min-w-0 flex-1">
@@ -169,6 +172,14 @@ export default function MembrePage() {
                     <ProgressBar value={pct(b) / 100} />
                     <p className="mt-1 text-[10.5px] font-medium text-muted">{pct(b)}%</p>
                   </div>
+                  {!isOwn && (
+                    <button
+                      onClick={() => setAddTarget(b)}
+                      className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl border border-violet/30 bg-violet-soft py-1.5 text-[11px] font-semibold text-violet-deep"
+                    >
+                      + Ajouter à mes lectures
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -195,7 +206,7 @@ export default function MembrePage() {
                     id={b.id}
                     title={b.title}
                     coverUrl={b.cover_url}
-                    className="h-[84px] w-[58px] shrink-0"
+                    className="h-[78px] w-[54px] shrink-0"
                     rounded="rounded-md"
                   />
                   <div className="min-w-0 flex-1 pt-0.5">
@@ -210,6 +221,14 @@ export default function MembrePage() {
                       <span className="mt-1.5 inline-block rounded-md bg-violet-soft px-2 py-0.5 text-[10.5px] font-medium text-violet-deep">
                         {b.genre}
                       </span>
+                    )}
+                    {!isOwn && (
+                      <button
+                        onClick={() => setAddTarget(b)}
+                        className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl border border-violet/30 bg-violet-soft py-1.5 text-[11px] font-semibold text-violet-deep"
+                      >
+                        + Ajouter à mes lectures
+                      </button>
                     )}
                   </div>
                 </div>
@@ -240,6 +259,19 @@ export default function MembrePage() {
           <p className="font-serif text-base text-ink">Aucun livre pour le moment.</p>
         </div>
       )}
+
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-cream shadow-xl">
+          {toast}
+        </div>
+      )}
+
+      <AddToLibraryModal
+        open={addTarget !== null}
+        onClose={() => setAddTarget(null)}
+        book={addTarget}
+        onAdded={(msg) => { setToast(msg); setTimeout(() => setToast(null), 3500); }}
+      />
     </div>
   );
 }

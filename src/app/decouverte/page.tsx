@@ -2,8 +2,10 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../../lib/supabase";
+import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
 import { Cover } from "../../components/ui";
+import AddToLibraryModal from "../../components/AddToLibraryModal";
 
 interface Profile {
   id: string;
@@ -38,11 +40,14 @@ function StarRow({ rating, count }: { rating: number; count: number }) {
 }
 
 export default function DecouvertePage() {
+  const { user } = useAuth();
   const [allBooks, setAllBooks] = useState<Book[]>([]);
   const [profileMap, setProfileMap] = useState<Map<string, string>>(new Map());
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<UniqueBook | null>(null);
+  const [addTarget, setAddTarget] = useState<Book | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -95,11 +100,11 @@ export default function DecouvertePage() {
           g.canonical.title.toLowerCase().includes(q) ||
           (g.canonical.author || "").toLowerCase().includes(q)
       )
-      .sort(
-        (a, b) =>
-          (b.avgRating ?? -1) - (a.avgRating ?? -1) ||
-          a.canonical.title.localeCompare(b.canonical.title, "fr")
-      );
+      .sort((a, b) => {
+        const maxA = Math.max(...a.instances.map((i) => new Date(i.book.created_at).getTime()));
+        const maxB = Math.max(...b.instances.map((i) => new Date(i.book.created_at).getTime()));
+        return maxB - maxA;
+      });
   }, [allBooks, profileMap, query]);
 
   return (
@@ -171,13 +176,39 @@ export default function DecouvertePage() {
 
       {/* Modal détail */}
       {selected && (
-        <BookDetailModal group={selected} onClose={() => setSelected(null)} />
+        <BookDetailModal
+          group={selected}
+          onClose={() => setSelected(null)}
+          onAddToLibrary={(b) => { setSelected(null); setAddTarget(b); }}
+        />
       )}
+
+      {/* Toast succès */}
+      {toast && (
+        <div className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-cream shadow-xl">
+          {toast}
+        </div>
+      )}
+
+      <AddToLibraryModal
+        open={addTarget !== null}
+        onClose={() => setAddTarget(null)}
+        book={addTarget}
+        onAdded={(msg) => { setToast(msg); setTimeout(() => setToast(null), 3500); }}
+      />
     </div>
   );
 }
 
-function BookDetailModal({ group, onClose }: { group: UniqueBook; onClose: () => void }) {
+function BookDetailModal({
+  group,
+  onClose,
+  onAddToLibrary,
+}: {
+  group: UniqueBook;
+  onClose: () => void;
+  onAddToLibrary: (b: Book) => void;
+}) {
   const b = group.canonical;
 
   return (
@@ -237,6 +268,14 @@ function BookDetailModal({ group, onClose }: { group: UniqueBook; onClose: () =>
             <p className="text-[13px] leading-relaxed text-ink-2">{b.summary}</p>
           </div>
         )}
+
+        {/* CTA */}
+        <button
+          onClick={() => onAddToLibrary(b)}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-violet/40 bg-violet-soft py-3 text-sm font-semibold text-violet-deep transition-colors hover:bg-violet hover:text-cream"
+        >
+          + Ajouter à mes lectures
+        </button>
 
         {/* Avis des membres */}
         <div className="mt-5 flex flex-col gap-3">
