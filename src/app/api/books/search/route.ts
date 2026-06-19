@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { mapVolume } from "../../../../lib/googleBooks";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: Request) {
   const q = new URL(req.url).searchParams.get("q")?.trim();
   if (!q) return NextResponse.json({ results: [] });
@@ -14,7 +16,10 @@ export async function GET(req: Request) {
   if (key) params.set("key", key);
 
   try {
-    const res = await fetch(`https://www.googleapis.com/books/v1/volumes?${params.toString()}`);
+    const res = await fetch(
+      `https://www.googleapis.com/books/v1/volumes?${params.toString()}`,
+      { cache: "no-store" }
+    );
     const data = await res.json();
 
     if (!res.ok) {

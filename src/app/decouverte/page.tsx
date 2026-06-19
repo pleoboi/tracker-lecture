@@ -180,6 +180,9 @@ export default function DecouvertePage() {
           group={selected}
           onClose={() => setSelected(null)}
           onAddToLibrary={(b) => { setSelected(null); setAddTarget(b); }}
+          onBookUpdated={(bookId, updates) =>
+            setAllBooks((prev) => prev.map((bk) => bk.id === bookId ? { ...bk, ...updates } : bk))
+          }
         />
       )}
 
@@ -204,12 +207,55 @@ function BookDetailModal({
   group,
   onClose,
   onAddToLibrary,
+  onBookUpdated,
 }: {
   group: UniqueBook;
   onClose: () => void;
   onAddToLibrary: (b: Book) => void;
+  onBookUpdated: (bookId: number, updates: Partial<Book>) => void;
 }) {
-  const b = group.canonical;
+  const [localBook, setLocalBook] = useState(group.canonical);
+  const [editingMeta, setEditingMeta] = useState(false);
+  const [metaDraft, setMetaDraft] = useState({
+    title: group.canonical.title,
+    author: group.canonical.author,
+    coverUrl: group.canonical.cover_url || "",
+    year: group.canonical.published_year ? String(group.canonical.published_year) : "",
+    summary: group.canonical.summary || "",
+  });
+  const [savingMeta, setSavingMeta] = useState(false);
+  const [metaError, setMetaError] = useState<string | null>(null);
+
+  const b = localBook;
+
+  const saveMeta = async () => {
+    setSavingMeta(true);
+    setMetaError(null);
+    const updates = {
+      title: metaDraft.title.trim() || b.title,
+      author: metaDraft.author.trim() || b.author,
+      cover_url: metaDraft.coverUrl.trim() || null,
+      summary: metaDraft.summary.trim() || null,
+      published_year: metaDraft.year ? Number(metaDraft.year) : null,
+    };
+    const { error } = await supabase.rpc("update_book_metadata", {
+      p_book_id: b.id,
+      p_title: updates.title,
+      p_author: updates.author,
+      p_cover_url: updates.cover_url,
+      p_summary: updates.summary,
+      p_year: updates.published_year,
+    });
+    if (error) {
+      setMetaError(error.message);
+      setSavingMeta(false);
+      return;
+    }
+    setLocalBook({ ...b, ...updates });
+    onBookUpdated(b.id, updates);
+    setEditingMeta(false);
+    setSavingMeta(false);
+  };
 
   return (
     <div
@@ -262,17 +308,80 @@ function BookDetailModal({
         </div>
 
         {/* Résumé */}
-        {b.summary && (
+        {b.summary && !editingMeta && (
           <div className="mt-5">
             <h3 className="mb-1.5 font-serif text-[14px] font-semibold text-ink">Résumé</h3>
             <p className="text-[13px] leading-relaxed text-ink-2">{b.summary}</p>
           </div>
         )}
 
+        {/* Édition des métadonnées */}
+        {editingMeta ? (
+          <div className="mt-5 flex flex-col gap-2.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Modifier les informations</p>
+            <input
+              value={metaDraft.coverUrl}
+              onChange={(e) => setMetaDraft({ ...metaDraft, coverUrl: e.target.value })}
+              placeholder="URL de la couverture (https://…)"
+              className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
+              autoFocus
+            />
+            <input
+              value={metaDraft.title}
+              onChange={(e) => setMetaDraft({ ...metaDraft, title: e.target.value })}
+              placeholder="Titre"
+              className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
+            />
+            <input
+              value={metaDraft.author}
+              onChange={(e) => setMetaDraft({ ...metaDraft, author: e.target.value })}
+              placeholder="Auteur"
+              className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
+            />
+            <input
+              value={metaDraft.year}
+              onChange={(e) => setMetaDraft({ ...metaDraft, year: e.target.value })}
+              placeholder="Année de publication"
+              type="number"
+              className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
+            />
+            <textarea
+              value={metaDraft.summary}
+              onChange={(e) => setMetaDraft({ ...metaDraft, summary: e.target.value })}
+              placeholder="Résumé…"
+              rows={4}
+              className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
+            />
+            {metaError && <p className="text-xs font-medium text-danger">{metaError}</p>}
+            <div className="flex gap-2">
+              <button
+                onClick={saveMeta}
+                disabled={savingMeta}
+                className="flex-1 rounded-2xl bg-violet py-2.5 text-sm font-semibold text-cream disabled:opacity-50"
+              >
+                {savingMeta ? "Enregistrement…" : "Enregistrer"}
+              </button>
+              <button
+                onClick={() => { setEditingMeta(false); setMetaError(null); }}
+                className="flex-1 rounded-2xl border border-line bg-card py-2.5 text-sm font-medium text-ink"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setEditingMeta(true)}
+            className="mt-4 w-full text-center text-xs font-medium text-muted underline decoration-muted/40 underline-offset-2"
+          >
+            Modifier les informations
+          </button>
+        )}
+
         {/* CTA */}
         <button
           onClick={() => onAddToLibrary(b)}
-          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-violet/40 bg-violet-soft py-3 text-sm font-semibold text-violet-deep transition-colors hover:bg-violet hover:text-cream"
+          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-violet/40 bg-violet-soft py-3 text-sm font-semibold text-violet-deep transition-colors hover:bg-violet hover:text-cream"
         >
           + Ajouter à mes lectures
         </button>

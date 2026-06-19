@@ -58,7 +58,13 @@ export default function AddBookModal({
     debounce.current = setTimeout(async () => {
       try {
         const [googleData, { data: clubData }] = await Promise.all([
-          searchBooks(query).catch(() => []),
+          searchBooks(query).catch((e: unknown): BookSuggestion[] => {
+            const msg = e instanceof Error ? e.message : "";
+            if (/quota|429|indisponible/i.test(msg)) {
+              setError("Google Books indisponible pour le moment. Utilise la saisie manuelle.");
+            }
+            return [];
+          }),
           supabase
             .from("books")
             .select("*")
