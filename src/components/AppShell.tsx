@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
@@ -79,11 +79,9 @@ const allNavItems: NavItem[] = [
   },
 ];
 
-// Desktop : Accueil → Membres (6 items) + avatar → Compte
 const desktopNavItems = allNavItems.slice(0, 6);
-// Mobile : Accueil, Journal | [+] | Découverte, Compte
-const mobileNavLeft = [allNavItems[0], allNavItems[2]];  // Accueil, Journal
-const mobileNavRight = [allNavItems[3], allNavItems[4]]; // Découverte, Statistiques
+const mobileNavLeft  = [allNavItems[0], allNavItems[2]];  // Accueil, Journal
+const mobileNavRight = [allNavItems[3], allNavItems[4]];  // Découverte, Statistiques
 
 const NO_SHELL_PATHS = ["/login", "/register", "/"];
 
@@ -93,33 +91,87 @@ function isActive(pathname: string, href: string) {
   return pathname.startsWith(href);
 }
 
-function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
-  const active = isActive(pathname, item.href);
+// ── Avatar circulaire (photo ou initiale) ──────────────────────────────────
+function AvatarRound({
+  avatarUrl,
+  initial,
+  size = "md",
+  active = false,
+}: {
+  avatarUrl: string | null;
+  initial: string;
+  size?: "sm" | "md" | "lg";
+  active?: boolean;
+}) {
+  const sizeClass =
+    size === "sm" ? "h-8 w-8 text-xs" :
+    size === "lg" ? "h-14 w-14 text-xl" :
+    "h-9 w-9 text-sm";
+  const ring = active ? "ring-2 ring-violet ring-offset-1" : "";
+  if (avatarUrl) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return (
+      <img
+        src={avatarUrl}
+        alt="Avatar"
+        className={`shrink-0 rounded-full object-cover ${sizeClass} ${ring}`}
+      />
+    );
+  }
   return (
-    <Link
-      href={item.href}
-      className="flex flex-1 flex-col items-center gap-0.5 py-1.5"
+    <span
+      className={`flex shrink-0 items-center justify-center rounded-full bg-violet font-serif font-semibold text-cream ${sizeClass} ${ring}`}
     >
-      <span
-        className={`flex h-8 w-8 items-center justify-center rounded-xl transition-colors [&>svg]:h-[19px] [&>svg]:w-[19px] ${
-          active ? "bg-violet-soft text-violet-deep" : "text-muted"
-        }`}
-      >
-        {item.icon}
-      </span>
-      <span className={`text-[9px] font-medium ${active ? "text-violet-deep" : "text-muted"}`}>
-        {item.name}
-      </span>
-    </Link>
+      {initial}
+    </span>
   );
 }
 
-function TopBar({ pathname, onGuide }: { pathname: string; onGuide: () => void }) {
-  const { user } = useAuth();
-  const displayName =
-    user?.user_metadata?.display_name || user?.email?.split("@")[0] || "?";
-  const initial = displayName[0]?.toUpperCase() ?? "?";
+// ── Header mobile ──────────────────────────────────────────────────────────
+function MobileTopBar({
+  avatarUrl,
+  initial,
+  isAccountActive,
+  onGuide,
+}: {
+  avatarUrl: string | null;
+  initial: string;
+  isAccountActive: boolean;
+  onGuide: () => void;
+}) {
+  return (
+    <header className="sticky top-0 z-50 flex items-center justify-between border-b border-line bg-paper/90 px-5 py-2.5 backdrop-blur-md md:hidden">
+      <Link href="/accueil" className="font-serif text-[17px] font-black tracking-tight text-ink">
+        Ma Bibliothèque
+      </Link>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={onGuide}
+          aria-label="Guide d'utilisation"
+          className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-card text-xs font-bold text-muted"
+        >
+          ?
+        </button>
+        <Link href="/compte" aria-label="Mon compte">
+          <AvatarRound avatarUrl={avatarUrl} initial={initial} active={isAccountActive} />
+        </Link>
+      </div>
+    </header>
+  );
+}
 
+// ── Header desktop ─────────────────────────────────────────────────────────
+function TopBar({
+  pathname,
+  avatarUrl,
+  initial,
+  onGuide,
+}: {
+  pathname: string;
+  avatarUrl: string | null;
+  initial: string;
+  onGuide: () => void;
+}) {
   return (
     <header className="sticky top-0 z-50 hidden border-b border-line bg-paper/90 backdrop-blur-md md:block">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-10">
@@ -135,9 +187,7 @@ function TopBar({ pathname, onGuide }: { pathname: string; onGuide: () => void }
                 key={item.href}
                 href={item.href}
                 className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors ${
-                  active
-                    ? "bg-violet-soft font-semibold text-violet-deep"
-                    : "text-ink-2 hover:bg-card"
+                  active ? "bg-violet-soft font-semibold text-violet-deep" : "text-ink-2 hover:bg-card"
                 }`}
               >
                 <span className={`[&>svg]:h-[18px] [&>svg]:w-[18px] ${active ? "text-violet-deep" : "text-muted"}`}>
@@ -157,18 +207,35 @@ function TopBar({ pathname, onGuide }: { pathname: string; onGuide: () => void }
           >
             ?
           </button>
-          <Link
-            href="/compte"
-            className={`flex h-9 w-9 items-center justify-center rounded-full font-serif text-sm font-semibold text-cream transition-opacity hover:opacity-80 ${
-              isActive(pathname, "/compte") ? "bg-violet-deep" : "bg-violet"
-            }`}
-            title={displayName}
-          >
-            {initial}
+          <Link href="/compte" aria-label="Mon compte">
+            <AvatarRound
+              avatarUrl={avatarUrl}
+              initial={initial}
+              active={isActive(pathname, "/compte")}
+            />
           </Link>
         </div>
       </div>
     </header>
+  );
+}
+
+// ── Nav basse mobile ───────────────────────────────────────────────────────
+function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
+  const active = isActive(pathname, item.href);
+  return (
+    <Link href={item.href} className="flex flex-1 flex-col items-center gap-0.5 py-1.5">
+      <span
+        className={`flex h-8 w-8 items-center justify-center rounded-xl transition-colors [&>svg]:h-[19px] [&>svg]:w-[19px] ${
+          active ? "bg-violet-soft text-violet-deep" : "text-muted"
+        }`}
+      >
+        {item.icon}
+      </span>
+      <span className={`text-[9px] font-medium ${active ? "text-violet-deep" : "text-muted"}`}>
+        {item.name}
+      </span>
+    </Link>
   );
 }
 
@@ -201,6 +268,7 @@ function BottomNav({ pathname, onPlus }: { pathname: string; onPlus: () => void 
   );
 }
 
+// ── AppShell ───────────────────────────────────────────────────────────────
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -211,6 +279,30 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [showLog, setShowLog] = useState(false);
   const [readingBooks, setReadingBooks] = useState<Book[]>([]);
   const [shellToast, setShellToast] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+
+  const displayName =
+    user?.user_metadata?.display_name || user?.email?.split("@")[0] || "?";
+  const initial = displayName[0]?.toUpperCase() ?? "?";
+
+  const fetchAvatar = async (uid: string) => {
+    const { data } = await supabase
+      .from("user_profiles")
+      .select("avatar_url")
+      .eq("id", uid)
+      .single();
+    setAvatarUrl((data as { avatar_url?: string | null } | null)?.avatar_url ?? null);
+  };
+
+  useEffect(() => {
+    if (user?.id) fetchAvatar(user.id);
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const onUpdate = () => { if (user?.id) fetchAvatar(user.id); };
+    window.addEventListener("profile-updated", onUpdate);
+    return () => window.removeEventListener("profile-updated", onUpdate);
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (NO_SHELL_PATHS.includes(pathname)) {
     return <>{children}</>;
@@ -221,10 +313,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     setTimeout(() => setShellToast(null), 3500);
   };
 
-  const openAdd = () => {
-    setShowActionMenu(false);
-    setShowAdd(true);
-  };
+  const openAdd = () => { setShowActionMenu(false); setShowAdd(true); };
 
   const openLog = async () => {
     setShowActionMenu(false);
@@ -255,20 +344,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen">
-      <TopBar pathname={pathname} onGuide={() => setShowGuide(true)} />
-      <main className="mx-auto w-full max-w-2xl px-5 pb-32 pt-2 md:max-w-6xl md:px-10 md:pb-12 md:pt-6">
+      <TopBar
+        pathname={pathname}
+        avatarUrl={avatarUrl}
+        initial={initial}
+        onGuide={() => setShowGuide(true)}
+      />
+      <MobileTopBar
+        avatarUrl={avatarUrl}
+        initial={initial}
+        isAccountActive={isActive(pathname, "/compte")}
+        onGuide={() => setShowGuide(true)}
+      />
+
+      <main className="mx-auto w-full max-w-2xl px-5 pb-32 pt-3 md:max-w-6xl md:px-10 md:pb-12 md:pt-6">
         {children}
       </main>
-      <BottomNav pathname={pathname} onPlus={() => setShowActionMenu(true)} />
 
-      {/* Bouton Guide — Mobile */}
-      <button
-        onClick={() => setShowGuide(true)}
-        aria-label="Guide d'utilisation"
-        className="fixed bottom-[92px] right-4 z-40 flex h-9 w-9 items-center justify-center rounded-full border border-line bg-card text-sm font-bold text-muted shadow-md transition-colors hover:border-violet hover:text-violet-deep md:hidden"
-      >
-        ?
-      </button>
+      <BottomNav pathname={pathname} onPlus={() => setShowActionMenu(true)} />
 
       {/* Menu d'actions rapides */}
       {showActionMenu && (

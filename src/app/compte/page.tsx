@@ -7,7 +7,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
-import { Cover, ProgressBar, Button } from "../../components/ui";
+import { Cover, ProgressBar, Button, FieldLabel, inputClass } from "../../components/ui";
 
 type Filter = "tous" | "encours" | "termines" | "notes";
 type Sort = "ajout" | "titre" | "auteur" | "note";
@@ -26,6 +26,13 @@ export default function ComptePage() {
 
   const [tab, setTab] = useState<"profil" | "biblio">("profil");
 
+  // Avatar
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [editingAvatar, setEditingAvatar] = useState(false);
+  const [avatarDraft, setAvatarDraft] = useState("");
+  const [savingAvatar, setSavingAvatar] = useState(false);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+
   // Bibliothèque state
   const [books, setBooks] = useState<Book[]>([]);
   const [booksLoaded, setBooksLoaded] = useState(false);
@@ -33,6 +40,20 @@ export default function ComptePage() {
   const [filter, setFilter] = useState<Filter>("tous");
   const [sort, setSort] = useState<Sort>("ajout");
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    if (!userId) return;
+    supabase
+      .from("user_profiles")
+      .select("avatar_url")
+      .eq("id", userId)
+      .single()
+      .then(({ data }) => {
+        const url = (data as { avatar_url?: string | null } | null)?.avatar_url ?? null;
+        setAvatarUrl(url);
+        setAvatarDraft(url ?? "");
+      });
+  }, [userId]);
 
   useEffect(() => {
     if (tab === "biblio" && !booksLoaded && userId) {
@@ -55,6 +76,24 @@ export default function ComptePage() {
     router.refresh();
   };
 
+  const handleSaveAvatar = async () => {
+    if (!userId) return;
+    setSavingAvatar(true);
+    setAvatarError(null);
+    const url = avatarDraft.trim() || null;
+    const { error } = await supabase
+      .from("user_profiles")
+      .upsert({ id: userId, avatar_url: url }, { onConflict: "id" });
+    setSavingAvatar(false);
+    if (error) {
+      setAvatarError(error.message);
+      return;
+    }
+    setAvatarUrl(url);
+    setEditingAvatar(false);
+    window.dispatchEvent(new CustomEvent("profile-updated"));
+  };
+
   if (authLoading) {
     return (
       <div className="py-24 text-center text-xs font-medium uppercase tracking-wider text-muted">
@@ -67,7 +106,6 @@ export default function ComptePage() {
     user?.user_metadata?.display_name || user?.email?.split("@")[0] || "Anonyme";
   const initial = displayName[0]?.toUpperCase() ?? "?";
 
-  // Bibliothèque filtering & sorting
   const completedCount = books.filter(isCompleted).length;
   let list = books.filter((b) => {
     if (filter === "encours") return !isCompleted(b);
@@ -114,14 +152,72 @@ export default function ComptePage() {
       {tab === "profil" && (
         <div className="flex flex-col gap-4">
           {/* Carte profil */}
-          <div className="flex items-center gap-4 rounded-2xl border border-line bg-card p-5">
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-violet font-serif text-xl font-semibold text-cream">
-              {initial}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-serif text-lg font-semibold text-ink">{displayName}</p>
-              <p className="truncate text-xs text-muted">{user?.email}</p>
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-card p-5">
+            {/* Avatar */}
+            <div className="relative">
+              {avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={avatarUrl}
+                  alt="Avatar"
+                  className="h-20 w-20 rounded-full object-cover ring-2 ring-violet/20"
+                />
+              ) : (
+                <span className="flex h-20 w-20 items-center justify-center rounded-full bg-violet font-serif text-3xl font-semibold text-cream">
+                  {initial}
+                </span>
+              )}
             </div>
+            <div className="text-center">
+              <p className="font-serif text-lg font-semibold text-ink">{displayName}</p>
+              <p className="text-xs text-muted">{user?.email}</p>
+            </div>
+            <button
+              onClick={() => { setEditingAvatar((v) => !v); setAvatarError(null); }}
+              className="flex items-center gap-1.5 rounded-full border border-line bg-paper px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-violet/40 hover:text-violet-deep"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-3.5 w-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536M9 13l-4 1 1-4L14.5 3.5a2.121 2.121 0 013 3L9 13z" />
+              </svg>
+              {editingAvatar ? "Fermer" : "Modifier la photo"}
+            </button>
+
+            {/* Formulaire édition avatar */}
+            {editingAvatar && (
+              <div className="w-full rounded-2xl border border-violet/30 bg-violet-soft p-4">
+                <FieldLabel>URL de l&apos;image (lien web)</FieldLabel>
+                <input
+                  type="url"
+                  value={avatarDraft}
+                  onChange={(e) => setAvatarDraft(e.target.value)}
+                  placeholder="https://exemple.com/photo.jpg"
+                  className={inputClass}
+                  autoFocus
+                />
+                <p className="mt-1.5 text-[11px] text-muted">
+                  Colle le lien direct vers une image JPG ou PNG hébergée sur le web.
+                </p>
+                {avatarError && (
+                  <p className="mt-2 text-xs font-medium text-danger">{avatarError}</p>
+                )}
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => { setEditingAvatar(false); setAvatarDraft(avatarUrl ?? ""); }}
+                    className="flex-1 text-sm"
+                  >
+                    Annuler
+                  </Button>
+                  <Button
+                    onClick={handleSaveAvatar}
+                    disabled={savingAvatar}
+                    className="flex-1 text-sm"
+                  >
+                    {savingAvatar ? "Sauvegarde…" : "Sauvegarder"}
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Liens rapides */}
@@ -158,7 +254,7 @@ export default function ComptePage() {
             >
               <div>
                 <p className="font-serif text-[15px] font-medium text-ink">Statistiques</p>
-                <p className="mt-0.5 text-xs text-muted">Tableau de bord & objectifs</p>
+                <p className="mt-0.5 text-xs text-muted">Tableau de bord &amp; objectifs</p>
               </div>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 shrink-0 text-muted">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />

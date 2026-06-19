@@ -42,6 +42,9 @@ begin
 end;
 $$;
 
+-- Photo de profil (URL externe). Colonne optionnelle sur user_profiles.
+alter table public.user_profiles add column if not exists avatar_url text;
+
 -- Jetons Strava (OAuth). Une seule ligne (app perso mono-utilisateur).
 create table if not exists public.strava_tokens (
   id smallint primary key default 1,
