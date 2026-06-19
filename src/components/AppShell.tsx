@@ -165,14 +165,14 @@ function TopBar({
 function BottomNav({ pathname }: { pathname: string }) {
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-card/95 backdrop-blur-md md:hidden">
-      <nav className="mx-auto flex max-w-md items-stretch pb-[env(safe-area-inset-bottom)]">
+      <nav className="mx-auto flex max-w-md items-stretch pt-1.5 pb-[max(env(safe-area-inset-bottom),_1rem)]">
         {mobileNavItems.map((item) => {
           const active = isActive(pathname, item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className="flex flex-1 flex-col items-center gap-0.5 py-2"
+              className="flex flex-1 flex-col items-center gap-0.5 py-1.5"
             >
               <span
                 className={`flex h-8 w-8 items-center justify-center rounded-xl transition-colors [&>svg]:h-[19px] [&>svg]:w-[19px] ${
@@ -207,7 +207,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen">
       <TopBar pathname={pathname} onGuide={() => setShowGuide(true)} />
-      <main className="mx-auto w-full max-w-2xl px-5 pb-28 pt-2 md:max-w-6xl md:px-10 md:pb-12 md:pt-6">
+      <main className="mx-auto w-full max-w-2xl px-5 pb-32 pt-2 md:max-w-6xl md:px-10 md:pb-12 md:pt-6">
         {children}
       </main>
       <BottomNav pathname={pathname} />
@@ -216,7 +216,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <button
         onClick={() => setShowGuide(true)}
         aria-label="Guide d'utilisation"
-        className="fixed bottom-[76px] right-4 z-40 flex h-9 w-9 items-center justify-center rounded-full border border-line bg-card text-sm font-bold text-muted shadow-md transition-colors hover:border-violet hover:text-violet-deep md:hidden"
+        className="fixed bottom-[92px] right-4 z-40 flex h-9 w-9 items-center justify-center rounded-full border border-line bg-card text-sm font-bold text-muted shadow-md transition-colors hover:border-violet hover:text-violet-deep md:hidden"
       >
         ?
       </button>
