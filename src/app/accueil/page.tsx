@@ -6,7 +6,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book, ReadingLog } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
-import { Cover, ProgressBar, Button } from "../../components/ui";
+import { Cover, ProgressBar, Button, AvatarImg } from "../../components/ui";
 import AddBookModal from "../../components/AddBookModal";
 
 const today = new Intl.DateTimeFormat("fr-FR", {
@@ -26,10 +26,12 @@ function greeting() {
 interface Profile {
   id: string;
   display_name: string;
+  avatar_url?: string | null;
 }
 
 interface ActivityLog extends ReadingLog {
   memberName: string;
+  memberAvatar?: string | null;
   bookTitle: string;
   bookCover: string | null;
   bookAuthor: string;
@@ -86,7 +88,7 @@ export default function AccueilPage() {
         .neq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(10),
-      supabase.from("user_profiles").select("id, display_name"),
+      supabase.from("user_profiles").select("id, display_name, avatar_url"),
       supabase
         .from("reading_logs")
         .select("user_id, pages_read")
@@ -134,7 +136,8 @@ export default function AccueilPage() {
         b,
       ])
     );
-    const profileMap = new Map(profiles.map((p) => [p.id, p.display_name]));
+    const profileNameMap = new Map(profiles.map((p) => [p.id, p.display_name]));
+    const profileAvatarMap = new Map(profiles.map((p) => [p.id, p.avatar_url ?? null]));
 
     const enriched: ActivityLog[] = logs
       .map((log) => {
@@ -142,7 +145,8 @@ export default function AccueilPage() {
         if (!bk) return null;
         return {
           ...log,
-          memberName: profileMap.get(log.user_id ?? "") ?? "Membre",
+          memberName: profileNameMap.get(log.user_id ?? "") ?? "Membre",
+          memberAvatar: profileAvatarMap.get(log.user_id ?? "") ?? null,
           bookTitle: bk.title,
           bookCover: bk.cover_url ?? null,
           bookAuthor: bk.author,
@@ -280,18 +284,13 @@ export default function AccueilPage() {
             </Link>
           </div>
           <div className="flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
-            {members.map((m, i) => (
+            {members.map((m) => (
               <Link
                 key={m.id}
                 href={`/membre/${m.id}`}
                 className="flex shrink-0 flex-col items-center gap-1.5"
               >
-                <span
-                  className="flex h-12 w-12 items-center justify-center rounded-full font-serif text-base font-semibold text-cream"
-                  style={{ backgroundColor: MEMBER_COLORS[i % MEMBER_COLORS.length] }}
-                >
-                  {m.display_name[0]?.toUpperCase()}
-                </span>
+                <AvatarImg url={m.avatar_url} name={m.display_name} className="h-12 w-12 text-base" />
                 <span className="max-w-[56px] truncate text-center text-[10.5px] font-medium text-muted">
                   {m.display_name}
                 </span>
@@ -310,7 +309,6 @@ export default function AccueilPage() {
   );
 }
 
-const MEMBER_COLORS = ["#7c6ba0", "#6e7a5a", "#b07a4b", "#5b8a8b", "#8a5b6e"];
 
 function BookCard({ book }: { book: Book }) {
   const p = pct(book);
@@ -364,7 +362,6 @@ function ChampionBanner({ champion, isMe }: { champion: Champion; isMe: boolean 
 }
 
 function ActivityCard({ log, isChampion }: { log: ActivityLog; isChampion?: boolean }) {
-  const initial = log.memberName[0]?.toUpperCase() ?? "?";
   const todayStr = new Date().toISOString().split("T")[0];
   const isToday = log.date === todayStr;
   const showBadge = isChampion && isToday;
@@ -377,18 +374,14 @@ function ActivityCard({ log, isChampion }: { log: ActivityLog; isChampion?: bool
   return (
     <div
       className={`flex items-center gap-3 rounded-2xl border p-3 transition-colors ${
-        showBadge
-          ? "border-gold/40 bg-[#fdf7e9]"
-          : "border-line bg-card"
+        showBadge ? "border-gold/40 bg-[#fdf7e9]" : "border-line bg-card"
       }`}
     >
-      <span
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full font-serif text-xs font-semibold text-cream ${
-          showBadge ? "bg-gold" : "bg-violet"
-        }`}
-      >
-        {initial}
-      </span>
+      <AvatarImg
+        url={log.memberAvatar}
+        name={log.memberName}
+        className={`h-8 w-8 text-xs font-semibold ${showBadge ? "ring-2 ring-gold ring-offset-1" : ""}`}
+      />
       <div className="min-w-0 flex-1">
         <p className="truncate text-[13px] font-medium text-ink">
           <span className="font-semibold">{log.memberName}</span>

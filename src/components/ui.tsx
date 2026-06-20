@@ -193,3 +193,33 @@ export function FieldLabel({ children }: { children: React.ReactNode }) {
 
 export const inputClass =
   "w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm text-ink outline-none placeholder:text-muted focus:border-violet";
+
+/* ---------------- Avatar membre ---------------- */
+export function AvatarImg({
+  url,
+  name,
+  className = "h-10 w-10",
+}: {
+  url?: string | null;
+  name: string;
+  className?: string;
+}) {
+  const initial = name[0]?.toUpperCase() ?? "?";
+  if (url) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={url}
+        alt={name}
+        className={`shrink-0 rounded-full object-cover ${className}`}
+      />
+    );
+  }
+  return (
+    <span
+      className={`flex shrink-0 items-center justify-center rounded-full bg-violet font-serif font-semibold text-cream ${className}`}
+    >
+      {initial}
+    </span>
+  );
+}

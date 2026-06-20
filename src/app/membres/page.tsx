@@ -4,10 +4,12 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import type { Book, ReadingLog } from "../../lib/types";
+import { AvatarImg } from "../../components/ui";
 
 interface Profile {
   id: string;
   display_name: string;
+  avatar_url?: string | null;
   created_at: string;
 }
 
@@ -18,16 +20,6 @@ interface MemberStats {
   avgRating: number | null;
 }
 
-function avatar(name: string) {
-  return name[0]?.toUpperCase() ?? "?";
-}
-
-const PALETTE = [
-  "bg-[#7c6ba0]",
-  "bg-[#6e7a5a]",
-  "bg-[#b07a4b]",
-  "bg-[#5b8a8b]",
-];
 
 export default function MembresPage() {
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -88,20 +80,15 @@ export default function MembresPage() {
         </div>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          {profiles.map((p, i) => {
+          {profiles.map((p) => {
             const s = statsMap[p.id];
-            const color = PALETTE[i % PALETTE.length];
             return (
               <Link
                 key={p.id}
                 href={`/membre/${p.id}`}
                 className="flex items-center gap-4 rounded-2xl border border-line bg-card p-4 transition-colors hover:border-violet/50"
               >
-                <span
-                  className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full font-serif text-lg font-semibold text-cream ${color}`}
-                >
-                  {avatar(p.display_name)}
-                </span>
+                <AvatarImg url={p.avatar_url} name={p.display_name} className="h-12 w-12 text-lg font-semibold" />
                 <div className="min-w-0 flex-1">
                   <p className="font-serif text-base font-semibold text-ink">{p.display_name}</p>
                   <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] font-medium text-muted">

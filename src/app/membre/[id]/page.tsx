@@ -7,7 +7,7 @@ import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth-context";
 import type { Book, ReadingLog } from "../../../lib/types";
 import { pct } from "../../../lib/books";
-import { Cover, ProgressBar } from "../../../components/ui";
+import { Cover, ProgressBar, AvatarImg } from "../../../components/ui";
 import { ObjectiveChart } from "../../../components/DashboardWidgets";
 import AddToLibraryModal from "../../../components/AddToLibraryModal";
 
@@ -18,6 +18,7 @@ const VIOLET_LT = "#d8cfe6";
 interface Profile {
   id: string;
   display_name: string;
+  avatar_url?: string | null;
   created_at: string;
 }
 
@@ -104,8 +105,6 @@ export default function MembrePage() {
     year: "numeric",
   });
 
-  const initial = profile.display_name[0]?.toUpperCase() ?? "?";
-
   return (
     <div className="animate-fadeIn flex flex-col gap-6 pt-4">
       {/* Retour */}
@@ -118,9 +117,7 @@ export default function MembrePage() {
 
       {/* En-tête profil */}
       <div className="flex items-center gap-4 rounded-2xl bg-violet-soft px-5 py-6">
-        <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-violet font-serif text-2xl font-semibold text-cream">
-          {initial}
-        </span>
+        <AvatarImg url={profile.avatar_url} name={profile.display_name} className="h-16 w-16 text-2xl" />
         <div>
           <div className="flex items-center gap-2">
             <h1 className="font-serif text-2xl font-black text-ink">{profile.display_name}</h1>

@@ -4,17 +4,19 @@ import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
-import { Cover } from "../../components/ui";
+import { Cover, AvatarImg } from "../../components/ui";
 import AddToLibraryModal from "../../components/AddToLibraryModal";
 
 interface Profile {
   id: string;
   display_name: string;
+  avatar_url?: string | null;
 }
 
 interface BookInstance {
   book: Book;
   memberName: string;
+  memberAvatar?: string | null;
 }
 
 interface UniqueBook {
@@ -43,6 +45,7 @@ export default function DecouvertePage() {
   const { user } = useAuth();
   const [allBooks, setAllBooks] = useState<Book[]>([]);
   const [profileMap, setProfileMap] = useState<Map<string, string>>(new Map());
+  const [avatarMap, setAvatarMap] = useState<Map<string, string | null>>(new Map());
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<UniqueBook | null>(null);
@@ -53,12 +56,17 @@ export default function DecouvertePage() {
     const load = async () => {
       const [{ data: books }, { data: profiles }] = await Promise.all([
         supabase.from("books").select("*"),
-        supabase.from("user_profiles").select("id, display_name"),
+        supabase.from("user_profiles").select("id, display_name, avatar_url"),
       ]);
       const pmap = new Map<string, string>();
-      ((profiles as Profile[]) || []).forEach((p) => pmap.set(p.id, p.display_name));
+      const amap = new Map<string, string | null>();
+      ((profiles as Profile[]) || []).forEach((p) => {
+        pmap.set(p.id, p.display_name);
+        amap.set(p.id, p.avatar_url ?? null);
+      });
       setAllBooks((books as Book[]) || []);
       setProfileMap(pmap);
+      setAvatarMap(amap);
       setLoading(false);
     };
     load();
@@ -70,7 +78,8 @@ export default function DecouvertePage() {
     allBooks.forEach((book) => {
       const key = dedupeKey(book);
       const memberName = book.user_id ? (profileMap.get(book.user_id) ?? "Membre") : "Membre";
-      const instance: BookInstance = { book, memberName };
+      const memberAvatar = book.user_id ? (avatarMap.get(book.user_id) ?? null) : null;
+      const instance: BookInstance = { book, memberName, memberAvatar };
 
       const existing = map.get(key);
       if (existing) {
@@ -105,7 +114,7 @@ export default function DecouvertePage() {
         const maxB = Math.max(...b.instances.map((i) => new Date(i.book.created_at).getTime()));
         return maxB - maxA;
       });
-  }, [allBooks, profileMap, query]);
+  }, [allBooks, profileMap, avatarMap, query]);
 
   return (
     <div className="animate-fadeIn flex flex-col gap-5 pt-4">
@@ -394,15 +403,13 @@ function BookDetailModal({
               ({group.instances.length} lecteur{group.instances.length > 1 ? "s" : ""})
             </span>
           </h3>
-          {group.instances.map(({ book, memberName }, i) => (
+          {group.instances.map(({ book, memberName, memberAvatar }, i) => (
             <div
               key={i}
               className="flex flex-col gap-1.5 rounded-2xl border border-line bg-card p-3.5"
             >
               <div className="flex items-center gap-2">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet font-serif text-xs font-semibold text-cream">
-                  {memberName[0]?.toUpperCase()}
-                </span>
+                <AvatarImg url={memberAvatar} name={memberName} className="h-7 w-7 text-xs font-semibold" />
                 <span className="text-[13px] font-semibold text-ink">{memberName}</span>
                 <span className="ml-auto rounded-md bg-[#f4f0e8] px-2 py-0.5 text-[10.5px] font-medium text-muted">
                   {book.status === "completed" ? "Terminé" : "En cours"}
