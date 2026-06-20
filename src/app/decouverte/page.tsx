@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
 import { Cover, AvatarImg } from "../../components/ui";
 import AddToLibraryModal from "../../components/AddToLibraryModal";
+import { searchBooks, type BookSuggestion } from "../../lib/googleBooks";
 
 interface Profile {
   id: string;
@@ -52,6 +53,10 @@ export default function DecouvertePage() {
   const [addTarget, setAddTarget] = useState<Book | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  // Recommandations personnalisées
+  const [recommendations, setRecommendations] = useState<BookSuggestion[]>([]);
+  const recoLoadedRef = useRef(false);
+
   useEffect(() => {
     const load = async () => {
       const [{ data: books }, { data: profiles }] = await Promise.all([
@@ -71,6 +76,85 @@ export default function DecouvertePage() {
     };
     load();
   }, []);
+
+  // Calcul + chargement des recommandations (une seule fois, après chargement des livres)
+  useEffect(() => {
+    if (!user?.id || allBooks.length === 0 || recoLoadedRef.current) return;
+    recoLoadedRef.current = true;
+
+    const myBooks = allBooks.filter((b) => b.user_id === user.id);
+    if (myBooks.length === 0) return;
+
+    const loadReco = async () => {
+      // Livres bien notés (≥ 4★) ; sinon les 8 derniers ajoutés
+      const source = myBooks.filter((b) => (b.rating || 0) >= 4);
+      const pool = source.length > 0 ? source : myBooks.slice(0, 8);
+
+      // Genres et auteurs les plus fréquents
+      const genreCount = new Map<string, number>();
+      const authorCount = new Map<string, number>();
+      pool.forEach((b) => {
+        if (b.genre) genreCount.set(b.genre, (genreCount.get(b.genre) || 0) + 1);
+        if (b.author) authorCount.set(b.author, (authorCount.get(b.author) || 0) + 1);
+      });
+      const topGenre = [...genreCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      const topAuthor = [...authorCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+
+      // Clés de dédup pour exclure les livres déjà dans la bibliothèque
+      const existingKeys = new Set(allBooks.map((b) => dedupeKey(b)));
+
+      // Requêtes Google Books en parallèle
+      const queries: string[] = [];
+      if (topGenre) queries.push(topGenre);
+      if (topAuthor) queries.push(`inauthor:"${topAuthor}"`);
+      if (queries.length === 0) return;
+
+      try {
+        const results = await Promise.allSettled(queries.map((q) => searchBooks(q)));
+        const seen = new Set<string>();
+        const suggestions: BookSuggestion[] = [];
+
+        results.forEach((r) => {
+          if (r.status !== "fulfilled") return;
+          r.value.forEach((s) => {
+            const key = `${s.title.toLowerCase().trim()}__${s.author.toLowerCase().trim()}`;
+            if (!seen.has(key) && !existingKeys.has(key) && s.coverUrl) {
+              seen.add(key);
+              suggestions.push(s);
+            }
+          });
+        });
+
+        setRecommendations(suggestions.slice(0, 4));
+      } catch {
+        // Silencieux : l'absence de recommandations n'est pas bloquante
+      }
+    };
+
+    loadReco();
+  }, [allBooks, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ajout rapide d'une recommandation (status: to_read)
+  const quickAddReco = async (s: BookSuggestion) => {
+    if (!user?.id) return;
+    const { error } = await supabase.from("books").insert({
+      user_id: user.id,
+      title: s.title,
+      author: s.author,
+      cover_url: s.coverUrl,
+      genre: s.genre,
+      published_year: s.year,
+      summary: s.summary,
+      status: "to_read",
+      pages: 0,
+      progress: 0,
+    });
+    if (!error) {
+      setRecommendations((prev) => prev.filter((r) => r.googleId !== s.googleId));
+      setToast(`"${s.title}" ajouté à la liste !`);
+      setTimeout(() => setToast(null), 3000);
+    }
+  };
 
   const groups = useMemo<UniqueBook[]>(() => {
     const map = new Map<string, UniqueBook>();
@@ -124,6 +208,48 @@ export default function DecouvertePage() {
           {loading ? "…" : `${groups.length} livre${groups.length > 1 ? "s" : ""} dans le club`}
         </p>
       </header>
+
+      {/* Recommandé pour toi */}
+      {recommendations.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div>
+            <h2 className="font-serif text-lg font-medium text-ink">Recommandé pour toi</h2>
+            <p className="text-[11px] text-muted">Basé sur tes lectures préférées</p>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
+            {recommendations.map((s) => (
+              <div
+                key={s.googleId}
+                className="flex w-36 shrink-0 flex-col gap-2 rounded-2xl border border-violet/20 bg-violet-soft p-3"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={s.coverUrl!}
+                  alt={s.title}
+                  className="h-[104px] w-full rounded-lg object-cover shadow-sm"
+                />
+                <div className="flex-1">
+                  <p className="line-clamp-2 text-[11.5px] font-semibold leading-tight text-ink">
+                    {s.title}
+                  </p>
+                  <p className="mt-0.5 truncate text-[10px] text-muted">{s.author}</p>
+                  {s.genre && (
+                    <span className="mt-1 inline-block rounded-md bg-violet/10 px-1.5 py-0.5 text-[9.5px] font-medium text-violet-deep">
+                      {s.genre}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => quickAddReco(s)}
+                  className="w-full rounded-xl bg-violet py-1.5 text-[11px] font-semibold text-cream"
+                >
+                  + Ajouter
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Barre de recherche */}
       <input

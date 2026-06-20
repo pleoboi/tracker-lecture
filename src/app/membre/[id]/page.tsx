@@ -8,7 +8,7 @@ import { useAuth } from "../../../lib/auth-context";
 import type { Book, ReadingLog } from "../../../lib/types";
 import { pct } from "../../../lib/books";
 import { Cover, ProgressBar, AvatarImg } from "../../../components/ui";
-import { ObjectiveChart } from "../../../components/DashboardWidgets";
+import { ObjectiveChart, RatingsChart } from "../../../components/DashboardWidgets";
 import AddToLibraryModal from "../../../components/AddToLibraryModal";
 
 const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
@@ -44,17 +44,36 @@ export default function MembrePage() {
   const [loading, setLoading] = useState(true);
   const [addTarget, setAddTarget] = useState<Book | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [championDays, setChampionDays] = useState(0);
 
   useEffect(() => {
     const load = async () => {
-      const [{ data: prof }, { data: bs }, { data: ls }] = await Promise.all([
+      type LogRow = { user_id: string; pages_read: number; date: string };
+      const [{ data: prof }, { data: bs }, { data: ls }, { data: allLogs }] = await Promise.all([
         supabase.from("user_profiles").select("*").eq("id", memberId).single(),
         supabase.from("books").select("*").eq("user_id", memberId),
         supabase.from("reading_logs").select("*").eq("user_id", memberId),
+        supabase.from("reading_logs").select("user_id, pages_read, date"),
       ]);
       setProfile(prof as Profile);
       setBooks((bs as Book[]) || []);
       setLogs((ls as ReadingLog[]) || []);
+
+      // Calcul des jours Champion du jour pour ce membre
+      const rows = (allLogs as LogRow[]) || [];
+      const dateMap = new Map<string, Map<string, number>>();
+      rows.forEach(({ date, user_id, pages_read }) => {
+        if (!dateMap.has(date)) dateMap.set(date, new Map());
+        const m = dateMap.get(date)!;
+        m.set(user_id, (m.get(user_id) || 0) + pages_read);
+      });
+      let count = 0;
+      for (const userMap of dateMap.values()) {
+        const maxPages = Math.max(...userMap.values());
+        if (maxPages > 0 && (userMap.get(memberId) || 0) >= maxPages) count++;
+      }
+      setChampionDays(count);
+
       setLoading(false);
     };
     load();
@@ -89,6 +108,21 @@ export default function MembrePage() {
       ? ratedBooks.reduce((s, b) => s + (b.rating || 0), 0) / ratedBooks.length
       : null;
   const totalPages = logs.reduce((s, l) => s + (l.pages_read || 0), 0);
+
+  // Histogramme des notes (paliers 0,5)
+  const ratingCounts = Array(10).fill(0);
+  let ratingSum = 0;
+  let ratedCount = 0;
+  completed.forEach((b) => {
+    const r = b.rating || 0;
+    if (r > 0) {
+      const bucket = Math.min(9, Math.max(0, Math.round(r * 2) - 1));
+      ratingCounts[bucket] += 1;
+      ratingSum += r;
+      ratedCount += 1;
+    }
+  });
+  const ratingAvg = ratedCount > 0 ? ratingSum / ratedCount : 0;
 
   const now = new Date();
   const pagesByMonth = Array(12).fill(0);
@@ -144,6 +178,25 @@ export default function MembrePage() {
           label="Note moy."
         />
       </div>
+
+      {/* Trophée Champion du jour */}
+      {championDays > 0 && (
+        <div className="flex items-center gap-3 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-3.5">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-xl">
+            🏆
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-semibold text-ink">
+              {isOwn ? "Tes trophées Champion du jour" : "Trophées Champion du jour"}
+            </p>
+            <p className="text-[11px] text-muted">Jours où {isOwn ? "tu as" : profile.display_name + " a"} lu le plus de pages</p>
+          </div>
+          <div className="text-right">
+            <p className="font-serif text-2xl font-black text-[#b8890a]">{championDays}</p>
+            <p className="text-[10.5px] font-medium text-muted">{championDays > 1 ? "jours" : "jour"}</p>
+          </div>
+        </div>
+      )}
 
       {/* Lectures en cours */}
       {reading.length > 0 && (
@@ -232,6 +285,11 @@ export default function MembrePage() {
               ))}
           </div>
         </section>
+      )}
+
+      {/* Histogramme des notes */}
+      {ratedCount > 0 && (
+        <RatingsChart counts={ratingCounts} average={ratingAvg} total={ratedCount} />
       )}
 
       {/* Graphique pages / mois */}

@@ -391,6 +391,8 @@ function ChampionBanner({ champion, isMe }: { champion: Champion; isMe: boolean 
 }
 
 function ActivityCard({ log, isChampion }: { log: ActivityLog; isChampion?: boolean }) {
+  const [reviewExpanded, setReviewExpanded] = useState(false);
+  const TRUNCATE_AT = 150;
   const todayStr = new Date().toISOString().split("T")[0];
   const isToday = log.date === todayStr;
   const showBadge = isChampion && isToday;
@@ -402,6 +404,13 @@ function ActivityCard({ log, isChampion }: { log: ActivityLog; isChampion?: bool
 
   const subject = log.isMe ? "Tu" : <span className="font-semibold">{log.memberName}</span>;
   const verb = log.isMe ? "as" : "a";
+
+  const hasLongReview = (log.bookReview?.length ?? 0) > TRUNCATE_AT;
+  const reviewText = log.bookReview
+    ? !reviewExpanded && hasLongReview
+      ? log.bookReview.slice(0, TRUNCATE_AT) + "…"
+      : log.bookReview
+    : null;
 
   const cardClass = showBadge
     ? "border-gold/40 bg-[#fdf7e9]"
@@ -439,10 +448,18 @@ function ActivityCard({ log, isChampion }: { log: ActivityLog; isChampion?: bool
             {" "}{log.bookRating!.toFixed(1).replace(".", ",")}
           </p>
         )}
-        {log.isCompletion && log.bookReview && (
-          <p className="mt-1.5 line-clamp-2 text-[11.5px] italic text-muted">
-            &ldquo;{log.bookReview}&rdquo;
-          </p>
+        {log.isCompletion && reviewText && (
+          <div className="mt-1.5">
+            <p className="text-[11.5px] italic text-muted">&ldquo;{reviewText}&rdquo;</p>
+            {hasLongReview && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setReviewExpanded((v) => !v); }}
+                className="mt-0.5 text-[11px] font-semibold text-violet-deep"
+              >
+                {reviewExpanded ? "Voir moins ↑" : "Voir plus ↓"}
+              </button>
+            )}
+          </div>
         )}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
