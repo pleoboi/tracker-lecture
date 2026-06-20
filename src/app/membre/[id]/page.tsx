@@ -213,7 +213,18 @@ export default function MembrePage() {
         </div>
       </div>
 
-      {/* Top 4 Favoris (style Letterboxd) */}
+      {/* Chips stats */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatChip value={String(completed.length)} label="Livres terminés" />
+        <StatChip value={(totalPages).toLocaleString("fr-FR")} label="Pages lues" />
+        <StatChip value={reading.length > 0 ? String(reading.length) : "—"} label="En cours" />
+        <StatChip
+          value={avgRating != null ? avgRating.toFixed(1).replace(".", ",") + " ★" : "—"}
+          label="Note moy."
+        />
+      </div>
+
+      {/* Top 4 Favoris (style Letterboxd) — juste après les indicateurs */}
       {favoriteBooks.length > 0 && (
         <section className="flex flex-col gap-2.5">
           <h2 className="font-serif text-[15px] font-medium text-ink">
@@ -245,17 +256,6 @@ export default function MembrePage() {
           </div>
         </section>
       )}
-
-      {/* Chips stats */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <StatChip value={String(completed.length)} label="Livres terminés" />
-        <StatChip value={(totalPages).toLocaleString("fr-FR")} label="Pages lues" />
-        <StatChip value={reading.length > 0 ? String(reading.length) : "—"} label="En cours" />
-        <StatChip
-          value={avgRating != null ? avgRating.toFixed(1).replace(".", ",") + " ★" : "—"}
-          label="Note moy."
-        />
-      </div>
 
       {/* Trophée Champion du jour */}
       {championDays > 0 && (

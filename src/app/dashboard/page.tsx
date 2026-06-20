@@ -237,26 +237,7 @@ export default function DashboardPage() {
             <StatCard label="Journée record" value={String(recordDay)} unit="pages" accent="#d7a33f" />
           </div>
 
-          {/* 2. Champion du jour */}
-          <div className="flex items-center gap-4 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-4">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gold/15 text-2xl">
-              🏆
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="font-serif text-[15px] font-semibold text-ink">Trophées Champion du jour</p>
-              <p className="text-xs text-muted">
-                Jours où tu as lu le plus de pages parmi tous les membres
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="font-serif text-3xl font-black text-[#b8890a]">{championDays}</p>
-              <p className="text-[11px] font-medium text-muted">
-                {championDays > 1 ? "jours" : "jour"}
-              </p>
-            </div>
-          </div>
-
-          {/* 3. Graphiques mensuels */}
+          {/* 2. Graphiques mensuels */}
           <div className="grid gap-4 md:grid-cols-2">
             <ObjectiveChart
               title="Pages lues / mois"
@@ -292,6 +273,25 @@ export default function DashboardPage() {
                   : undefined
               }
             />
+          </div>
+
+          {/* 3. Champion du jour */}
+          <div className="flex items-center gap-4 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gold/15 text-2xl">
+              🏆
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-serif text-[15px] font-semibold text-ink">Trophées Champion du jour</p>
+              <p className="text-xs text-muted">
+                Jours où tu as lu le plus de pages parmi tous les membres
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="font-serif text-3xl font-black text-[#b8890a]">{championDays}</p>
+              <p className="text-[11px] font-medium text-muted">
+                {championDays > 1 ? "jours" : "jour"}
+              </p>
+            </div>
           </div>
 
           {/* 4. Objectifs (déplacés en bas) */}

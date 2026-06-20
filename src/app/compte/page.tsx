@@ -336,22 +336,37 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
 }
 
 // ── Favorite Book Picker ────────────────────────────────────────────────────
+// Se charge tout seul depuis Supabase — pas de dépendance sur l'onglet Biblio
 
 function FavoriteBookPicker({
-  books,
+  userId,
   current,
   slotIndex,
   onSelect,
   onClose,
 }: {
-  books: Book[];
+  userId: string;
   current: number[];
   slotIndex: number;
   onSelect: (bookId: number) => void;
   onClose: () => void;
 }) {
+  const [allBooks, setAllBooks] = useState<Book[]>([]);
+  const [loadingBooks, setLoadingBooks] = useState(true);
   const [q, setQ] = useState("");
-  const completed = books.filter(
+
+  useEffect(() => {
+    supabase
+      .from("books")
+      .select("*")
+      .eq("user_id", userId)
+      .then(({ data }) => {
+        setAllBooks((data as Book[]) || []);
+        setLoadingBooks(false);
+      });
+  }, [userId]);
+
+  const completed = allBooks.filter(
     (b) => isCompleted(b) && !current.filter((_, i) => i !== slotIndex).includes(b.id)
   );
   const filtered = q.trim()
@@ -383,8 +398,15 @@ function FavoriteBookPicker({
           autoFocus
         />
         <div className="flex-1 overflow-y-auto flex flex-col gap-2">
-          {filtered.length === 0 && (
-            <p className="py-8 text-center text-sm text-muted">Aucun livre terminé.</p>
+          {loadingBooks && (
+            <p className="py-8 text-center text-xs font-medium uppercase tracking-wider text-muted">
+              Chargement…
+            </p>
+          )}
+          {!loadingBooks && filtered.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted">
+              {completed.length === 0 ? "Aucun livre terminé dans ta bibliothèque." : "Aucun résultat."}
+            </p>
           )}
           {filtered.map((b) => (
             <button
@@ -405,6 +427,110 @@ function FavoriteBookPicker({
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Enrichissement bibliothèque ─────────────────────────────────────────────
+
+function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void }) {
+  const [running, setRunning] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [result, setResult] = useState<{ updated: number; noMatch: number } | null>(null);
+
+  const handleEnrich = async () => {
+    setRunning(true);
+    setResult(null);
+
+    const { data: rawBooks } = await supabase
+      .from("books")
+      .select("id, title, author")
+      .eq("user_id", userId)
+      .or("cover_url.is.null,cover_url.eq.");
+
+    const toEnrich = (rawBooks as Pick<Book, "id" | "title" | "author">[]) || [];
+    setProgress({ done: 0, total: toEnrich.length });
+
+    if (toEnrich.length === 0) {
+      setRunning(false);
+      setResult({ updated: 0, noMatch: 0 });
+      return;
+    }
+
+    let updated = 0;
+    let noMatch = 0;
+
+    for (let i = 0; i < toEnrich.length; i++) {
+      const book = toEnrich[i];
+      try {
+        const q = `${book.title} ${book.author || ""}`.trim();
+        const res = await fetch(`/api/books/search?q=${encodeURIComponent(q)}`);
+        if (res.ok) {
+          const data = await res.json();
+          const results = data.results || [];
+          if (results.length > 0) {
+            const best = results[0];
+            await supabase.from("books").update({
+              cover_url: best.coverUrl ?? null,
+              ...(best.summary ? { summary: best.summary } : {}),
+              ...(best.year ? { published_year: best.year } : {}),
+              ...(best.genre ? { genre: best.genre } : {}),
+            }).eq("id", book.id);
+            updated++;
+          } else {
+            noMatch++;
+          }
+        } else {
+          noMatch++;
+        }
+      } catch {
+        noMatch++;
+      }
+      setProgress({ done: i + 1, total: toEnrich.length });
+      if (i < toEnrich.length - 1) {
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+
+    setRunning(false);
+    setResult({ updated, noMatch });
+    onDone();
+  };
+
+  if (result) {
+    return (
+      <div className="rounded-2xl border border-[#cfe0cf] bg-[#eaf1ea] px-4 py-3">
+        <p className="text-[13px] font-semibold text-success">Enrichissement terminé !</p>
+        <p className="mt-0.5 text-[12px] text-ink-2">
+          {result.updated} livre{result.updated > 1 ? "s" : ""} enrichi{result.updated > 1 ? "s" : ""}
+          {result.noMatch > 0 && ` · ${result.noMatch} sans résultat`}.
+        </p>
+        <button onClick={() => setResult(null)} className="mt-1.5 text-[11px] font-medium text-success underline">
+          Relancer
+        </button>
+      </div>
+    );
+  }
+
+  if (running) {
+    return (
+      <div className="flex flex-col gap-2">
+        <div className="h-2 w-full overflow-hidden rounded-full bg-[#e6decc]">
+          <div
+            className="h-full rounded-full bg-violet transition-all duration-300"
+            style={{ width: `${progress.total > 0 ? (progress.done / progress.total) * 100 : 0}%` }}
+          />
+        </div>
+        <p className="text-center text-[11px] text-muted">
+          {progress.done} / {progress.total} — récupération couvertures…
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <Button variant="ghost" onClick={handleEnrich} className="w-full text-sm">
+      🖼️ Enrichir mes livres sans couverture
+    </Button>
   );
 }
 
@@ -797,6 +923,19 @@ export default function ComptePage() {
             </div>
           </div>
 
+          {/* Enrichissement couvertures */}
+          <div className="rounded-2xl border border-line bg-card p-4">
+            <h3 className="font-serif text-[15px] font-medium text-ink">Couvertures manquantes</h3>
+            <p className="mt-0.5 text-[11px] text-muted">
+              Récupère automatiquement les couvertures, résumés et genres depuis Google Books.
+            </p>
+            <div className="mt-3">
+              {userId && (
+                <EnrichLibrary userId={userId} onDone={() => setBooksLoaded(false)} />
+              )}
+            </div>
+          </div>
+
           {/* Import Goodreads */}
           <div className="rounded-2xl border border-line bg-card p-4">
             <h3 className="font-serif text-[15px] font-medium text-ink">Import Goodreads</h3>
@@ -920,10 +1059,10 @@ export default function ComptePage() {
         </div>
       )}
 
-      {/* Picker favoris */}
-      {pickerSlot !== null && (
+      {/* Picker favoris — charge ses propres livres depuis Supabase */}
+      {pickerSlot !== null && userId && (
         <FavoriteBookPicker
-          books={books.length > 0 ? books : favoriteBooks}
+          userId={userId}
           current={favoriteIds}
           slotIndex={pickerSlot}
           onSelect={(id) => {
