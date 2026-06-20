@@ -224,43 +224,11 @@ export default function DashboardPage() {
         </div>
       ) : (
         <>
-          {/* Objectifs */}
-          <div className="grid gap-4 md:grid-cols-2">
-            {goals.reading_pages_year !== null ? (
-              <GoalIndicator
-                title="Objectif pages"
-                accent="#8b79be"
-                unit="p."
-                year={yearPeriod(totalPages, goals.reading_pages_year)}
-                month={monthPeriod(pagesThisMonth, goals.reading_pages_year / 12)}
-              />
-            ) : (
-              <GoalSetupCard
-                label="Objectif pages"
-                onSet={(v) => setGoal("reading_pages_year", v)}
-              />
-            )}
-            {goals.reading_books_year !== null ? (
-              <GoalIndicator
-                title="Objectif livres"
-                accent="#6f5da6"
-                unit="livres"
-                year={yearPeriod(totalBooks, goals.reading_books_year)}
-                month={monthPeriod(booksThisMonth, goals.reading_books_year / 12)}
-              />
-            ) : (
-              <GoalSetupCard
-                label="Objectif livres"
-                onSet={(v) => setGoal("reading_books_year", v)}
-              />
-            )}
-          </div>
-
-          {/* Stats générales */}
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {/* 1. Indicateurs clés en haut */}
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatCard label="Pages cette année" value={totalPages.toLocaleString("fr-FR")} accent="#2b2733" />
             <StatCard
-              label="Livres terminés"
+              label={`Livres terminés ${year}`}
               value={String(totalBooks)}
               unit={goals.reading_books_year !== null ? `/ ${goals.reading_books_year}` : undefined}
               accent={VIOLET_DEEP}
@@ -269,7 +237,7 @@ export default function DashboardPage() {
             <StatCard label="Journée record" value={String(recordDay)} unit="pages" accent="#d7a33f" />
           </div>
 
-          {/* Champion du jour */}
+          {/* 2. Champion du jour */}
           <div className="flex items-center gap-4 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-4">
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gold/15 text-2xl">
               🏆
@@ -288,7 +256,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* Graphiques */}
+          {/* 3. Graphiques mensuels */}
           <div className="grid gap-4 md:grid-cols-2">
             <ObjectiveChart
               title="Pages lues / mois"
@@ -326,6 +294,39 @@ export default function DashboardPage() {
             />
           </div>
 
+          {/* 4. Objectifs (déplacés en bas) */}
+          <div className="grid gap-4 md:grid-cols-2">
+            {goals.reading_pages_year !== null ? (
+              <GoalIndicator
+                title="Objectif pages"
+                accent="#8b79be"
+                unit="p."
+                year={yearPeriod(totalPages, goals.reading_pages_year)}
+                month={monthPeriod(pagesThisMonth, goals.reading_pages_year / 12)}
+              />
+            ) : (
+              <GoalSetupCard
+                label="Objectif pages"
+                onSet={(v) => setGoal("reading_pages_year", v)}
+              />
+            )}
+            {goals.reading_books_year !== null ? (
+              <GoalIndicator
+                title="Objectif livres"
+                accent="#6f5da6"
+                unit="livres"
+                year={yearPeriod(totalBooks, goals.reading_books_year)}
+                month={monthPeriod(booksThisMonth, goals.reading_books_year / 12)}
+              />
+            ) : (
+              <GoalSetupCard
+                label="Objectif livres"
+                onSet={(v) => setGoal("reading_books_year", v)}
+              />
+            )}
+          </div>
+
+          {/* 5. Histogramme des notes */}
           <RatingsChart counts={ratingCounts} average={ratingAvg} total={ratedCount} />
         </>
       )}

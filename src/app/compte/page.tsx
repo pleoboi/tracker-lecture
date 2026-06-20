@@ -8,6 +8,7 @@ import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
 import { Cover, ProgressBar, Button, FieldLabel, inputClass } from "../../components/ui";
+import { searchBooks } from "../../lib/googleBooks";
 
 type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes";
 type Sort = "ajout" | "titre" | "auteur" | "note";
@@ -55,6 +56,11 @@ interface GRRow {
   date_read: string | null;
   date_started: string | null;
   notes: string | null;
+  // Enriched from Google Books
+  cover_url?: string | null;
+  summary?: string | null;
+  published_year?: number | null;
+  genre?: string | null;
 }
 
 function parseGoodreadsCSV(text: string): GRRow[] {
@@ -107,6 +113,7 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
   const fileRef = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState<GRRow[] | null>(null);
   const [importing, setImporting] = useState(false);
+  const [phase, setPhase] = useState<"enrich" | "insert" | null>(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [result, setResult] = useState<{ inserted: number; skipped: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -138,8 +145,8 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
   const handleImport = async () => {
     if (!preview) return;
     setImporting(true);
-    setProgress({ done: 0, total: 0 });
 
+    // ── Phase 1 : déduplication ──────────────────────────────────────────────
     const { data: existing } = await supabase
       .from("books")
       .select("title, author")
@@ -155,14 +162,52 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
       const k = `${r.title.toLowerCase().trim()}__${r.author.toLowerCase().trim()}`;
       return !existingKeys.has(k);
     });
-
     const skipped = preview.length - toInsert.length;
+
+    // ── Phase 2 : enrichissement Google Books ────────────────────────────────
+    setPhase("enrich");
     setProgress({ done: 0, total: toInsert.length });
+
+    const enriched: GRRow[] = toInsert.map((r) => ({ ...r }));
+    const ENRICH_CONCURRENCY = 3;
+
+    for (let i = 0; i < enriched.length; i += ENRICH_CONCURRENCY) {
+      const chunk = enriched.slice(i, Math.min(i + ENRICH_CONCURRENCY, enriched.length));
+      await Promise.all(
+        chunk.map(async (row, j) => {
+          try {
+            const q = [row.title, row.author].filter(Boolean).join(" ").trim();
+            const results = await searchBooks(q);
+            if (results.length === 0) return;
+            const authorSurname = (row.author || "").toLowerCase().split(/\s+/).pop() ?? "";
+            const best =
+              results.find((r) => !authorSurname || r.author.toLowerCase().includes(authorSurname)) ??
+              results[0];
+            enriched[i + j] = {
+              ...row,
+              title: best.title || row.title,
+              cover_url: best.coverUrl ?? null,
+              summary: best.summary ?? null,
+              published_year: best.year ?? null,
+              genre: best.genre ?? null,
+            };
+          } catch { /* fallback : données brutes du CSV */ }
+        })
+      );
+      setProgress({ done: Math.min(i + ENRICH_CONCURRENCY, enriched.length), total: enriched.length });
+      if (i + ENRICH_CONCURRENCY < enriched.length) {
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    }
+
+    // ── Phase 3 : insertion Supabase ─────────────────────────────────────────
+    setPhase("insert");
+    setProgress({ done: 0, total: enriched.length });
 
     const BATCH = 25;
     let done = 0;
-    for (let i = 0; i < toInsert.length; i += BATCH) {
-      const batch = toInsert.slice(i, i + BATCH).map((r) => ({
+    for (let i = 0; i < enriched.length; i += BATCH) {
+      const batch = enriched.slice(i, i + BATCH).map((r) => ({
         title: r.title,
         author: r.author || "Auteur inconnu",
         pages: r.pages || 0,
@@ -170,6 +215,10 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
         status: r.status,
         rating: r.rating || 0,
         notes: r.notes,
+        cover_url: r.cover_url ?? null,
+        summary: r.summary ?? null,
+        published_year: r.published_year ?? null,
+        genre: r.genre ?? null,
         date_read: r.date_read,
         date_started: r.date_started,
         import_source: "goodreads",
@@ -177,11 +226,12 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
       }));
       await supabase.from("books").insert(batch);
       done += batch.length;
-      setProgress({ done, total: toInsert.length });
+      setProgress({ done, total: enriched.length });
     }
 
     setImporting(false);
-    setResult({ inserted: toInsert.length, skipped });
+    setPhase(null);
+    setResult({ inserted: enriched.length, skipped });
     setPreview(null);
     onDone();
   };
@@ -218,14 +268,25 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
             {reading > 0 && <span>▶ {reading} en cours</span>}
           </div>
           {importing && (
-            <div className="mt-3">
+            <div className="mt-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between text-[11px] font-medium">
+                <span className={phase === "enrich" ? "text-violet-deep" : "text-muted"}>
+                  {phase === "enrich" ? "⚡ Enrichissement Google Books…" : "✓ Enrichissement terminé"}
+                </span>
+                <span className={phase === "insert" ? "text-violet-deep" : "text-muted"}>
+                  {phase === "insert" ? "💾 Import en base…" : "En attente"}
+                </span>
+              </div>
               <div className="h-2 w-full overflow-hidden rounded-full bg-[#e6decc]">
                 <div
-                  className="h-full rounded-full bg-violet transition-all"
+                  className="h-full rounded-full bg-violet transition-all duration-300"
                   style={{ width: `${progress.total > 0 ? (progress.done / progress.total) * 100 : 0}%` }}
                 />
               </div>
-              <p className="mt-1 text-[11px] text-muted">{progress.done} / {progress.total}</p>
+              <p className="text-center text-[11px] text-muted">
+                {progress.done} / {progress.total}
+                {phase === "enrich" && " — Récupération couvertures & titres français"}
+              </p>
             </div>
           )}
         </div>
@@ -234,7 +295,11 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
             Annuler
           </Button>
           <Button onClick={handleImport} disabled={importing} className="flex-1 text-sm">
-            {importing ? "Import en cours…" : "Importer maintenant"}
+            {importing
+              ? phase === "enrich"
+                ? "Enrichissement…"
+                : "Import en cours…"
+              : "Importer maintenant"}
           </Button>
         </div>
       </div>
