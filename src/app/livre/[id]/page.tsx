@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth-context";
 import type { Book, ReadingLog } from "../../../lib/types";
-import { pct, isCompleted, readingStats, formatDate, formatDateLong } from "../../../lib/books";
+import { pct, isCompleted, isAbandoned, readingStats, formatDate, formatDateLong } from "../../../lib/books";
 import { Cover, ProgressBar, Pill, Button } from "../../../components/ui";
 import LogReadingModal from "../../../components/LogReadingModal";
 
@@ -90,6 +90,13 @@ export default function BookDetailPage() {
     load();
   };
 
+  const abandon = async () => {
+    if (!book) return;
+    if (!confirm(`Marquer « ${book.title} » comme abandonné ?`)) return;
+    await supabase.from("books").update({ status: "abandoned" }).eq("id", book.id);
+    router.push("/");
+  };
+
   const remove = async () => {
     if (!book) return;
     if (!confirm(`Supprimer « ${book.title} » et son historique ?`)) return;
@@ -118,6 +125,7 @@ export default function BookDetailPage() {
 
   const p = pct(book);
   const done = isCompleted(book);
+  const abandoned = isAbandoned(book);
   const stats = readingStats(book, logs);
   const rating = book.rating || 0;
 
@@ -133,12 +141,27 @@ export default function BookDetailPage() {
           >
             ‹
           </button>
-          <button
-            onClick={remove}
-            className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-danger"
-          >
-            Supprimer
-          </button>
+          <div className="flex items-center gap-2">
+            {!done && !abandoned && (
+              <button
+                onClick={abandon}
+                className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-muted"
+              >
+                Abandonner
+              </button>
+            )}
+            {abandoned && (
+              <span className="rounded-xl border border-[#e7c7bd] bg-[#f6e7e1] px-3 py-1.5 text-xs font-semibold text-danger">
+                Abandonné
+              </span>
+            )}
+            <button
+              onClick={remove}
+              className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-danger"
+            >
+              Supprimer
+            </button>
+          </div>
         </div>
 
         <Cover
@@ -346,6 +369,21 @@ export default function BookDetailPage() {
                         <p className="font-serif text-base font-black text-ink">{log.end_page}</p>
                       </div>
                     </div>
+                    {log.session_notes && (
+                      <p className="rounded-xl bg-[#f4f0e8] px-3 py-2 font-serif text-[12.5px] italic leading-relaxed text-ink-2">
+                        « {log.session_notes} »
+                      </p>
+                    )}
+                    {log.session_photo_url && (
+                      <a href={log.session_photo_url} target="_blank" rel="noopener noreferrer">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={log.session_photo_url}
+                          alt="Photo de session"
+                          className="h-36 w-full rounded-xl object-cover"
+                        />
+                      </a>
+                    )}
                   </div>
                 </div>
                 <button

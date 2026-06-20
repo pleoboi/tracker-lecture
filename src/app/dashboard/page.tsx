@@ -137,12 +137,18 @@ export default function DashboardPage() {
 
   books.forEach((book) => {
     if (book.status !== "completed") return;
-    const bookLogs = logs
-      .filter((l) => l.book_id === book.id)
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    if (bookLogs.length) {
-      const end = new Date(bookLogs[0].date);
-      if (end.getFullYear() === year) booksByMonth[end.getMonth()] += 1;
+    let completionDate: Date | null = null;
+    if (book.date_read) {
+      // Livres importés (Goodreads) ou terminés via LogReadingModal avec date_read
+      completionDate = new Date(book.date_read);
+    } else {
+      const bookLogs = logs
+        .filter((l) => l.book_id === book.id)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      if (bookLogs.length) completionDate = new Date(bookLogs[0].date);
+    }
+    if (completionDate && completionDate.getFullYear() === year) {
+      booksByMonth[completionDate.getMonth()] += 1;
     }
   });
 

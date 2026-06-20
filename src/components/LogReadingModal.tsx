@@ -24,6 +24,9 @@ export default function LogReadingModal({
   const [bookId, setBookId] = useState<string>("");
   const [date, setDate] = useState(todayISO());
   const [endPage, setEndPage] = useState("");
+  const [sessionNotes, setSessionNotes] = useState("");
+  const [sessionPhotoUrl, setSessionPhotoUrl] = useState("");
+  const [showExtras, setShowExtras] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +35,9 @@ export default function LogReadingModal({
       setBookId(String(defaultBookId ?? books[0]?.id ?? ""));
       setDate(todayISO());
       setEndPage("");
+      setSessionNotes("");
+      setSessionPhotoUrl("");
+      setShowExtras(false);
       setError(null);
     }
   }, [open, defaultBookId, books]);
@@ -58,11 +64,17 @@ export default function LogReadingModal({
         pages_read: diff,
         end_page: target,
         user_id: user.id,
+        session_notes: sessionNotes.trim() || null,
+        session_photo_url: sessionPhotoUrl.trim() || null,
       });
     }
     await supabase
       .from("books")
-      .update({ progress: target, status: completed ? "completed" : "reading" })
+      .update({
+        progress: target,
+        status: completed ? "completed" : "reading",
+        ...(completed ? { date_read: date } : {}),
+      })
       .eq("id", book.id);
 
     setSaving(false);
@@ -138,6 +150,50 @@ export default function LogReadingModal({
               <span className={`text-sm font-semibold ${diff > 0 ? "text-violet-deep" : "text-danger"}`}>
                 {diff > 0 ? `+ ${diff} pages` : `${diff} pages`}
               </span>
+            </div>
+          )}
+
+          {/* Extras Strava */}
+          <button
+            type="button"
+            onClick={() => setShowExtras((v) => !v)}
+            className="flex items-center gap-1.5 text-xs font-medium text-violet-deep"
+          >
+            <span className="text-base leading-none">{showExtras ? "▾" : "▸"}</span>
+            {showExtras ? "Masquer les détails de session" : "Ajouter une note ou une photo"}
+          </button>
+
+          {showExtras && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-violet/20 bg-violet-soft p-3.5">
+              <div>
+                <FieldLabel>Note de session (optionnel)</FieldLabel>
+                <textarea
+                  value={sessionNotes}
+                  onChange={(e) => setSessionNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Impressions, citations, contexte de lecture… Distinct de ta review finale."
+                  className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
+                />
+              </div>
+              <div>
+                <FieldLabel>Photo de session (URL, optionnel)</FieldLabel>
+                <input
+                  type="url"
+                  value={sessionPhotoUrl}
+                  onChange={(e) => setSessionPhotoUrl(e.target.value)}
+                  placeholder="https://… (lien vers une image)"
+                  className={inputClass}
+                />
+                {sessionPhotoUrl.trim() && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={sessionPhotoUrl.trim()}
+                    alt="Aperçu"
+                    className="mt-2 h-24 w-full rounded-xl object-cover"
+                    onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                  />
+                )}
+              </div>
             </div>
           )}
 

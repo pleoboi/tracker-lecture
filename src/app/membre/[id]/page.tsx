@@ -6,7 +6,7 @@ import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth-context";
 import type { Book, ReadingLog } from "../../../lib/types";
-import { pct } from "../../../lib/books";
+import { pct, isCompleted } from "../../../lib/books";
 import { Cover, ProgressBar, AvatarImg } from "../../../components/ui";
 import { ObjectiveChart, RatingsChart } from "../../../components/DashboardWidgets";
 import AddToLibraryModal from "../../../components/AddToLibraryModal";
@@ -20,6 +20,8 @@ interface Profile {
   display_name: string;
   avatar_url?: string | null;
   created_at: string;
+  bio?: string | null;
+  favorite_book_ids?: number[] | null;
 }
 
 function StarDisplay({ rating }: { rating: number }) {
@@ -41,6 +43,8 @@ export default function MembrePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [books, setBooks] = useState<Book[]>([]);
   const [logs, setLogs] = useState<ReadingLog[]>([]);
+  const [favoriteBooks, setFavoriteBooks] = useState<Book[]>([]);
+  const [sessionPhotos, setSessionPhotos] = useState<{ url: string; date: string; bookTitle: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [addTarget, setAddTarget] = useState<Book | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -49,17 +53,55 @@ export default function MembrePage() {
   useEffect(() => {
     const load = async () => {
       type LogRow = { user_id: string; pages_read: number; date: string };
-      const [{ data: prof }, { data: bs }, { data: ls }, { data: allLogs }] = await Promise.all([
-        supabase.from("user_profiles").select("*").eq("id", memberId).single(),
-        supabase.from("books").select("*").eq("user_id", memberId),
-        supabase.from("reading_logs").select("*").eq("user_id", memberId),
-        supabase.from("reading_logs").select("user_id, pages_read, date"),
-      ]);
-      setProfile(prof as Profile);
-      setBooks((bs as Book[]) || []);
+      const [{ data: prof }, { data: bs }, { data: ls }, { data: allLogs }, { data: logsWithPhotos }] =
+        await Promise.all([
+          supabase.from("user_profiles").select("*").eq("id", memberId).single(),
+          supabase.from("books").select("*").eq("user_id", memberId),
+          supabase.from("reading_logs").select("*").eq("user_id", memberId),
+          supabase.from("reading_logs").select("user_id, pages_read, date"),
+          supabase
+            .from("reading_logs")
+            .select("session_photo_url, date, book_id")
+            .eq("user_id", memberId)
+            .not("session_photo_url", "is", null)
+            .order("date", { ascending: false })
+            .limit(12),
+        ]);
+
+      const profileData = prof as Profile;
+      setProfile(profileData);
+      const booksData = (bs as Book[]) || [];
+      setBooks(booksData);
       setLogs((ls as ReadingLog[]) || []);
 
-      // Calcul des jours Champion du jour pour ce membre
+      // Favoris
+      const favIds = (profileData?.favorite_book_ids ?? []).filter(Boolean);
+      if (favIds.length > 0) {
+        const { data: favData } = await supabase
+          .from("books")
+          .select("id, title, author, cover_url, rating")
+          .in("id", favIds);
+        const orderedFavs = favIds
+          .map((id) => (favData as Book[])?.find((b) => b.id === id))
+          .filter(Boolean) as Book[];
+        setFavoriteBooks(orderedFavs);
+      }
+
+      // Photos de session
+      type PhotoRow = { session_photo_url: string | null; date: string; book_id: number };
+      const photosRaw = (logsWithPhotos as PhotoRow[]) || [];
+      const bookMap = new Map(booksData.map((b) => [b.id, b.title]));
+      setSessionPhotos(
+        photosRaw
+          .filter((r) => r.session_photo_url)
+          .map((r) => ({
+            url: r.session_photo_url!,
+            date: r.date,
+            bookTitle: bookMap.get(r.book_id) ?? "",
+          }))
+      );
+
+      // Champion du jour
       const rows = (allLogs as LogRow[]) || [];
       const dateMap = new Map<string, Map<string, number>>();
       rows.forEach(({ date, user_id, pages_read }) => {
@@ -100,8 +142,9 @@ export default function MembrePage() {
     );
   }
 
-  const completed = books.filter((b) => b.status === "completed");
+  const completed = books.filter(isCompleted);
   const reading = books.filter((b) => b.status === "reading");
+  const abandoned = books.filter((b) => b.status === "abandoned");
   const ratedBooks = completed.filter((b) => (b.rating || 0) > 0);
   const avgRating =
     ratedBooks.length > 0
@@ -109,7 +152,6 @@ export default function MembrePage() {
       : null;
   const totalPages = logs.reduce((s, l) => s + (l.pages_read || 0), 0);
 
-  // Histogramme des notes (paliers 0,5)
   const ratingCounts = Array(10).fill(0);
   let ratingSum = 0;
   let ratedCount = 0;
@@ -152,7 +194,7 @@ export default function MembrePage() {
       {/* En-tête profil */}
       <div className="flex items-center gap-4 rounded-2xl bg-violet-soft px-5 py-6">
         <AvatarImg url={profile.avatar_url} name={profile.display_name} className="h-16 w-16 text-2xl" />
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h1 className="font-serif text-2xl font-black text-ink">{profile.display_name}</h1>
             {isOwn && (
@@ -165,8 +207,44 @@ export default function MembrePage() {
             )}
           </div>
           <p className="mt-0.5 text-xs font-medium text-muted">Membre depuis {memberSince}</p>
+          {profile.bio && (
+            <p className="mt-2 text-[12.5px] leading-relaxed text-ink-2">{profile.bio}</p>
+          )}
         </div>
       </div>
+
+      {/* Top 4 Favoris (style Letterboxd) */}
+      {favoriteBooks.length > 0 && (
+        <section className="flex flex-col gap-2.5">
+          <h2 className="font-serif text-[15px] font-medium text-ink">
+            Livres favoris{" "}
+            <span className="font-sans text-xs font-normal text-muted">({favoriteBooks.length})</span>
+          </h2>
+          <div className="grid grid-cols-4 gap-2.5">
+            {favoriteBooks.map((b) => (
+              <Link key={b.id} href={`/livre/${b.id}`} className="group flex flex-col items-center gap-1.5">
+                <div className="relative w-full overflow-hidden rounded-xl shadow-sm transition-transform group-hover:scale-105">
+                  <Cover
+                    id={b.id}
+                    title={b.title}
+                    coverUrl={b.cover_url}
+                    className="aspect-[3/4] w-full"
+                    rounded="rounded-xl"
+                  />
+                  {(b.rating || 0) > 0 && (
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-ink/70 to-transparent px-1.5 pb-1.5 pt-4">
+                      <p className="text-[9px] font-bold text-cream">★ {b.rating!.toFixed(1)}</p>
+                    </div>
+                  )}
+                </div>
+                <p className="max-w-full truncate text-center text-[9.5px] font-medium text-muted">
+                  {b.title}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Chips stats */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -208,13 +286,7 @@ export default function MembrePage() {
                 key={b.id}
                 className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3"
               >
-                <Cover
-                  id={b.id}
-                  title={b.title}
-                  coverUrl={b.cover_url}
-                  className="h-[78px] w-[54px] shrink-0"
-                  rounded="rounded-md"
-                />
+                <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[78px] w-[54px] shrink-0" rounded="rounded-md" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-serif text-[14px] font-medium text-ink">{b.title}</p>
                   <p className="truncate text-[11px] text-muted">{b.author}</p>
@@ -252,13 +324,7 @@ export default function MembrePage() {
                   key={b.id}
                   className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3"
                 >
-                  <Cover
-                    id={b.id}
-                    title={b.title}
-                    coverUrl={b.cover_url}
-                    className="h-[78px] w-[54px] shrink-0"
-                    rounded="rounded-md"
-                  />
+                  <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[78px] w-[54px] shrink-0" rounded="rounded-md" />
                   <div className="min-w-0 flex-1 pt-0.5">
                     <p className="truncate font-serif text-[14px] font-medium text-ink">{b.title}</p>
                     <p className="truncate text-[11px] text-muted">{b.author}</p>
@@ -287,6 +353,56 @@ export default function MembrePage() {
         </section>
       )}
 
+      {/* Livres abandonnés */}
+      {abandoned.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-serif text-lg font-medium text-ink">
+            Abandonnés{" "}
+            <span className="font-sans text-sm font-normal text-muted">({abandoned.length})</span>
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {abandoned.map((b) => (
+              <div
+                key={b.id}
+                className="flex items-start gap-3 rounded-2xl border border-[#e7c7bd] bg-[#fdf3f1] p-3 opacity-80"
+              >
+                <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[78px] w-[54px] shrink-0 grayscale" rounded="rounded-md" />
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <p className="truncate font-serif text-[14px] font-medium text-ink">{b.title}</p>
+                  <p className="truncate text-[11px] text-muted">{b.author}</p>
+                  <span className="mt-1.5 inline-block rounded-md bg-[#f6e7e1] px-2 py-0.5 text-[10.5px] font-medium text-danger">
+                    Abandonné
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Galerie de photos de sessions */}
+      {sessionPhotos.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-serif text-lg font-medium text-ink">Galerie</h2>
+          <div className="grid grid-cols-3 gap-2">
+            {sessionPhotos.map((p, i) => (
+              <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="group relative overflow-hidden rounded-xl">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={p.url}
+                  alt={p.bookTitle}
+                  className="aspect-square w-full object-cover transition-transform group-hover:scale-105"
+                  onError={(e) => ((e.target as HTMLImageElement).parentElement!.style.display = "none")}
+                />
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-ink/60 to-transparent px-2 pb-1.5 pt-4 opacity-0 transition-opacity group-hover:opacity-100">
+                  <p className="truncate text-[9px] font-semibold text-cream">{p.bookTitle}</p>
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Histogramme des notes */}
       {ratedCount > 0 && (
         <RatingsChart counts={ratingCounts} average={ratingAvg} total={ratedCount} />
@@ -309,7 +425,7 @@ export default function MembrePage() {
         </section>
       )}
 
-      {completed.length === 0 && reading.length === 0 && (
+      {completed.length === 0 && reading.length === 0 && abandoned.length === 0 && (
         <div className="rounded-2xl border border-dashed border-line bg-card p-10 text-center">
           <p className="font-serif text-base text-ink">Aucun livre pour le moment.</p>
         </div>

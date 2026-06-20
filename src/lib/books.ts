@@ -32,7 +32,11 @@ export function pct(book: Pick<Book, "pages" | "progress">): number {
 }
 
 export function isCompleted(book: Pick<Book, "pages" | "progress" | "status">): boolean {
-  return book.status === "completed" || pct(book) >= 100;
+  return book.status === "completed" || (book.status !== "abandoned" && pct(book) >= 100);
+}
+
+export function isAbandoned(book: Pick<Book, "status">): boolean {
+  return book.status === "abandoned";
 }
 
 const MS_PER_DAY = 1000 * 60 * 60 * 24;

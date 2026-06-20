@@ -139,7 +139,31 @@ export default function AccueilPage() {
     let enriched: ActivityLog[] = [];
 
     if (logs.length > 0) {
-      const bookIds = [...new Set(logs.map((l) => l.book_id))];
+      // ── Agrégation des logs du même jour pour le même livre (même user) ──
+      const logGroupMap = new Map<string, ReadingLog[]>();
+      logs.forEach((l) => {
+        const key = `${l.user_id}_${l.book_id}_${l.date}`;
+        if (!logGroupMap.has(key)) logGroupMap.set(key, []);
+        logGroupMap.get(key)!.push(l);
+      });
+      const aggregatedLogs: ReadingLog[] = Array.from(logGroupMap.values()).map((group) => {
+        if (group.length === 1) return group[0];
+        return {
+          ...group[0],
+          id: group[group.length - 1].id,
+          pages_read: group.reduce((s, l) => s + l.pages_read, 0),
+          end_page: Math.max(...group.map((l) => l.end_page)),
+          created_at: group.reduce(
+            (max, l) => ((l.created_at ?? "") > (max ?? "") ? l.created_at : max),
+            group[0].created_at
+          ),
+        };
+      });
+      aggregatedLogs.sort((a, b) =>
+        (b.created_at ?? b.date).localeCompare(a.created_at ?? a.date)
+      );
+
+      const bookIds = [...new Set(aggregatedLogs.map((l) => l.book_id))];
       const { data: bookData } = await supabase
         .from("books")
         .select("id, title, cover_url, author, status, rating, notes")
@@ -156,7 +180,7 @@ export default function AccueilPage() {
       );
 
       const latestLogKey = new Map<string, string>();
-      logs.forEach((l) => {
+      aggregatedLogs.forEach((l) => {
         const key = `${l.user_id}_${l.book_id}`;
         const ts = l.created_at ?? l.date;
         if (!latestLogKey.has(key) || ts > latestLogKey.get(key)!) {
@@ -164,7 +188,7 @@ export default function AccueilPage() {
         }
       });
 
-      enriched = logs
+      enriched = aggregatedLogs
         .map((log) => {
           const bk = bookMap.get(log.book_id);
           if (!bk) return null;
@@ -246,7 +270,7 @@ export default function AccueilPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  const reading = books.filter((b) => !isCompleted(b));
+  const reading = books.filter((b) => b.status === "reading");
   const displayedReading = showAllReading ? reading : reading.slice(0, 3);
   const hasMore = reading.length > 3;
 

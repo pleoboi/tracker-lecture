@@ -83,7 +83,7 @@ const desktopNavItems = allNavItems.slice(0, 6);
 const mobileNavLeft  = [allNavItems[0], allNavItems[2]];  // Accueil, Journal
 const mobileNavRight = [allNavItems[3], allNavItems[4]];  // Découverte, Statistiques
 
-const NO_SHELL_PATHS = ["/login", "/register", "/"];
+const NO_SHELL_PATHS = ["/login", "/register", "/", "/email-sent"];
 
 function isActive(pathname: string, href: string) {
   if (href === "/accueil") return pathname === "/accueil";
@@ -322,7 +322,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         .from("books")
         .select("*")
         .eq("user_id", user.id)
-        .neq("status", "completed");
+        .eq("status", "reading");
       setReadingBooks((data as Book[]) || []);
     }
     setShowLog(true);

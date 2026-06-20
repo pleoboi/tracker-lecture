@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
@@ -9,15 +9,339 @@ import type { Book } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
 import { Cover, ProgressBar, Button, FieldLabel, inputClass } from "../../components/ui";
 
-type Filter = "tous" | "encours" | "termines" | "notes";
+type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes";
 type Sort = "ajout" | "titre" | "auteur" | "note";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "tous", label: "Tous" },
   { key: "encours", label: "En cours" },
   { key: "termines", label: "Terminés" },
+  { key: "abandonnes", label: "Abandonné" },
   { key: "notes", label: "★ Top notes" },
 ];
+
+// ── CSV Goodreads parser ────────────────────────────────────────────────────
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let cur = "";
+  let inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (c === '"') {
+      if (inQ && line[i + 1] === '"') { cur += '"'; i++; }
+      else inQ = !inQ;
+    } else if (c === "," && !inQ) {
+      result.push(cur); cur = "";
+    } else { cur += c; }
+  }
+  result.push(cur);
+  return result;
+}
+
+function parseGRDate(s: string): string | null {
+  if (!s) return null;
+  const m = s.match(/(\d{4})\/(\d{2})\/(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  return null;
+}
+
+interface GRRow {
+  title: string;
+  author: string;
+  pages: number;
+  rating: number;
+  status: string;
+  date_read: string | null;
+  date_started: string | null;
+  notes: string | null;
+}
+
+function parseGoodreadsCSV(text: string): GRRow[] {
+  const clean = text.replace(/^﻿/, "");
+  const lines = clean.split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = parseCSVLine(lines[0]).map((h) => h.trim().toLowerCase());
+  const idx = {
+    title: headers.indexOf("title"),
+    author: headers.indexOf("author"),
+    pages: headers.indexOf("number of pages"),
+    rating: headers.indexOf("my rating"),
+    shelf: headers.indexOf("exclusive shelf"),
+    dateRead: headers.indexOf("date read"),
+    dateAdded: headers.indexOf("date added"),
+    review: headers.indexOf("my review"),
+  };
+  if (idx.title === -1) return [];
+
+  const rows: GRRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const cols = parseCSVLine(line);
+    const shelf = idx.shelf >= 0 ? (cols[idx.shelf] || "").trim() : "";
+    if (shelf === "to-read") continue;
+    const title = (cols[idx.title] || "").trim();
+    if (!title) continue;
+    const statusMap: Record<string, string> = {
+      read: "completed",
+      "currently-reading": "reading",
+    };
+    rows.push({
+      title,
+      author: (cols[idx.author] || "").trim(),
+      pages: Math.max(0, parseInt(cols[idx.pages] || "0", 10) || 0),
+      rating: Math.max(0, Math.min(5, parseInt(cols[idx.rating] || "0", 10) || 0)),
+      status: statusMap[shelf] ?? "reading",
+      date_read: idx.dateRead >= 0 ? parseGRDate(cols[idx.dateRead]) : null,
+      date_started: idx.dateAdded >= 0 ? parseGRDate(cols[idx.dateAdded]) : null,
+      notes: idx.review >= 0 ? (cols[idx.review] || "").trim() || null : null,
+    });
+  }
+  return rows;
+}
+
+// ── Goodreads Import Component ──────────────────────────────────────────────
+
+function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => void }) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<GRRow[] | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [result, setResult] = useState<{ inserted: number; skipped: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith(".csv")) {
+      setError("Sélectionne un fichier .csv exporté depuis Goodreads.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const rows = parseGoodreadsCSV(ev.target?.result as string);
+        if (rows.length === 0) {
+          setError("Fichier non reconnu. Exporte ton historique depuis Goodreads : Mon profil → Importer/Exporter.");
+          return;
+        }
+        setPreview(rows);
+        setError(null);
+      } catch {
+        setError("Impossible de lire ce fichier CSV.");
+      }
+    };
+    reader.readAsText(file, "utf-8");
+  };
+
+  const handleImport = async () => {
+    if (!preview) return;
+    setImporting(true);
+    setProgress({ done: 0, total: 0 });
+
+    const { data: existing } = await supabase
+      .from("books")
+      .select("title, author")
+      .eq("user_id", userId);
+
+    const existingKeys = new Set(
+      ((existing as Pick<Book, "title" | "author">[]) || []).map(
+        (b) => `${b.title.toLowerCase().trim()}__${(b.author || "").toLowerCase().trim()}`
+      )
+    );
+
+    const toInsert = preview.filter((r) => {
+      const k = `${r.title.toLowerCase().trim()}__${r.author.toLowerCase().trim()}`;
+      return !existingKeys.has(k);
+    });
+
+    const skipped = preview.length - toInsert.length;
+    setProgress({ done: 0, total: toInsert.length });
+
+    const BATCH = 25;
+    let done = 0;
+    for (let i = 0; i < toInsert.length; i += BATCH) {
+      const batch = toInsert.slice(i, i + BATCH).map((r) => ({
+        title: r.title,
+        author: r.author || "Auteur inconnu",
+        pages: r.pages || 0,
+        progress: r.status === "completed" ? (r.pages || 0) : 0,
+        status: r.status,
+        rating: r.rating || 0,
+        notes: r.notes,
+        date_read: r.date_read,
+        date_started: r.date_started,
+        import_source: "goodreads",
+        user_id: userId,
+      }));
+      await supabase.from("books").insert(batch);
+      done += batch.length;
+      setProgress({ done, total: toInsert.length });
+    }
+
+    setImporting(false);
+    setResult({ inserted: toInsert.length, skipped });
+    setPreview(null);
+    onDone();
+  };
+
+  if (result) {
+    return (
+      <div className="rounded-2xl border border-[#cfe0cf] bg-[#eaf1ea] p-4">
+        <p className="font-serif text-[15px] font-semibold text-success">Import terminé !</p>
+        <p className="mt-1 text-[13px] text-ink-2">
+          <span className="font-semibold">{result.inserted}</span> livre{result.inserted > 1 ? "s" : ""} importé{result.inserted > 1 ? "s" : ""}
+          {result.skipped > 0 && ` · ${result.skipped} déjà présent${result.skipped > 1 ? "s" : ""}`}.
+        </p>
+        <button
+          onClick={() => setResult(null)}
+          className="mt-2 text-xs font-medium text-success underline"
+        >
+          Importer un autre fichier
+        </button>
+      </div>
+    );
+  }
+
+  if (preview) {
+    const completed = preview.filter((r) => r.status === "completed").length;
+    const reading = preview.filter((r) => r.status === "reading").length;
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="rounded-2xl border border-line bg-card p-4">
+          <p className="font-serif text-[14px] font-semibold text-ink">
+            {preview.length} livre{preview.length > 1 ? "s" : ""} détecté{preview.length > 1 ? "s" : ""}
+          </p>
+          <div className="mt-1.5 flex gap-3 text-[12px] text-muted">
+            <span>✓ {completed} terminé{completed > 1 ? "s" : ""}</span>
+            {reading > 0 && <span>▶ {reading} en cours</span>}
+          </div>
+          {importing && (
+            <div className="mt-3">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-[#e6decc]">
+                <div
+                  className="h-full rounded-full bg-violet transition-all"
+                  style={{ width: `${progress.total > 0 ? (progress.done / progress.total) * 100 : 0}%` }}
+                />
+              </div>
+              <p className="mt-1 text-[11px] text-muted">{progress.done} / {progress.total}</p>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <Button variant="ghost" onClick={() => setPreview(null)} className="flex-1 text-sm">
+            Annuler
+          </Button>
+          <Button onClick={handleImport} disabled={importing} className="flex-1 text-sm">
+            {importing ? "Import en cours…" : "Importer maintenant"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-[13px] leading-relaxed text-ink-2">
+        Exporte ton historique depuis{" "}
+        <span className="font-semibold">Goodreads</span>{" "}
+        (Mon profil → Importer/Exporter → Exporter la bibliothèque), puis charge le fichier CSV ici.
+        Les livres déjà présents ne seront pas dupliqués.
+      </p>
+      {error && (
+        <p className="rounded-xl border border-[#e7c7bd] bg-[#f6e7e1] px-3 py-2 text-xs font-medium text-danger">
+          {error}
+        </p>
+      )}
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".csv"
+        onChange={handleFile}
+        className="hidden"
+      />
+      <Button onClick={() => fileRef.current?.click()} variant="ghost" className="w-full text-sm">
+        📂 Choisir le fichier CSV Goodreads
+      </Button>
+    </div>
+  );
+}
+
+// ── Favorite Book Picker ────────────────────────────────────────────────────
+
+function FavoriteBookPicker({
+  books,
+  current,
+  slotIndex,
+  onSelect,
+  onClose,
+}: {
+  books: Book[];
+  current: number[];
+  slotIndex: number;
+  onSelect: (bookId: number) => void;
+  onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const completed = books.filter(
+    (b) => isCompleted(b) && !current.filter((_, i) => i !== slotIndex).includes(b.id)
+  );
+  const filtered = q.trim()
+    ? completed.filter(
+        (b) =>
+          b.title.toLowerCase().includes(q.toLowerCase()) ||
+          b.author.toLowerCase().includes(q.toLowerCase())
+      )
+    : completed;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 backdrop-blur-sm sm:items-center"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[80dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-serif text-lg font-semibold text-ink">Choisir un favori</h3>
+          <button onClick={onClose} className="text-xl font-light text-muted">✕</button>
+        </div>
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Rechercher…"
+          className="mb-3 w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
+          autoFocus
+        />
+        <div className="flex-1 overflow-y-auto flex flex-col gap-2">
+          {filtered.length === 0 && (
+            <p className="py-8 text-center text-sm text-muted">Aucun livre terminé.</p>
+          )}
+          {filtered.map((b) => (
+            <button
+              key={b.id}
+              onClick={() => { onSelect(b.id); onClose(); }}
+              className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3 text-left transition-colors hover:border-violet"
+            >
+              <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-14 w-10 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-serif text-[14px] font-medium text-ink">{b.title}</p>
+                <p className="truncate text-[11px] text-muted">{b.author}</p>
+                {(b.rating || 0) > 0 && (
+                  <p className="text-[11px] font-medium text-gold">★ {b.rating!.toFixed(1)}</p>
+                )}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Main Page ───────────────────────────────────────────────────────────────
 
 export default function ComptePage() {
   const router = useRouter();
@@ -26,14 +350,24 @@ export default function ComptePage() {
 
   const [tab, setTab] = useState<"profil" | "biblio">("profil");
 
-  // Avatar
+  // Profile
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [editingAvatar, setEditingAvatar] = useState(false);
   const [avatarDraft, setAvatarDraft] = useState("");
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [bio, setBio] = useState<string | null>(null);
+  const [editingBio, setEditingBio] = useState(false);
+  const [bioDraft, setBioDraft] = useState("");
+  const [savingBio, setSavingBio] = useState(false);
 
-  // Bibliothèque state
+  // Favorites
+  const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
+  const [favoriteBooks, setFavoriteBooks] = useState<Book[]>([]);
+  const [pickerSlot, setPickerSlot] = useState<number | null>(null);
+  const [savingFavorites, setSavingFavorites] = useState(false);
+
+  // Bibliotheque
   const [books, setBooks] = useState<Book[]>([]);
   const [booksLoaded, setBooksLoaded] = useState(false);
   const [bibLoading, setBibLoading] = useState(false);
@@ -41,19 +375,32 @@ export default function ComptePage() {
   const [sort, setSort] = useState<Sort>("ajout");
   const [query, setQuery] = useState("");
 
-  useEffect(() => {
-    if (!userId) return;
-    supabase
+  const loadProfile = async (uid: string) => {
+    const { data } = await supabase
       .from("user_profiles")
-      .select("avatar_url")
-      .eq("id", userId)
-      .single()
-      .then(({ data }) => {
-        const url = (data as { avatar_url?: string | null } | null)?.avatar_url ?? null;
-        setAvatarUrl(url);
-        setAvatarDraft(url ?? "");
-      });
-  }, [userId]);
+      .select("avatar_url, bio, favorite_book_ids")
+      .eq("id", uid)
+      .single();
+    const d = data as { avatar_url?: string | null; bio?: string | null; favorite_book_ids?: number[] | null } | null;
+    const url = d?.avatar_url ?? null;
+    setAvatarUrl(url);
+    setAvatarDraft(url ?? "");
+    setBio(d?.bio ?? null);
+    setBioDraft(d?.bio ?? "");
+    const ids = (d?.favorite_book_ids ?? []).filter(Boolean);
+    setFavoriteIds(ids);
+    if (ids.length > 0) {
+      const { data: favData } = await supabase
+        .from("books")
+        .select("id, title, author, cover_url, rating")
+        .in("id", ids);
+      setFavoriteBooks((favData as Book[]) || []);
+    }
+  };
+
+  useEffect(() => {
+    if (userId) loadProfile(userId);
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (tab === "biblio" && !booksLoaded && userId) {
@@ -85,13 +432,49 @@ export default function ComptePage() {
       .from("user_profiles")
       .upsert({ id: userId, avatar_url: url }, { onConflict: "id" });
     setSavingAvatar(false);
-    if (error) {
-      setAvatarError(error.message);
-      return;
-    }
+    if (error) { setAvatarError(error.message); return; }
     setAvatarUrl(url);
     setEditingAvatar(false);
     window.dispatchEvent(new CustomEvent("profile-updated"));
+  };
+
+  const handleSaveBio = async () => {
+    if (!userId) return;
+    setSavingBio(true);
+    const text = bioDraft.trim() || null;
+    await supabase.from("user_profiles").upsert({ id: userId, bio: text }, { onConflict: "id" });
+    setSavingBio(false);
+    setBio(text);
+    setEditingBio(false);
+  };
+
+  const handleSelectFavorite = async (slotIndex: number, bookId: number) => {
+    if (!userId) return;
+    const updated = [...favoriteIds];
+    while (updated.length <= slotIndex) updated.push(0);
+    updated[slotIndex] = bookId;
+    const cleaned = updated.filter(Boolean);
+    setSavingFavorites(true);
+    await supabase
+      .from("user_profiles")
+      .upsert({ id: userId, favorite_book_ids: cleaned }, { onConflict: "id" });
+    setSavingFavorites(false);
+    setFavoriteIds(cleaned);
+    const { data: favData } = await supabase
+      .from("books")
+      .select("id, title, author, cover_url, rating")
+      .in("id", cleaned);
+    setFavoriteBooks((favData as Book[]) || []);
+  };
+
+  const handleRemoveFavorite = async (slotIndex: number) => {
+    if (!userId) return;
+    const updated = favoriteIds.filter((_, i) => i !== slotIndex);
+    await supabase
+      .from("user_profiles")
+      .upsert({ id: userId, favorite_book_ids: updated }, { onConflict: "id" });
+    setFavoriteIds(updated);
+    setFavoriteBooks((prev) => prev.filter((b) => updated.includes(b.id)));
   };
 
   if (authLoading) {
@@ -108,8 +491,9 @@ export default function ComptePage() {
 
   const completedCount = books.filter(isCompleted).length;
   let list = books.filter((b) => {
-    if (filter === "encours") return !isCompleted(b);
+    if (filter === "encours") return b.status === "reading";
     if (filter === "termines") return isCompleted(b);
+    if (filter === "abandonnes") return b.status === "abandoned";
     if (filter === "notes") return (b.rating || 0) > 0;
     return true;
   });
@@ -153,7 +537,6 @@ export default function ComptePage() {
         <div className="flex flex-col gap-4">
           {/* Carte profil */}
           <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-card p-5">
-            {/* Avatar */}
             <div className="relative">
               {avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -182,7 +565,6 @@ export default function ComptePage() {
               {editingAvatar ? "Fermer" : "Modifier la photo"}
             </button>
 
-            {/* Formulaire édition avatar */}
             {editingAvatar && (
               <div className="w-full rounded-2xl border border-violet/30 bg-violet-soft p-4">
                 <FieldLabel>URL de l&apos;image (lien web)</FieldLabel>
@@ -194,9 +576,6 @@ export default function ComptePage() {
                   className={inputClass}
                   autoFocus
                 />
-                <p className="mt-1.5 text-[11px] text-muted">
-                  Colle le lien direct vers une image JPG ou PNG hébergée sur le web.
-                </p>
                 {avatarError && (
                   <p className="mt-2 text-xs font-medium text-danger">{avatarError}</p>
                 )}
@@ -208,16 +587,124 @@ export default function ComptePage() {
                   >
                     Annuler
                   </Button>
-                  <Button
-                    onClick={handleSaveAvatar}
-                    disabled={savingAvatar}
-                    className="flex-1 text-sm"
-                  >
+                  <Button onClick={handleSaveAvatar} disabled={savingAvatar} className="flex-1 text-sm">
                     {savingAvatar ? "Sauvegarde…" : "Sauvegarder"}
                   </Button>
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Bio */}
+          <div className="rounded-2xl border border-line bg-card p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-serif text-[15px] font-medium text-ink">Bio</h3>
+              {!editingBio && (
+                <button
+                  onClick={() => { setEditingBio(true); setBioDraft(bio ?? ""); }}
+                  className="text-xs font-medium text-violet-deep"
+                >
+                  {bio ? "Modifier" : "Ajouter"}
+                </button>
+              )}
+            </div>
+            {editingBio ? (
+              <div className="mt-3 flex flex-col gap-2">
+                <textarea
+                  value={bioDraft}
+                  onChange={(e) => setBioDraft(e.target.value)}
+                  rows={3}
+                  maxLength={280}
+                  placeholder="Décris ton rapport aux livres, tes genres favoris…"
+                  className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
+                  autoFocus
+                />
+                <p className="text-right text-[10px] text-muted">{bioDraft.length}/280</p>
+                <div className="flex gap-2">
+                  <Button variant="ghost" onClick={() => setEditingBio(false)} className="flex-1 text-sm">
+                    Annuler
+                  </Button>
+                  <Button onClick={handleSaveBio} disabled={savingBio} className="flex-1 text-sm">
+                    {savingBio ? "Sauvegarde…" : "Enregistrer"}
+                  </Button>
+                </div>
+              </div>
+            ) : bio ? (
+              <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">{bio}</p>
+            ) : (
+              <p className="mt-2 text-[13px] text-muted">Pas encore de bio.</p>
+            )}
+          </div>
+
+          {/* Top 4 favoris */}
+          <div className="rounded-2xl border border-line bg-card p-4">
+            <div className="flex items-center justify-between">
+              <h3 className="font-serif text-[15px] font-medium text-ink">Mes 4 favoris</h3>
+              {savingFavorites && (
+                <span className="text-[11px] text-muted">Sauvegarde…</span>
+              )}
+            </div>
+            <p className="mt-0.5 text-[11px] text-muted">
+              Tes livres coup de cœur, visibles sur ton profil public.
+            </p>
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {[0, 1, 2, 3].map((slot) => {
+                const bkId = favoriteIds[slot];
+                const bk = bkId ? favoriteBooks.find((b) => b.id === bkId) : null;
+                return (
+                  <div key={slot} className="flex flex-col items-center gap-1.5">
+                    {bk ? (
+                      <div className="group relative">
+                        <Cover
+                          id={bk.id}
+                          title={bk.title}
+                          coverUrl={bk.cover_url}
+                          className="aspect-[3/4] w-full cursor-pointer rounded-lg"
+                          rounded="rounded-lg"
+                        />
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-lg bg-ink/60 opacity-0 transition-opacity group-hover:opacity-100">
+                          <button
+                            onClick={() => setPickerSlot(slot)}
+                            className="text-[10px] font-semibold text-cream underline"
+                          >
+                            Changer
+                          </button>
+                          <button
+                            onClick={() => handleRemoveFavorite(slot)}
+                            className="text-[10px] font-semibold text-cream/70 underline"
+                          >
+                            Retirer
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setPickerSlot(slot)}
+                        className="flex aspect-[3/4] w-full items-center justify-center rounded-lg border-2 border-dashed border-violet/30 bg-violet-soft text-2xl text-violet/40 transition-colors hover:border-violet/60 hover:text-violet"
+                      >
+                        +
+                      </button>
+                    )}
+                    <span className="max-w-full truncate text-center text-[9.5px] text-muted">
+                      {bk ? bk.title : `Favori ${slot + 1}`}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Import Goodreads */}
+          <div className="rounded-2xl border border-line bg-card p-4">
+            <h3 className="font-serif text-[15px] font-medium text-ink">Import Goodreads</h3>
+            <div className="mt-3">
+              {userId && (
+                <GoodreadsImport
+                  userId={userId}
+                  onDone={() => { setBooksLoaded(false); }}
+                />
+              )}
+            </div>
           </div>
 
           {/* Liens rapides */}
@@ -329,6 +816,20 @@ export default function ComptePage() {
           )}
         </div>
       )}
+
+      {/* Picker favoris */}
+      {pickerSlot !== null && (
+        <FavoriteBookPicker
+          books={books.length > 0 ? books : favoriteBooks}
+          current={favoriteIds}
+          slotIndex={pickerSlot}
+          onSelect={(id) => {
+            handleSelectFavorite(pickerSlot, id);
+            setPickerSlot(null);
+          }}
+          onClose={() => setPickerSlot(null)}
+        />
+      )}
     </div>
   );
 }
@@ -336,6 +837,7 @@ export default function ComptePage() {
 function GridCard({ book }: { book: Book }) {
   const p = pct(book);
   const done = isCompleted(book);
+  const abandoned = book.status === "abandoned";
   const rating = book.rating || 0;
   return (
     <Link
@@ -360,11 +862,13 @@ function GridCard({ book }: { book: Book }) {
         </span>
         {done ? (
           <span className="text-[10.5px] font-semibold text-success">Terminé</span>
+        ) : abandoned ? (
+          <span className="text-[10.5px] font-semibold text-muted">Abandonné</span>
         ) : (
           <span className="text-[10.5px] font-semibold text-violet-deep">{p}%</span>
         )}
       </div>
-      {!done && <ProgressBar value={p / 100} className="h-1" />}
+      {!done && !abandoned && <ProgressBar value={p / 100} className="h-1" />}
     </Link>
   );
 }

@@ -5,7 +5,7 @@ export interface Book {
   author: string;
   pages: number;
   progress: number;
-  status: "reading" | "completed" | string;
+  status: "reading" | "completed" | "abandoned" | string;
   cover_url?: string | null;
   rating?: number | null;
   user_id?: string | null;
@@ -13,6 +13,9 @@ export interface Book {
   published_year?: number | null;
   summary?: string | null;
   notes?: string | null;
+  date_read?: string | null;
+  date_started?: string | null;
+  import_source?: string | null;
 }
 
 export interface ReadingLog {
@@ -23,4 +26,6 @@ export interface ReadingLog {
   pages_read: number;
   end_page: number;
   user_id?: string | null;
+  session_notes?: string | null;
+  session_photo_url?: string | null;
 }

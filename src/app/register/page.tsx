@@ -45,8 +45,7 @@ export default function RegisterPage() {
       return;
     }
 
-    router.push("/");
-    router.refresh();
+    router.push(`/email-sent?email=${encodeURIComponent(email)}`);
   };
 
   return (
