@@ -233,7 +233,7 @@ export default function MembrePage() {
           </h2>
           <div className="grid grid-cols-4 gap-2.5">
             {favoriteBooks.map((b) => (
-              <Link key={b.id} href={`/livre/${b.id}`} className="group flex flex-col items-center gap-1.5">
+              <Link key={b.id} href={`/livre/${b.id}`} className="group flex w-full flex-col items-center gap-1.5">
                 <div className="relative w-full overflow-hidden rounded-xl shadow-sm transition-transform group-hover:scale-105">
                   <Cover
                     id={b.id}

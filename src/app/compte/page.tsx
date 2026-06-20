@@ -955,9 +955,9 @@ export default function ComptePage() {
                 const bkId = favoriteIds[slot];
                 const bk = bkId ? favoriteBooks.find((b) => b.id === bkId) : null;
                 return (
-                  <div key={slot} className="flex flex-col items-center gap-1.5">
+                  <div key={slot} className="flex w-full flex-col items-center gap-1.5">
                     {bk ? (
-                      <div className="group relative">
+                      <div className="group relative w-full">
                         <Cover
                           id={bk.id}
                           title={bk.title}
