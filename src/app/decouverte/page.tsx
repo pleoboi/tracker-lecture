@@ -32,6 +32,30 @@ function dedupeKey(b: Book) {
   return `${b.title.toLowerCase().trim()}__${(b.author || "").toLowerCase().trim()}`;
 }
 
+// Articles à ignorer dans la normalisation des titres (FR + EN)
+const ARTICLES = new Set([
+  "le", "la", "les", "l", "un", "une", "des", "du", "de",
+  "the", "a", "an",
+]);
+
+// Fingerprint insensible à la langue : nom de famille + 4 premiers mots significatifs du titre
+function fuzzyKey(title: string, author: string): string {
+  const surname = (author || "")
+    .toLowerCase()
+    .replace(/,/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .pop() ?? "";
+  const normTitle = title
+    .toLowerCase()
+    .replace(/[''"""«»\-—–:,!?.()[\]]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 1 && !ARTICLES.has(w))
+    .slice(0, 4)
+    .join(" ");
+  return `${surname}_${normTitle}`;
+}
+
 // Traduit les genres français vers des requêtes Google Books plus efficaces
 const GENRE_TO_QUERY: Record<string, string> = {
   "Roman": "literary fiction bestseller",
@@ -156,8 +180,9 @@ export default function DecouvertePage() {
       const topGenre = [...genreCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
       const topAuthor = [...authorCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
 
-      // Exclure UNIQUEMENT les livres déjà dans la bibliothèque de l'utilisateur courant
-      const existingKeys = new Set(myBooks.map((b) => dedupeKey(b)));
+      // Double filtre d'exclusion : exact (même langue) + fuzzy (même livre, autre langue)
+      const existingExact = new Set(myBooks.map((b) => dedupeKey(b)));
+      const existingFuzzy = new Set(myBooks.map((b) => fuzzyKey(b.title, b.author || "")));
 
       // 3-4 requêtes : genre perso + auteur perso + 2 genres de découverte aléatoires
       const queries: string[] = [];
@@ -194,9 +219,15 @@ export default function DecouvertePage() {
           let taken = 0;
           for (const s of r.value) {
             if (taken >= 2) break;
-            const key = `${s.title.toLowerCase().trim()}__${s.author.toLowerCase().trim()}`;
-            if (!seen.has(key) && !existingKeys.has(key) && s.coverUrl) {
-              seen.add(key);
+            const eKey = dedupeKey({ title: s.title, author: s.author } as Book);
+            const fKey = fuzzyKey(s.title, s.author);
+            if (
+              !seen.has(eKey) &&
+              !existingExact.has(eKey) &&
+              !existingFuzzy.has(fKey) &&
+              s.coverUrl
+            ) {
+              seen.add(eKey);
               slots.push(s);
               taken++;
             }
@@ -487,9 +518,13 @@ function RecoDetailModal({
 
         {/* Résumé */}
         <div className="mt-5">
-          <h3 className="mb-1.5 font-serif text-[14px] font-semibold text-ink">Résumé</h3>
+          <h3 className="mb-2 font-serif text-[14px] font-semibold text-ink">Résumé</h3>
           {s.summary ? (
-            <p className="text-[13px] leading-relaxed text-ink-2">{s.summary}</p>
+            <div className="flex flex-col gap-2.5">
+              {s.summary.split(/\n\n+/).map((para, i) => (
+                <p key={i} className="text-[13px] leading-relaxed text-ink-2">{para.trim()}</p>
+              ))}
+            </div>
           ) : (
             <p className="text-[13px] italic text-muted">Aucun résumé disponible pour ce livre.</p>
           )}
@@ -625,8 +660,12 @@ function BookDetailModal({
         {/* Résumé */}
         {b.summary && !editingMeta && (
           <div className="mt-5">
-            <h3 className="mb-1.5 font-serif text-[14px] font-semibold text-ink">Résumé</h3>
-            <p className="text-[13px] leading-relaxed text-ink-2">{b.summary}</p>
+            <h3 className="mb-2 font-serif text-[14px] font-semibold text-ink">Résumé</h3>
+            <div className="flex flex-col gap-2.5">
+              {b.summary.split(/\n\n+/).map((para, i) => (
+                <p key={i} className="text-[13px] leading-relaxed text-ink-2">{para.trim()}</p>
+              ))}
+            </div>
           </div>
         )}
 

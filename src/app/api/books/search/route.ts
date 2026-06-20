@@ -12,6 +12,8 @@ export async function GET(req: Request) {
     q,
     maxResults: "8",
     printType: "books",
+    langRestrict: "fr",
+    hl: "fr",
   });
   if (key) params.set("key", key);
 

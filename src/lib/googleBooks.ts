@@ -50,6 +50,22 @@ function httpsCover(thumbnail: string | undefined): string | null {
   return thumbnail.replace(/^http:/, "https:").replace(/&edge=curl/, "");
 }
 
+function stripHtml(html: string): string {
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<p[^>]*>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 /** Transforme un volume brut de l'API Google Books en suggestion (utilisé côté serveur). */
 export function mapVolume(item: any): BookSuggestion {
   const v = item.volumeInfo || {};
@@ -61,7 +77,7 @@ export function mapVolume(item: any): BookSuggestion {
     genre: frenchGenre(v.categories && v.categories[0]),
     year: yearMatch ? Number(yearMatch[0]) : null,
     coverUrl: httpsCover(v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail)),
-    summary: v.description || null,
+    summary: v.description ? stripHtml(v.description) : null,
   };
 }
 
