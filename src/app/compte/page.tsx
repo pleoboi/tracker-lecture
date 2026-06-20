@@ -431,14 +431,67 @@ function FavoriteBookPicker({
 }
 
 // ── Enrichissement bibliothèque ─────────────────────────────────────────────
+// Tente d'abord via la route admin (tous les livres du club, service role key).
+// Fallback sur les propres livres de l'utilisateur si la clé n'est pas configurée.
 
 function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void }) {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [mode, setMode] = useState<"club" | "own" | null>(null);
   const [result, setResult] = useState<{ updated: number; noMatch: number } | null>(null);
+  const [serviceKeyMissing, setServiceKeyMissing] = useState(false);
 
-  const handleEnrich = async () => {
+  // ── Enrichissement via route admin (tous les livres) ──────────────────────
+  const handleEnrichAll = async () => {
     setRunning(true);
+    setMode("club");
+    setResult(null);
+    setServiceKeyMissing(false);
+
+    let offset = 0;
+    let totalUpdated = 0;
+    let totalNoMatch = 0;
+    const LIMIT = 5;
+
+    while (true) {
+      let res: Response;
+      try {
+        res = await fetch("/api/admin/enrich-all", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ offset, limit: LIMIT }),
+        });
+      } catch {
+        break;
+      }
+
+      if (res.status === 503) {
+        setServiceKeyMissing(true);
+        setRunning(false);
+        setMode(null);
+        return;
+      }
+
+      if (!res.ok) break;
+
+      const data = await res.json();
+      offset = data.offset;
+      totalUpdated += data.updated ?? 0;
+      totalNoMatch += data.noMatch ?? 0;
+      setProgress({ done: offset, total: data.total });
+
+      if (data.done) break;
+    }
+
+    setRunning(false);
+    setResult({ updated: totalUpdated, noMatch: totalNoMatch });
+    onDone();
+  };
+
+  // ── Fallback : seulement les livres de l'utilisateur (sans service key) ──
+  const handleEnrichOwn = async () => {
+    setRunning(true);
+    setMode("own");
     setResult(null);
 
     const { data: rawBooks } = await supabase
@@ -450,12 +503,6 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
     const toEnrich = (rawBooks as Pick<Book, "id" | "title" | "author">[]) || [];
     setProgress({ done: 0, total: toEnrich.length });
 
-    if (toEnrich.length === 0) {
-      setRunning(false);
-      setResult({ updated: 0, noMatch: 0 });
-      return;
-    }
-
     let updated = 0;
     let noMatch = 0;
 
@@ -463,12 +510,11 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
       const book = toEnrich[i];
       try {
         const q = `${book.title} ${book.author || ""}`.trim();
-        const res = await fetch(`/api/books/search?q=${encodeURIComponent(q)}`);
-        if (res.ok) {
-          const data = await res.json();
-          const results = data.results || [];
-          if (results.length > 0) {
-            const best = results[0];
+        const apiRes = await fetch(`/api/books/search?q=${encodeURIComponent(q)}`);
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          const best = (apiData.results || [])[0];
+          if (best) {
             await supabase.from("books").update({
               cover_url: best.coverUrl ?? null,
               ...(best.summary ? { summary: best.summary } : {}),
@@ -486,9 +532,7 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
         noMatch++;
       }
       setProgress({ done: i + 1, total: toEnrich.length });
-      if (i < toEnrich.length - 1) {
-        await new Promise((r) => setTimeout(r, 300));
-      }
+      if (i < toEnrich.length - 1) await new Promise((r) => setTimeout(r, 300));
     }
 
     setRunning(false);
@@ -497,14 +541,15 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
   };
 
   if (result) {
+    const scope = mode === "club" ? "tous les membres" : "ta bibliothèque";
     return (
       <div className="rounded-2xl border border-[#cfe0cf] bg-[#eaf1ea] px-4 py-3">
         <p className="text-[13px] font-semibold text-success">Enrichissement terminé !</p>
         <p className="mt-0.5 text-[12px] text-ink-2">
-          {result.updated} livre{result.updated > 1 ? "s" : ""} enrichi{result.updated > 1 ? "s" : ""}
+          {result.updated} livre{result.updated > 1 ? "s" : ""} enrichi{result.updated > 1 ? "s" : ""} ({scope})
           {result.noMatch > 0 && ` · ${result.noMatch} sans résultat`}.
         </p>
-        <button onClick={() => setResult(null)} className="mt-1.5 text-[11px] font-medium text-success underline">
+        <button onClick={() => { setResult(null); setMode(null); }} className="mt-1.5 text-[11px] font-medium text-success underline">
           Relancer
         </button>
       </div>
@@ -514,6 +559,9 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
   if (running) {
     return (
       <div className="flex flex-col gap-2">
+        <p className="text-[11px] font-medium text-violet-deep">
+          {mode === "club" ? "🌐 Enrichissement pour tout le club…" : "🖼️ Enrichissement de ta bibliothèque…"}
+        </p>
         <div className="h-2 w-full overflow-hidden rounded-full bg-[#e6decc]">
           <div
             className="h-full rounded-full bg-violet transition-all duration-300"
@@ -521,16 +569,42 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
           />
         </div>
         <p className="text-center text-[11px] text-muted">
-          {progress.done} / {progress.total} — récupération couvertures…
+          {progress.done} / {progress.total}
         </p>
       </div>
     );
   }
 
+  if (serviceKeyMissing) {
+    return (
+      <div className="flex flex-col gap-3">
+        <div className="rounded-xl border border-[#e7c7bd] bg-[#f6e7e1] px-3 py-2.5 text-[12px] text-danger">
+          <p className="font-semibold">Service Role Key manquante</p>
+          <p className="mt-0.5 text-[11px]">
+            Pour enrichir tous les livres du club, ajoute{" "}
+            <code className="rounded bg-[#f0d9d4] px-1 font-mono text-[11px]">SUPABASE_SERVICE_ROLE_KEY</code>{" "}
+            dans <strong>.env.local</strong> et dans les variables Vercel (Dashboard → Settings → Environment Variables).
+          </p>
+          <p className="mt-1 text-[11px]">
+            Récupère-la sur : Supabase Dashboard → Settings → API → service_role
+          </p>
+        </div>
+        <Button variant="ghost" onClick={handleEnrichOwn} className="w-full text-sm">
+          🖼️ Enrichir mes livres uniquement
+        </Button>
+      </div>
+    );
+  }
+
   return (
-    <Button variant="ghost" onClick={handleEnrich} className="w-full text-sm">
-      🖼️ Enrichir mes livres sans couverture
-    </Button>
+    <div className="flex flex-col gap-2">
+      <Button onClick={handleEnrichAll} className="w-full text-sm">
+        🌐 Enrichir tous les livres du club
+      </Button>
+      <Button variant="ghost" onClick={handleEnrichOwn} className="w-full text-sm">
+        🖼️ Enrichir mes livres uniquement
+      </Button>
+    </div>
   );
 }
 
