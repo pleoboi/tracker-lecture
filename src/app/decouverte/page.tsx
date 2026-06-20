@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
+import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
@@ -777,8 +778,12 @@ function BookDetailModal({
               className="flex flex-col gap-1.5 rounded-2xl border border-line bg-card p-3.5"
             >
               <div className="flex items-center gap-2">
-                <AvatarImg url={memberAvatar} name={memberName} className="h-7 w-7 text-xs font-semibold" />
-                <span className="text-[13px] font-semibold text-ink">{memberName}</span>
+                <Link href={`/membre/${book.user_id}`} className="shrink-0">
+                  <AvatarImg url={memberAvatar} name={memberName} className="h-7 w-7 text-xs font-semibold" />
+                </Link>
+                <Link href={`/membre/${book.user_id}`} className="text-[13px] font-semibold text-ink hover:underline">
+                  {memberName}
+                </Link>
                 <span className="ml-auto rounded-md bg-[#f4f0e8] px-2 py-0.5 text-[10.5px] font-medium text-muted">
                   {book.status === "completed" ? "Terminé" : "En cours"}
                 </span>

@@ -40,6 +40,7 @@ interface ActivityLog extends ReadingLog {
   isCompletion?: boolean;
   bookRating?: number | null;
   bookReview?: string | null;
+  eventType?: "start"; // undefined = session normale
 }
 
 interface Champion {
@@ -84,8 +85,9 @@ export default function AccueilPage() {
     setActivityLoading(true);
 
     const todayStr = new Date().toISOString().split("T")[0];
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [{ data: logsData }, { data: profilesData }, { data: todayAllLogs }] = await Promise.all([
+    const [{ data: logsData }, { data: profilesData }, { data: todayAllLogs }, { data: recentBooksData }] = await Promise.all([
       // Tous les membres (y compris l'utilisateur courant)
       supabase
         .from("reading_logs")
@@ -97,6 +99,14 @@ export default function AccueilPage() {
         .from("reading_logs")
         .select("user_id, pages_read")
         .eq("date", todayStr),
+      // Livres récemment commencés (7 derniers jours, statut "en cours")
+      supabase
+        .from("books")
+        .select("id, title, cover_url, author, user_id, created_at")
+        .eq("status", "reading")
+        .gte("created_at", sevenDaysAgo)
+        .order("created_at", { ascending: false })
+        .limit(10),
     ]);
 
     const logs = (logsData as ReadingLog[]) || [];
@@ -122,69 +132,100 @@ export default function AccueilPage() {
       setTodayChampion(null);
     }
 
-    if (logs.length === 0) {
-      setActivity([]);
-      setActivityLoading(false);
-      return;
-    }
-
-    const bookIds = [...new Set(logs.map((l) => l.book_id))];
-    const { data: bookData } = await supabase
-      .from("books")
-      .select("id, title, cover_url, author, status, rating, notes")
-      .in("id", bookIds);
-
-    type BookPreview = Pick<Book, "id" | "title" | "cover_url" | "author"> & {
-      status: string;
-      rating: number | null;
-      notes: string | null;
-    };
-
-    const bookMap = new Map(
-      ((bookData as BookPreview[]) || []).map((b) => [b.id, b])
-    );
-
-    // Clé (user_id_book_id) → created_at du log le plus récent
-    // Permet d'identifier le "log de fin" pour les livres terminés
-    const latestLogKey = new Map<string, string>();
-    logs.forEach((l) => {
-      const key = `${l.user_id}_${l.book_id}`;
-      const ts = l.created_at ?? l.date;
-      if (!latestLogKey.has(key) || ts > latestLogKey.get(key)!) {
-        latestLogKey.set(key, ts);
-      }
-    });
-
     const profileNameMap = new Map(profiles.map((p) => [p.id, p.display_name]));
     const profileAvatarMap = new Map(profiles.map((p) => [p.id, p.avatar_url ?? null]));
 
-    const enriched: ActivityLog[] = logs
-      .map((log) => {
-        const bk = bookMap.get(log.book_id);
-        if (!bk) return null;
-        const key = `${log.user_id}_${log.book_id}`;
-        const isLatest = (log.created_at ?? log.date) === latestLogKey.get(key);
-        const isCompletion = bk.status === "completed" && isLatest;
-        const isMe = log.user_id === userId;
-        return {
-          ...log,
-          memberName: isMe
-            ? displayName || profileNameMap.get(log.user_id ?? "") || "Moi"
-            : (profileNameMap.get(log.user_id ?? "") ?? "Membre"),
-          memberAvatar: profileAvatarMap.get(log.user_id ?? "") ?? null,
-          bookTitle: bk.title,
-          bookCover: bk.cover_url ?? null,
-          bookAuthor: bk.author,
-          bookId: bk.id,
-          isMe,
-          isCompletion,
-          bookRating: isCompletion ? (bk.rating ?? null) : null,
-          bookReview: isCompletion ? (bk.notes ?? null) : null,
-        };
-      })
-      .filter(Boolean) as ActivityLog[];
+    // ── Sessions de lecture ──────────────────────────────────────────────────
+    let enriched: ActivityLog[] = [];
 
-    setActivity(enriched);
+    if (logs.length > 0) {
+      const bookIds = [...new Set(logs.map((l) => l.book_id))];
+      const { data: bookData } = await supabase
+        .from("books")
+        .select("id, title, cover_url, author, status, rating, notes")
+        .in("id", bookIds);
+
+      type BookPreview = Pick<Book, "id" | "title" | "cover_url" | "author"> & {
+        status: string;
+        rating: number | null;
+        notes: string | null;
+      };
+
+      const bookMap = new Map(
+        ((bookData as BookPreview[]) || []).map((b) => [b.id, b])
+      );
+
+      const latestLogKey = new Map<string, string>();
+      logs.forEach((l) => {
+        const key = `${l.user_id}_${l.book_id}`;
+        const ts = l.created_at ?? l.date;
+        if (!latestLogKey.has(key) || ts > latestLogKey.get(key)!) {
+          latestLogKey.set(key, ts);
+        }
+      });
+
+      enriched = logs
+        .map((log) => {
+          const bk = bookMap.get(log.book_id);
+          if (!bk) return null;
+          const key = `${log.user_id}_${log.book_id}`;
+          const isLatest = (log.created_at ?? log.date) === latestLogKey.get(key);
+          const isCompletion = bk.status === "completed" && isLatest;
+          const isMe = log.user_id === userId;
+          return {
+            ...log,
+            memberName: isMe
+              ? displayName || profileNameMap.get(log.user_id ?? "") || "Moi"
+              : (profileNameMap.get(log.user_id ?? "") ?? "Membre"),
+            memberAvatar: profileAvatarMap.get(log.user_id ?? "") ?? null,
+            bookTitle: bk.title,
+            bookCover: bk.cover_url ?? null,
+            bookAuthor: bk.author,
+            bookId: bk.id,
+            isMe,
+            isCompletion,
+            bookRating: isCompletion ? (bk.rating ?? null) : null,
+            bookReview: isCompletion ? (bk.notes ?? null) : null,
+          };
+        })
+        .filter(Boolean) as ActivityLog[];
+    }
+
+    // ── Débuts de lecture (livres commencés sans log encore) ────────────────
+    type RecentBook = { id: number; title: string; cover_url: string | null; author: string; user_id: string; created_at: string };
+    const loggedPairs = new Set(logs.map((l) => `${l.user_id}_${l.book_id}`));
+
+    const startEvents: ActivityLog[] = ((recentBooksData as RecentBook[]) || [])
+      .filter((b) => !loggedPairs.has(`${b.user_id}_${b.id}`))
+      .map((b) => {
+        const isMe = b.user_id === userId;
+        return {
+          id: -(b.id * 100 + 1),
+          user_id: b.user_id,
+          book_id: b.id,
+          pages_read: 0,
+          end_page: 0,
+          date: b.created_at.split("T")[0],
+          created_at: b.created_at,
+          memberName: isMe
+            ? displayName || profileNameMap.get(b.user_id) || "Moi"
+            : (profileNameMap.get(b.user_id) ?? "Membre"),
+          memberAvatar: profileAvatarMap.get(b.user_id) ?? null,
+          bookTitle: b.title,
+          bookCover: b.cover_url ?? null,
+          bookAuthor: b.author,
+          bookId: b.id,
+          isMe,
+          eventType: "start" as const,
+        };
+      });
+
+    // Fusion triée par date décroissante, max 20 événements
+    const allEvents = [...enriched, ...startEvents]
+      .sort((a, b) => (b.created_at ?? b.date ?? "").localeCompare(a.created_at ?? a.date ?? ""))
+      .slice(0, 20);
+
+    setActivity(allEvents);
     setActivityLoading(false);
   }, [userId]);
 
@@ -416,6 +457,8 @@ function ActivityCard({ log, isChampion }: { log: ActivityLog; isChampion?: bool
     ? "border-gold/40 bg-[#fdf7e9]"
     : log.isCompletion
     ? "border-[#cfe0cf] bg-[#eaf1ea]"
+    : log.eventType === "start"
+    ? "border-violet/20 bg-violet-soft"
     : "border-line bg-card";
 
   const accentClass = showBadge
@@ -426,15 +469,27 @@ function ActivityCard({ log, isChampion }: { log: ActivityLog; isChampion?: bool
 
   return (
     <div className={`flex items-start gap-3 rounded-2xl border p-3 transition-colors ${cardClass}`}>
-      <AvatarImg
-        url={log.memberAvatar}
-        name={log.memberName}
-        className={`h-8 w-8 shrink-0 text-xs font-semibold ${showBadge ? "ring-2 ring-gold ring-offset-1" : ""}`}
-      />
+      {log.user_id ? (
+        <Link href={`/membre/${log.user_id}`} className="shrink-0">
+          <AvatarImg
+            url={log.memberAvatar}
+            name={log.memberName}
+            className={`h-8 w-8 text-xs font-semibold ${showBadge ? "ring-2 ring-gold ring-offset-1" : ""}`}
+          />
+        </Link>
+      ) : (
+        <AvatarImg
+          url={log.memberAvatar}
+          name={log.memberName}
+          className={`h-8 w-8 shrink-0 text-xs font-semibold ${showBadge ? "ring-2 ring-gold ring-offset-1" : ""}`}
+        />
+      )}
       <div className="min-w-0 flex-1">
         <p className="text-[13px] font-medium text-ink">
           {subject}{" "}
-          {log.isCompletion ? (
+          {log.eventType === "start" ? (
+            <><span className={`font-semibold ${accentClass}`}>{verb} commencé</span></>
+          ) : log.isCompletion ? (
             <><span className={`font-semibold ${accentClass}`}>{verb} terminé</span></>
           ) : (
             <>{verb} lu{" "}<span className={`font-semibold ${accentClass}`}>+{log.pages_read} p.</span></>
@@ -471,6 +526,11 @@ function ActivityCard({ log, isChampion }: { log: ActivityLog; isChampion?: bool
         {log.isCompletion && !showBadge && (
           <span className="rounded-full bg-[#d4edda] px-2 py-0.5 text-[9.5px] font-bold text-success">
             ✓ Terminé
+          </span>
+        )}
+        {log.eventType === "start" && (
+          <span className="rounded-full bg-violet/10 px-2 py-0.5 text-[9.5px] font-bold text-violet-deep">
+            ▶ Début
           </span>
         )}
         <Cover
