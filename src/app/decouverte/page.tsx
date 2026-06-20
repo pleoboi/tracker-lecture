@@ -5,7 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
 import { Cover, AvatarImg } from "../../components/ui";
-import AddToLibraryModal from "../../components/AddToLibraryModal";
+import AddToLibraryModal, { type BookRef } from "../../components/AddToLibraryModal";
 import { searchBooks, type BookSuggestion } from "../../lib/googleBooks";
 
 interface Profile {
@@ -32,6 +32,61 @@ function dedupeKey(b: Book) {
   return `${b.title.toLowerCase().trim()}__${(b.author || "").toLowerCase().trim()}`;
 }
 
+// Traduit les genres français vers des requêtes Google Books plus efficaces
+const GENRE_TO_QUERY: Record<string, string> = {
+  "Roman": "literary fiction bestseller",
+  "Thriller": "thriller suspense crime",
+  "Policier": "detective mystery crime",
+  "Science-Fiction": "science fiction",
+  "Fantasy": "fantasy magic",
+  "Biographie": "biography autobiography",
+  "Témoignage": "memoir true story",
+  "Histoire": "history historical",
+  "Essai": "essays nonfiction",
+  "Poésie": "poetry",
+  "BD / Roman graphique": "graphic novel comics",
+  "Manga": "manga japanese",
+  "Développement personnel": "self-help personal development",
+  "Science": "popular science",
+  "Psychologie": "psychology",
+  "Philosophie": "philosophy",
+  "Aventure": "adventure",
+  "Romance": "romance",
+  "Humour": "humor comedy satire",
+  "Jeunesse": "young adult fiction",
+  "Économie": "economics business",
+  "Sciences humaines": "sociology anthropology",
+  "Sciences politiques": "political history",
+};
+
+// Pool de découverte — genres variés pour diversifier les suggestions
+const DISCOVERY_POOL = [
+  "literary fiction contemporary",
+  "thriller psychological suspense",
+  "mystery detective crime",
+  "science fiction space",
+  "fantasy epic adventure",
+  "historical fiction",
+  "biography memoir inspiring",
+  "popular science discovery",
+  "psychology human behavior",
+  "philosophy ethics",
+  "graphic novel award",
+  "romance contemporary",
+  "poetry modern",
+  "travel adventure memoir",
+  "economics inequality",
+  "political history",
+  "horror supernatural",
+  "magical realism",
+  "young adult coming of age",
+  "humor satire",
+  "essays cultural",
+  "spy thriller",
+  "dystopian fiction",
+  "true crime",
+];
+
 function StarRow({ rating, count }: { rating: number; count: number }) {
   return (
     <div className="flex items-center gap-1.5">
@@ -55,6 +110,8 @@ export default function DecouvertePage() {
 
   // Recommandations personnalisées
   const [recommendations, setRecommendations] = useState<BookSuggestion[]>([]);
+  const [selectedReco, setSelectedReco] = useState<BookSuggestion | null>(null);
+  const [addFromReco, setAddFromReco] = useState<{ ref: BookRef; googleId: string } | null>(null);
   const recoLoadedRef = useRef(false);
 
   useEffect(() => {
@@ -82,15 +139,14 @@ export default function DecouvertePage() {
     if (!user?.id || allBooks.length === 0 || recoLoadedRef.current) return;
     recoLoadedRef.current = true;
 
+    // Seulement les livres de l'utilisateur connecté
     const myBooks = allBooks.filter((b) => b.user_id === user.id);
     if (myBooks.length === 0) return;
 
     const loadReco = async () => {
-      // Livres bien notés (≥ 4★) ; sinon les 8 derniers ajoutés
       const source = myBooks.filter((b) => (b.rating || 0) >= 4);
       const pool = source.length > 0 ? source : myBooks.slice(0, 8);
 
-      // Genres et auteurs les plus fréquents
       const genreCount = new Map<string, number>();
       const authorCount = new Map<string, number>();
       pool.forEach((b) => {
@@ -100,32 +156,54 @@ export default function DecouvertePage() {
       const topGenre = [...genreCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
       const topAuthor = [...authorCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
 
-      // Clés de dédup pour exclure les livres déjà dans la bibliothèque
-      const existingKeys = new Set(allBooks.map((b) => dedupeKey(b)));
+      // Exclure UNIQUEMENT les livres déjà dans la bibliothèque de l'utilisateur courant
+      const existingKeys = new Set(myBooks.map((b) => dedupeKey(b)));
 
-      // Requêtes Google Books en parallèle
+      // 3-4 requêtes : genre perso + auteur perso + 2 genres de découverte aléatoires
       const queries: string[] = [];
-      if (topGenre) queries.push(topGenre);
-      if (topAuthor) queries.push(`inauthor:"${topAuthor}"`);
+
+      if (topGenre) queries.push(GENRE_TO_QUERY[topGenre] || topGenre);
+
+      if (topAuthor) {
+        const lastName = topAuthor.split(" ").pop() || topAuthor;
+        queries.push(`inauthor:"${lastName}"`);
+      }
+
+      // Genres de découverte — rotation aléatoire, hors des goûts connus
+      const knownQueries = new Set(
+        [...genreCount.keys()].map((g) => (GENRE_TO_QUERY[g] || g).toLowerCase())
+      );
+      const freshPool = DISCOVERY_POOL.filter((q) => !knownQueries.has(q.toLowerCase()));
+      if (freshPool.length > 0) {
+        const i1 = Math.floor(Math.random() * freshPool.length);
+        queries.push(freshPool[i1]);
+        const i2 = (i1 + Math.floor(freshPool.length / 2)) % freshPool.length;
+        if (i2 !== i1) queries.push(freshPool[i2]);
+      }
+
       if (queries.length === 0) return;
 
       try {
         const results = await Promise.allSettled(queries.map((q) => searchBooks(q)));
         const seen = new Set<string>();
-        const suggestions: BookSuggestion[] = [];
+        const slots: BookSuggestion[] = [];
 
+        // Max 2 résultats par requête pour diversifier les sources
         results.forEach((r) => {
           if (r.status !== "fulfilled") return;
-          r.value.forEach((s) => {
+          let taken = 0;
+          for (const s of r.value) {
+            if (taken >= 2) break;
             const key = `${s.title.toLowerCase().trim()}__${s.author.toLowerCase().trim()}`;
             if (!seen.has(key) && !existingKeys.has(key) && s.coverUrl) {
               seen.add(key);
-              suggestions.push(s);
+              slots.push(s);
+              taken++;
             }
-          });
+          }
         });
 
-        setRecommendations(suggestions.slice(0, 4));
+        setRecommendations(slots.slice(0, 4));
       } catch {
         // Silencieux : l'absence de recommandations n'est pas bloquante
       }
@@ -133,28 +211,6 @@ export default function DecouvertePage() {
 
     loadReco();
   }, [allBooks, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Ajout rapide d'une recommandation (status: to_read)
-  const quickAddReco = async (s: BookSuggestion) => {
-    if (!user?.id) return;
-    const { error } = await supabase.from("books").insert({
-      user_id: user.id,
-      title: s.title,
-      author: s.author,
-      cover_url: s.coverUrl,
-      genre: s.genre,
-      published_year: s.year,
-      summary: s.summary,
-      status: "to_read",
-      pages: 0,
-      progress: 0,
-    });
-    if (!error) {
-      setRecommendations((prev) => prev.filter((r) => r.googleId !== s.googleId));
-      setToast(`"${s.title}" ajouté à la liste !`);
-      setTimeout(() => setToast(null), 3000);
-    }
-  };
 
   const groups = useMemo<UniqueBook[]>(() => {
     const map = new Map<string, UniqueBook>();
@@ -218,9 +274,10 @@ export default function DecouvertePage() {
           </div>
           <div className="flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
             {recommendations.map((s) => (
-              <div
+              <button
                 key={s.googleId}
-                className="flex w-36 shrink-0 flex-col gap-2 rounded-2xl border border-violet/20 bg-violet-soft p-3"
+                onClick={() => setSelectedReco(s)}
+                className="flex w-36 shrink-0 flex-col gap-2 rounded-2xl border border-violet/20 bg-violet-soft p-3 text-left transition-colors hover:border-violet/50"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -239,13 +296,10 @@ export default function DecouvertePage() {
                     </span>
                   )}
                 </div>
-                <button
-                  onClick={() => quickAddReco(s)}
-                  className="w-full rounded-xl bg-violet py-1.5 text-[11px] font-semibold text-cream"
-                >
-                  + Ajouter
-                </button>
-              </div>
+                <span className="w-full rounded-xl bg-violet py-1.5 text-center text-[11px] font-semibold text-cream">
+                  Voir + Ajouter
+                </span>
+              </button>
             ))}
           </div>
         </section>
@@ -309,7 +363,7 @@ export default function DecouvertePage() {
         </div>
       )}
 
-      {/* Modal détail */}
+      {/* Modal détail livre du club */}
       {selected && (
         <BookDetailModal
           group={selected}
@@ -321,6 +375,18 @@ export default function DecouvertePage() {
         />
       )}
 
+      {/* Modal détail recommandation */}
+      {selectedReco && (
+        <RecoDetailModal
+          suggestion={selectedReco}
+          onClose={() => setSelectedReco(null)}
+          onAddToLibrary={(ref) => {
+            setAddFromReco({ ref, googleId: selectedReco.googleId });
+            setSelectedReco(null);
+          }}
+        />
+      )}
+
       {/* Toast succès */}
       {toast && (
         <div className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-cream shadow-xl">
@@ -328,16 +394,130 @@ export default function DecouvertePage() {
         </div>
       )}
 
+      {/* AddToLibraryModal pour les livres du club */}
       <AddToLibraryModal
         open={addTarget !== null}
         onClose={() => setAddTarget(null)}
         book={addTarget}
         onAdded={(msg) => { setToast(msg); setTimeout(() => setToast(null), 3500); }}
       />
+
+      {/* AddToLibraryModal pour les recommandations */}
+      <AddToLibraryModal
+        open={addFromReco !== null}
+        onClose={() => setAddFromReco(null)}
+        book={addFromReco?.ref ?? null}
+        onAdded={(msg) => {
+          setRecommendations((prev) => prev.filter((r) => r.googleId !== addFromReco?.googleId));
+          setAddFromReco(null);
+          setToast(msg);
+          setTimeout(() => setToast(null), 3500);
+        }}
+      />
     </div>
   );
 }
 
+// ─── Modale détail d'une recommandation Google Books ───────────────────────
+function RecoDetailModal({
+  suggestion: s,
+  onClose,
+  onAddToLibrary,
+}: {
+  suggestion: BookSuggestion;
+  onClose: () => void;
+  onAddToLibrary: (ref: BookRef) => void;
+}) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = "";
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 backdrop-blur-sm sm:items-center"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[92dvh] w-full max-w-lg flex-col overflow-y-auto rounded-t-3xl bg-paper p-5 shadow-2xl sm:rounded-3xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* En-tête */}
+        <div className="flex items-start gap-4">
+          {s.coverUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={s.coverUrl}
+              alt={s.title}
+              className="h-[136px] w-[92px] shrink-0 rounded-xl object-cover shadow-md"
+            />
+          ) : (
+            <div className="flex h-[136px] w-[92px] shrink-0 items-center justify-center rounded-xl bg-violet/15 text-4xl">
+              📚
+            </div>
+          )}
+          <div className="min-w-0 flex-1">
+            <h2 className="font-serif text-xl font-black leading-snug text-ink">{s.title}</h2>
+            <p className="mt-0.5 text-sm text-ink-2">{s.author}</p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {s.genre && (
+                <span className="rounded-md bg-violet-soft px-2 py-0.5 text-[11px] font-medium text-violet-deep">
+                  {s.genre}
+                </span>
+              )}
+              {s.year && (
+                <span className="rounded-md bg-[#f4f0e8] px-2 py-0.5 text-[11px] font-medium text-muted">
+                  {s.year}
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line text-sm text-muted hover:bg-card"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Résumé */}
+        <div className="mt-5">
+          <h3 className="mb-1.5 font-serif text-[14px] font-semibold text-ink">Résumé</h3>
+          {s.summary ? (
+            <p className="text-[13px] leading-relaxed text-ink-2">{s.summary}</p>
+          ) : (
+            <p className="text-[13px] italic text-muted">Aucun résumé disponible pour ce livre.</p>
+          )}
+        </div>
+
+        {/* CTA */}
+        <button
+          onClick={() =>
+            onAddToLibrary({
+              title: s.title,
+              author: s.author,
+              pages: 0,
+              cover_url: s.coverUrl,
+              genre: s.genre,
+              published_year: s.year,
+              summary: s.summary,
+            })
+          }
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-violet/40 bg-violet-soft py-3 text-sm font-semibold text-violet-deep transition-colors hover:bg-violet hover:text-cream"
+        >
+          + Ajouter à mes lectures
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modale détail d'un livre du club ───────────────────────────────────────
 function BookDetailModal({
   group,
   onClose,
