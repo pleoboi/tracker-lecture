@@ -20,6 +20,8 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "abandonnes", label: "Abandonné" },
   { key: "notes", label: "★ Top notes" },
 ];
+const VALID_FILTERS: Filter[] = ["tous", "encours", "termines", "abandonnes", "notes"];
+const VALID_SORTS: Sort[] = ["ajout", "titre", "auteur", "note"];
 
 // ── CSV Goodreads parser ────────────────────────────────────────────────────
 
@@ -439,6 +441,7 @@ export default function ComptePage() {
   const [filter, setFilter] = useState<Filter>("tous");
   const [sort, setSort] = useState<Sort>("ajout");
   const [query, setQuery] = useState("");
+  const [urlRestored, setUrlRestored] = useState(false);
 
   const loadProfile = async (uid: string) => {
     const { data } = await supabase
@@ -481,6 +484,41 @@ export default function ComptePage() {
         });
     }
   }, [tab, booksLoaded, userId]);
+
+  // Lit les paramètres URL une seule fois au montage et restaure l'état
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const t = params.get("tab");
+    if (t === "biblio") setTab("biblio");
+    const f = params.get("filter");
+    if (f && VALID_FILTERS.includes(f as Filter)) setFilter(f as Filter);
+    const s = params.get("sort");
+    if (s && VALID_SORTS.includes(s as Sort)) setSort(s as Sort);
+    const q = params.get("q");
+    if (q) setQuery(q);
+    setUrlRestored(true);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Synchronise l'état vers l'URL (sans créer d'entrée dans l'historique)
+  useEffect(() => {
+    if (!urlRestored) return;
+    const params = new URLSearchParams();
+    if (tab === "biblio") params.set("tab", "biblio");
+    if (filter !== "tous") params.set("filter", filter);
+    if (sort !== "ajout") params.set("sort", sort);
+    if (query) params.set("q", query);
+    const qs = params.toString();
+    window.history.replaceState(null, "", `/compte${qs ? `?${qs}` : ""}`);
+  }, [tab, filter, sort, query, urlRestored]);
+
+  // Restaure la position de scroll après chargement des livres
+  useEffect(() => {
+    if (!booksLoaded) return;
+    const saved = sessionStorage.getItem("compte-scroll-y");
+    if (!saved) return;
+    sessionStorage.removeItem("compte-scroll-y");
+    requestAnimationFrame(() => window.scrollTo({ top: Number(saved), behavior: "instant" }));
+  }, [booksLoaded]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -907,6 +945,7 @@ function GridCard({ book }: { book: Book }) {
   return (
     <Link
       href={`/livre/${book.id}`}
+      onClick={() => sessionStorage.setItem("compte-scroll-y", String(window.scrollY))}
       className="flex flex-col gap-2.5 rounded-2xl border border-line bg-card p-2.5 transition-colors hover:border-violet/50"
     >
       <Cover
