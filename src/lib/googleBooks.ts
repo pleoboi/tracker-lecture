@@ -66,6 +66,22 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+// Mots très fréquents en français mais rares en anglais/néerlandais/etc.
+const FR_MARKERS = [
+  " est ", " une ", " dans ", " avec ", " pour ", " mais ", " qui ",
+  " que ", " les ", " des ", " cette ", " sont ", " leur ", " sur ",
+  " par ", " aussi ", " très ", " comme ", " encore ", " tout ",
+];
+
+function isFrench(text: string): boolean {
+  const haystack = " " + text.toLowerCase() + " ";
+  let hits = 0;
+  for (const w of FR_MARKERS) {
+    if (haystack.includes(w) && ++hits >= 4) return true;
+  }
+  return false;
+}
+
 /** Transforme un volume brut de l'API Google Books en suggestion (utilisé côté serveur). */
 export function mapVolume(item: any): BookSuggestion {
   const v = item.volumeInfo || {};
@@ -77,7 +93,11 @@ export function mapVolume(item: any): BookSuggestion {
     genre: frenchGenre(v.categories && v.categories[0]),
     year: yearMatch ? Number(yearMatch[0]) : null,
     coverUrl: httpsCover(v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail)),
-    summary: v.description ? stripHtml(v.description) : null,
+    summary: (() => {
+      if (!v.description) return null;
+      const cleaned = stripHtml(v.description);
+      return isFrench(cleaned) ? cleaned : null;
+    })(),
   };
 }
 

@@ -56,6 +56,29 @@ function fuzzyKey(title: string, author: string): string {
   return `${surname}_${normTitle}`;
 }
 
+// Découpe un résumé en paragraphes lisibles :
+// - si le texte a déjà des sauts de ligne doubles → split naturel
+// - sinon → regroupement de phrases par tranches de ~380 caractères
+function toParas(text: string): string[] {
+  if (/\n\n/.test(text)) {
+    return text.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
+  }
+  // Découpe aux fins de phrases (point, !, ?, …)
+  const sentences = text.split(/(?<=[.!?…])\s+/);
+  const paras: string[] = [];
+  let buf = "";
+  for (const s of sentences) {
+    if (buf.length + s.length > 380 && buf.length > 0) {
+      paras.push(buf.trim());
+      buf = s;
+    } else {
+      buf += (buf ? " " : "") + s;
+    }
+  }
+  if (buf.trim()) paras.push(buf.trim());
+  return paras.length > 0 ? paras : [text];
+}
+
 // Traduit les genres français vers des requêtes Google Books plus efficaces
 const GENRE_TO_QUERY: Record<string, string> = {
   "Roman": "literary fiction bestseller",
@@ -521,7 +544,7 @@ function RecoDetailModal({
           <h3 className="mb-2 font-serif text-[14px] font-semibold text-ink">Résumé</h3>
           {s.summary ? (
             <div className="flex flex-col gap-2.5">
-              {s.summary.split(/\n\n+/).map((para, i) => (
+              {toParas(s.summary).map((para, i) => (
                 <p key={i} className="text-[13px] leading-relaxed text-ink-2">{para.trim()}</p>
               ))}
             </div>
@@ -662,7 +685,7 @@ function BookDetailModal({
           <div className="mt-5">
             <h3 className="mb-2 font-serif text-[14px] font-semibold text-ink">Résumé</h3>
             <div className="flex flex-col gap-2.5">
-              {b.summary.split(/\n\n+/).map((para, i) => (
+              {toParas(b.summary).map((para, i) => (
                 <p key={i} className="text-[13px] leading-relaxed text-ink-2">{para.trim()}</p>
               ))}
             </div>
