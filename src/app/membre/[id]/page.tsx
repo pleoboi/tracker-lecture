@@ -163,8 +163,10 @@ export default function MembrePage() {
     (a, b) => recencyKey(b).localeCompare(recencyKey(a))
   )[0] ?? null;
 
-  // 3 derniers terminés triés par recencyKey DESC (log récent > date Goodreads ancienne)
+  // 3 derniers terminés : exclure les imports sans date_read ET sans log
+  // (livres Goodreads marqués "lus" avec date inconnue → pas d'activité concrète)
   const last3Completed = [...completed]
+    .filter((b) => lastLogByBook.has(b.id) || !!b.date_read)
     .sort((a, b) => recencyKey(b).localeCompare(recencyKey(a)))
     .slice(0, 3);
   const ratedBooks = completed.filter((b) => (b.rating || 0) > 0);
