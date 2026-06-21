@@ -47,7 +47,10 @@ function frenchGenre(category: string | undefined): string | null {
 
 function httpsCover(thumbnail: string | undefined): string | null {
   if (!thumbnail) return null;
-  return thumbnail.replace(/^http:/, "https:").replace(/&edge=curl/, "");
+  return thumbnail
+    .replace(/^http:/, "https:")
+    .replace(/&edge=curl/, "")
+    .replace(/&zoom=\d+/, "&zoom=0");
 }
 
 function stripHtml(html: string): string {
@@ -92,7 +95,15 @@ export function mapVolume(item: any): BookSuggestion {
     author: (v.authors && v.authors.join(", ")) || "Auteur inconnu",
     genre: frenchGenre(v.categories && v.categories[0]),
     year: yearMatch ? Number(yearMatch[0]) : null,
-    coverUrl: httpsCover(v.imageLinks && (v.imageLinks.thumbnail || v.imageLinks.smallThumbnail)),
+    coverUrl: httpsCover(
+      v.imageLinks && (
+        v.imageLinks.extraLarge ||
+        v.imageLinks.large ||
+        v.imageLinks.medium ||
+        v.imageLinks.thumbnail ||
+        v.imageLinks.smallThumbnail
+      )
+    ),
     summary: (() => {
       if (!v.description) return null;
       const cleaned = stripHtml(v.description);

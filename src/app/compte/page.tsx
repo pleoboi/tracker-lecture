@@ -810,6 +810,12 @@ export default function ComptePage() {
     if (sort === "titre") return a.title.localeCompare(b.title);
     if (sort === "auteur") return a.author.localeCompare(b.author);
     if (sort === "note") return (b.rating || 0) - (a.rating || 0);
+    // Pour les terminés, trier par date de fin de lecture plutôt que date d'ajout
+    if (sort === "ajout" && filter === "termines") {
+      const da = a.date_read || a.created_at || "";
+      const db = b.date_read || b.created_at || "";
+      return db.localeCompare(da);
+    }
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 

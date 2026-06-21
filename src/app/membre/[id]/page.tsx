@@ -284,7 +284,7 @@ export default function MembrePage() {
             {reading.map((b) => (
               <div
                 key={b.id}
-                className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3"
+                className="flex min-h-[96px] items-center gap-3.5 rounded-2xl border border-line bg-card p-3.5"
               >
                 <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[78px] w-[54px] shrink-0" rounded="rounded-md" />
                 <div className="min-w-0 flex-1">
@@ -322,10 +322,10 @@ export default function MembrePage() {
               .map((b) => (
                 <div
                   key={b.id}
-                  className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3"
+                  className="flex min-h-[96px] items-center gap-3.5 rounded-2xl border border-line bg-card p-3.5"
                 >
                   <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[78px] w-[54px] shrink-0" rounded="rounded-md" />
-                  <div className="min-w-0 flex-1 pt-0.5">
+                  <div className="min-w-0 flex-1">
                     <p className="truncate font-serif text-[14px] font-medium text-ink">{b.title}</p>
                     <p className="truncate text-[11px] text-muted">{b.author}</p>
                     {(b.rating || 0) > 0 && (
@@ -364,10 +364,10 @@ export default function MembrePage() {
             {abandoned.map((b) => (
               <div
                 key={b.id}
-                className="flex items-start gap-3 rounded-2xl border border-[#e7c7bd] bg-[#fdf3f1] p-3 opacity-80"
+                className="flex min-h-[96px] items-center gap-3.5 rounded-2xl border border-[#e7c7bd] bg-[#fdf3f1] p-3.5 opacity-80"
               >
                 <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[78px] w-[54px] shrink-0 grayscale" rounded="rounded-md" />
-                <div className="min-w-0 flex-1 pt-0.5">
+                <div className="min-w-0 flex-1">
                   <p className="truncate font-serif text-[14px] font-medium text-ink">{b.title}</p>
                   <p className="truncate text-[11px] text-muted">{b.author}</p>
                   <span className="mt-1.5 inline-block rounded-md bg-[#f6e7e1] px-2 py-0.5 text-[10.5px] font-medium text-danger">

@@ -519,7 +519,12 @@ function ActivityCard({ log, isChampion }: { log: ActivityLog; isChampion?: bool
             <>{verb} lu{" "}<span className={`font-semibold ${accentClass}`}>+{log.pages_read} p.</span></>
           )}
         </p>
-        <p className="truncate text-[11px] text-muted">{log.bookTitle}</p>
+        <Link
+          href={`/livre/${log.book_id}`}
+          className="block truncate text-[11px] font-medium text-muted hover:text-violet-deep hover:underline"
+        >
+          {log.bookTitle}
+        </Link>
         {log.isCompletion && (log.bookRating ?? 0) > 0 && (
           <p className="mt-1 text-xs text-[#c9a227]">
             {"★".repeat(Math.round(log.bookRating!))}

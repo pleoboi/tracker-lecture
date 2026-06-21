@@ -70,6 +70,28 @@ body {
   animation: fadeIn 0.3s ease-out;
 }
 
+@keyframes confettiFall {
+  0%   { transform: translateY(-30px) rotate(0deg) scale(1); opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateY(110vh) rotate(720deg) scale(0.6); opacity: 0; }
+}
+
+.confetti-piece {
+  animation-name: confettiFall;
+  animation-timing-function: linear;
+  animation-fill-mode: forwards;
+  position: absolute;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(100%); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.animate-slideUp {
+  animation: slideUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 /* Scrollbar discrète */
 * {
   scrollbar-width: thin;

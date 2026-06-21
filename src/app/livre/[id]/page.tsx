@@ -2,13 +2,57 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth-context";
 import type { Book, ReadingLog } from "../../../lib/types";
 import { pct, isCompleted, isAbandoned, readingStats, formatDate, formatDateLong } from "../../../lib/books";
-import { Cover, ProgressBar, Pill, Button } from "../../../components/ui";
+import { Cover, ProgressBar, Pill, Button, AvatarImg } from "../../../components/ui";
 import LogReadingModal from "../../../components/LogReadingModal";
 
+const GENRES = [
+  "Roman", "Thriller", "Policier", "Fantasy", "Science-Fiction",
+  "Histoire", "Biographie", "Jeunesse", "BD / Roman graphique",
+  "Développement personnel", "Philosophie", "Poésie",
+  "Économie", "Science", "Sciences humaines",
+];
+
+interface MemberEntry {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  rating: number | null;
+  review: string | null;
+  status: string;
+}
+
+/* ── Confetti ──────────────────────────────────────────────────────── */
+const CONFETTI_COLORS = ["#8b79be", "#d7a33f", "#5e8c61", "#c0563f", "#6e7a5a", "#6f5da6", "#9b5c8f"];
+
+function Confetti() {
+  return (
+    <div className="pointer-events-none fixed inset-0 z-[100] overflow-hidden">
+      {Array.from({ length: 48 }).map((_, i) => (
+        <div
+          key={i}
+          className="confetti-piece"
+          style={{
+            left: `${(i * 6.37 + (i % 3) * 11) % 100}%`,
+            top: "-24px",
+            width: `${6 + (i % 6) * 2}px`,
+            height: `${6 + (i % 6) * 2}px`,
+            borderRadius: i % 3 === 0 ? "50%" : i % 3 === 1 ? "2px" : "0",
+            background: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+            animationDuration: `${2.2 + (i % 5) * 0.4}s`,
+            animationDelay: `${(i * 0.07) % 1.6}s`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ── Page principale ───────────────────────────────────────────────── */
 export default function BookDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -24,6 +68,18 @@ export default function BookDetailPage() {
   const [notesDraft, setNotesDraft] = useState("");
   const [editingInfo, setEditingInfo] = useState(false);
   const [infoDraft, setInfoDraft] = useState({ title: "", author: "", year: "", summary: "", coverUrl: "" });
+
+  // Social
+  const [memberActivity, setMemberActivity] = useState<MemberEntry[]>([]);
+  const [selectedMember, setSelectedMember] = useState<MemberEntry | null>(null);
+
+  // Confetti + genre picker
+  const [showConfetti, setShowConfetti] = useState(false);
+  const [showGenrePicker, setShowGenrePicker] = useState(false);
+  const [savingGenre, setSavingGenre] = useState(false);
+
+  // Mark as read (no date)
+  const [markingRead, setMarkingRead] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -50,6 +106,40 @@ export default function BookDetailPage() {
         coverUrl: loaded.cover_url || "",
       });
     }
+
+    // Fetch other members who have this book (by title match)
+    if (loaded) {
+      const { data: otherBooks } = await supabase
+        .from("books")
+        .select("user_id, rating, notes, status")
+        .ilike("title", `%${loaded.title.replace(/[%_]/g, "\\$&")}%`)
+        .neq("user_id", userId);
+
+      if (otherBooks?.length) {
+        const uids = [...new Set((otherBooks as any[]).map((ob) => ob.user_id))] as string[];
+        const { data: profiles } = await supabase
+          .from("user_profiles")
+          .select("id, display_name, avatar_url")
+          .in("id", uids);
+
+        setMemberActivity(
+          (otherBooks as any[])
+            .filter((ob) => ob.status !== "abandoned")
+            .map((ob) => {
+              const p = (profiles as any[])?.find((x) => x.id === ob.user_id);
+              return {
+                userId: ob.user_id,
+                displayName: p?.display_name || "Membre",
+                avatarUrl: p?.avatar_url || null,
+                rating: ob.rating || null,
+                review: ob.notes || null,
+                status: ob.status,
+              };
+            })
+        );
+      }
+    }
+
     setLoading(false);
   }, [id, userId]);
 
@@ -105,6 +195,49 @@ export default function BookDetailPage() {
     router.push("/bibliotheque");
   };
 
+  // Marquer comme lu sans date (ne comptabilise pas dans les graphiques annuels)
+  const markAsReadNoDate = async () => {
+    if (!book || markingRead) return;
+    setMarkingRead(true);
+    await supabase
+      .from("books")
+      .update({ status: "completed", progress: book.pages, date_read: null })
+      .eq("id", book.id);
+    const updated = { ...book, status: "completed", progress: book.pages, date_read: null };
+    setBook(updated);
+    setMarkingRead(false);
+    setShowConfetti(true);
+    setTimeout(() => setShowConfetti(false), 3800);
+    if (!book.genre) setShowGenrePicker(true);
+  };
+
+  const saveGenre = async (genre: string) => {
+    if (!book || savingGenre) return;
+    setSavingGenre(true);
+    await supabase.from("books").update({ genre }).eq("id", book.id);
+    setBook({ ...book, genre });
+    setSavingGenre(false);
+    setShowGenrePicker(false);
+  };
+
+  // Groupement des logs par jour
+  const groupedLogs = (() => {
+    const map = new Map<string, ReadingLog>();
+    [...logs].reverse().forEach((log) => {
+      const key = log.date;
+      if (!map.has(key)) {
+        map.set(key, { ...log });
+      } else {
+        const existing = map.get(key)!;
+        existing.pages_read += log.pages_read;
+        existing.end_page = Math.max(existing.end_page, log.end_page);
+        if (!existing.session_notes && log.session_notes) existing.session_notes = log.session_notes;
+        if (!existing.session_photo_url && log.session_photo_url) existing.session_photo_url = log.session_photo_url;
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+  })();
+
   if (loading) {
     return (
       <div className="py-24 text-center text-xs font-medium uppercase tracking-wider text-muted">
@@ -131,6 +264,8 @@ export default function BookDetailPage() {
 
   return (
     <div className="animate-fadeIn -mx-5 md:-mx-10">
+      {showConfetti && <Confetti />}
+
       {/* En-tête */}
       <div className="flex flex-col items-center gap-4 bg-violet-soft px-5 pb-7 pt-4 md:rounded-3xl md:px-10">
         <div className="flex w-full items-center justify-between">
@@ -143,12 +278,21 @@ export default function BookDetailPage() {
           </button>
           <div className="flex items-center gap-2">
             {!done && !abandoned && (
-              <button
-                onClick={abandon}
-                className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-muted"
-              >
-                Abandonner
-              </button>
+              <>
+                <button
+                  onClick={markAsReadNoDate}
+                  disabled={markingRead}
+                  className="flex h-9 items-center justify-center rounded-xl border border-[#cfe0cf] bg-[#eaf1ea] px-3 text-xs font-semibold text-success"
+                >
+                  {markingRead ? "…" : "✓ Lu"}
+                </button>
+                <button
+                  onClick={abandon}
+                  className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-muted"
+                >
+                  Abandonner
+                </button>
+              </>
             )}
             {abandoned && (
               <span className="rounded-xl border border-[#e7c7bd] bg-[#f6e7e1] px-3 py-1.5 text-xs font-semibold text-danger">
@@ -287,6 +431,41 @@ export default function BookDetailPage() {
           </p>
         </div>
 
+        {/* Activité des membres (style Letterboxd) */}
+        {memberActivity.length > 0 && (
+          <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
+            <h2 className="font-serif text-[15px] font-medium text-ink">
+              Activité des membres{" "}
+              <span className="font-sans text-xs font-normal text-muted">({memberActivity.length})</span>
+            </h2>
+            <div className="flex flex-wrap gap-4">
+              {memberActivity.map((m) => (
+                <button
+                  key={m.userId}
+                  onClick={() => setSelectedMember(m)}
+                  className="flex flex-col items-center gap-1.5"
+                >
+                  <AvatarImg
+                    url={m.avatarUrl}
+                    name={m.displayName}
+                    className={`h-11 w-11 text-xs font-semibold ring-2 ring-offset-1 ${
+                      m.status === "completed" ? "ring-success/60" : "ring-violet/40"
+                    }`}
+                  />
+                  <span className="max-w-[56px] truncate text-[10px] font-medium text-muted">
+                    {m.displayName.split(" ")[0]}
+                  </span>
+                  {(m.rating ?? 0) > 0 && (
+                    <span className="text-[10px] font-semibold text-gold">
+                      {"★".repeat(Math.round(m.rating!))}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Résumé */}
         {book.summary && (
           <div className="flex flex-col gap-2">
@@ -336,60 +515,61 @@ export default function BookDetailPage() {
           )}
         </div>
 
-        {/* Mes sessions de lecture */}
-        {logs.length > 0 && (
+        {/* Sessions de lecture — groupées par jour */}
+        {groupedLogs.length > 0 && (
           <div className="flex flex-col gap-3">
             <h2 className="font-serif text-[15px] font-medium text-ink">
               Mes sessions{" "}
-              <span className="font-sans text-xs font-normal text-muted">({logs.length})</span>
+              <span className="font-sans text-xs font-normal text-muted">
+                ({logs.length}
+                {groupedLogs.length < logs.length
+                  ? ` · ${groupedLogs.length} jour${groupedLogs.length > 1 ? "s" : ""}`
+                  : ""})
+              </span>
             </h2>
-            {logs.map((log) => (
+            {groupedLogs.map((log) => (
               <div
-                key={log.id}
+                key={log.date}
                 className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3.5"
               >
-                <div className="flex flex-1 items-center gap-3">
-                  <div className="flex flex-col gap-2.5 flex-1">
-                    <p className="text-[12px] font-medium capitalize text-muted">
-                      {formatDateLong(log.date)}
-                    </p>
-                    <div className="flex gap-2">
-                      <div className="flex-1 rounded-xl bg-violet-soft px-3 py-2">
-                        <p className="text-[9px] font-medium uppercase tracking-wide text-violet-deep">
-                          Lu ce jour
-                        </p>
-                        <p className="font-serif text-base font-black text-violet-deep">
-                          +{log.pages_read}
-                        </p>
-                      </div>
-                      <div className="flex-1 rounded-xl bg-[#f4f0e8] px-3 py-2">
-                        <p className="text-[9px] font-medium uppercase tracking-wide text-muted">
-                          Arrêté p.
-                        </p>
-                        <p className="font-serif text-base font-black text-ink">{log.end_page}</p>
-                      </div>
-                    </div>
-                    {log.session_notes && (
-                      <p className="rounded-xl bg-[#f4f0e8] px-3 py-2 font-serif text-[12.5px] italic leading-relaxed text-ink-2">
-                        « {log.session_notes} »
+                <div className="flex flex-1 flex-col gap-2.5">
+                  <p className="text-[12px] font-medium capitalize text-muted">
+                    {formatDateLong(log.date)}
+                  </p>
+                  <div className="flex gap-2">
+                    <div className="flex-1 rounded-xl bg-violet-soft px-3 py-2">
+                      <p className="text-[9px] font-medium uppercase tracking-wide text-violet-deep">
+                        Lu ce jour
                       </p>
-                    )}
-                    {log.session_photo_url && (
-                      <a href={log.session_photo_url} target="_blank" rel="noopener noreferrer">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={log.session_photo_url}
-                          alt="Photo de session"
-                          className="h-36 w-full rounded-xl object-cover"
-                        />
-                      </a>
-                    )}
+                      <p className="font-serif text-base font-black text-violet-deep">+{log.pages_read}</p>
+                    </div>
+                    <div className="flex-1 rounded-xl bg-[#f4f0e8] px-3 py-2">
+                      <p className="text-[9px] font-medium uppercase tracking-wide text-muted">Arrêté p.</p>
+                      <p className="font-serif text-base font-black text-ink">{log.end_page}</p>
+                    </div>
                   </div>
+                  {log.session_notes && (
+                    <p className="rounded-xl bg-[#f4f0e8] px-3 py-2 font-serif text-[12.5px] italic leading-relaxed text-ink-2">
+                      « {log.session_notes} »
+                    </p>
+                  )}
+                  {log.session_photo_url && (
+                    <a href={log.session_photo_url} target="_blank" rel="noopener noreferrer">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={log.session_photo_url}
+                        alt="Photo de session"
+                        className="h-36 w-full rounded-xl object-cover"
+                      />
+                    </a>
+                  )}
                 </div>
                 <button
-                  onClick={() => deleteLog(log.id)}
-                  className="ml-1 shrink-0 text-muted hover:text-danger"
-                  aria-label="Supprimer cette session"
+                  onClick={() => {
+                    logs.filter((l) => l.date === log.date).forEach((l) => deleteLog(l.id));
+                  }}
+                  className="ml-1 shrink-0 self-start text-muted hover:text-danger"
+                  aria-label="Supprimer"
                 >
                   ✕
                 </button>
@@ -404,8 +584,93 @@ export default function BookDetailPage() {
         onClose={() => setShowLog(false)}
         books={[book]}
         defaultBookId={book.id}
-        onSaved={() => load()}
+        onSaved={(msg) => {
+          load();
+          if (msg.includes("terminé")) {
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 3800);
+            if (!book.genre) setTimeout(() => setShowGenrePicker(true), 700);
+          }
+        }}
       />
+
+      {/* Modale review d'un membre */}
+      {selectedMember && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 md:items-center"
+          onClick={() => setSelectedMember(null)}
+        >
+          <div
+            className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <Link
+                href={`/membre/${selectedMember.userId}`}
+                onClick={() => setSelectedMember(null)}
+              >
+                <AvatarImg
+                  url={selectedMember.avatarUrl}
+                  name={selectedMember.displayName}
+                  className="h-11 w-11 text-xs font-semibold"
+                />
+              </Link>
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold text-ink">{selectedMember.displayName}</p>
+                <p className="text-[11px] text-muted">
+                  {selectedMember.status === "completed" ? "A terminé ce livre" : "En cours de lecture"}
+                </p>
+              </div>
+              {(selectedMember.rating ?? 0) > 0 && (
+                <div className="text-right">
+                  <p className="text-base text-gold">{"★".repeat(Math.round(selectedMember.rating!))}</p>
+                  <p className="text-xs font-semibold text-ink">
+                    {selectedMember.rating!.toFixed(1).replace(".", ",")} /5
+                  </p>
+                </div>
+              )}
+            </div>
+            {selectedMember.review ? (
+              <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2">
+                « {selectedMember.review} »
+              </p>
+            ) : (
+              <p className="text-sm text-muted">Pas encore de review pour ce livre.</p>
+            )}
+            <Button variant="ghost" onClick={() => setSelectedMember(null)} className="w-full py-2.5">
+              Fermer
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Sélecteur de genre post-complétion */}
+      {showGenrePicker && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 md:items-center">
+          <div className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4">
+            <div className="text-center">
+              <p className="text-3xl">📚</p>
+              <h3 className="mt-2 font-serif text-lg font-bold text-ink">Quel genre ?</h3>
+              <p className="mt-0.5 text-xs text-muted">Aide à mieux organiser ta bibliothèque</p>
+            </div>
+            <div className="flex flex-wrap justify-center gap-2">
+              {GENRES.map((g) => (
+                <button
+                  key={g}
+                  onClick={() => saveGenre(g)}
+                  disabled={savingGenre}
+                  className="rounded-full border border-line bg-white px-3.5 py-1.5 text-xs font-medium text-ink transition-colors hover:border-violet hover:bg-violet-soft disabled:opacity-50"
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+            <Button variant="ghost" onClick={() => setShowGenrePicker(false)} className="w-full py-2.5">
+              Passer
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

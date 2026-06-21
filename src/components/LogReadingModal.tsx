@@ -29,6 +29,7 @@ export default function LogReadingModal({
   const [showExtras, setShowExtras] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -39,6 +40,7 @@ export default function LogReadingModal({
       setSessionPhotoUrl("");
       setShowExtras(false);
       setError(null);
+      setPhotoUploading(false);
     }
   }, [open, defaultBookId, books]);
 
@@ -46,6 +48,28 @@ export default function LogReadingModal({
   const target = Number(endPage);
   const validNumber = endPage !== "" && !isNaN(target);
   const diff = book && validNumber ? target - book.progress : 0;
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user) return;
+    setPhotoUploading(true);
+    // Crée le bucket session-photos si absent (idempotent)
+    await fetch("/api/storage/setup", { method: "POST" }).catch(() => null);
+    const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+    const path = `${user.id}/${Date.now()}.${ext}`;
+    const { data, error: upErr } = await supabase.storage
+      .from("session-photos")
+      .upload(path, file, { upsert: false });
+    if (!upErr && data) {
+      const { data: { publicUrl } } = supabase.storage
+        .from("session-photos")
+        .getPublicUrl(data.path);
+      setSessionPhotoUrl(publicUrl);
+    } else {
+      setError("Upload échoué. Vérifie que le bucket 'session-photos' existe dans Supabase Storage.");
+    }
+    setPhotoUploading(false);
+  };
 
   const handleSave = async () => {
     if (!book || !validNumber || !user) return;
@@ -176,22 +200,42 @@ export default function LogReadingModal({
                 />
               </div>
               <div>
-                <FieldLabel>Photo de session (URL, optionnel)</FieldLabel>
-                <input
-                  type="url"
-                  value={sessionPhotoUrl}
-                  onChange={(e) => setSessionPhotoUrl(e.target.value)}
-                  placeholder="https://… (lien vers une image)"
-                  className={inputClass}
-                />
-                {sessionPhotoUrl.trim() && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={sessionPhotoUrl.trim()}
-                    alt="Aperçu"
-                    className="mt-2 h-24 w-full rounded-xl object-cover"
-                    onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-                  />
+                <FieldLabel>Photo de session (optionnel)</FieldLabel>
+                {sessionPhotoUrl ? (
+                  <div className="relative mt-1">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={sessionPhotoUrl}
+                      alt="Photo de session"
+                      className="h-32 w-full rounded-xl object-cover"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSessionPhotoUrl("")}
+                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-[11px] text-white"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ) : (
+                  <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-white px-4 py-3 text-xs font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep">
+                    {photoUploading ? (
+                      <span>Upload en cours…</span>
+                    ) : (
+                      <>
+                        <span className="text-base">📷</span>
+                        <span>Choisir une photo / prendre en direct</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={handlePhotoUpload}
+                      disabled={photoUploading}
+                    />
+                  </label>
                 )}
               </div>
             </div>
