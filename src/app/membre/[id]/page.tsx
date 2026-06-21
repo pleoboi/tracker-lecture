@@ -280,29 +280,31 @@ export default function MembrePage() {
       {reading.length > 0 && (
         <section className="flex flex-col gap-3">
           <h2 className="font-serif text-lg font-medium text-ink">En cours de lecture</h2>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-2.5 sm:grid-cols-2">
             {reading.map((b) => (
-              <div
-                key={b.id}
-                className="flex min-h-[96px] items-center gap-3.5 rounded-2xl border border-line bg-card p-3.5"
-              >
-                <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[78px] w-[54px] shrink-0" rounded="rounded-md" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-serif text-[14px] font-medium text-ink">{b.title}</p>
-                  <p className="truncate text-[11px] text-muted">{b.author}</p>
-                  <div className="mt-2">
-                    <ProgressBar value={pct(b) / 100} />
-                    <p className="mt-1 text-[10.5px] font-medium text-muted">{pct(b)}%</p>
+              <div key={b.id} className="flex flex-col gap-1.5">
+                <Link
+                  href={`/livre/${b.id}`}
+                  className="flex h-[96px] items-center gap-3.5 overflow-hidden rounded-2xl border border-line bg-card p-3.5 transition-colors hover:border-violet/40"
+                >
+                  <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[70px] w-[48px] shrink-0" rounded="rounded-md" />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-serif text-[13.5px] font-medium text-ink">{b.title}</p>
+                    <p className="truncate text-[11px] text-muted">{b.author}</p>
+                    <div className="mt-2">
+                      <ProgressBar value={pct(b) / 100} />
+                      <p className="mt-0.5 text-[10px] font-medium text-muted">{pct(b)}%</p>
+                    </div>
                   </div>
-                  {!isOwn && (
-                    <button
-                      onClick={() => setAddTarget(b)}
-                      className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl border border-violet/30 bg-violet-soft py-1.5 text-[11px] font-semibold text-violet-deep"
-                    >
-                      + Ajouter à mes lectures
-                    </button>
-                  )}
-                </div>
+                </Link>
+                {!isOwn && (
+                  <button
+                    onClick={() => setAddTarget(b)}
+                    className="flex w-full items-center justify-center gap-1 rounded-xl border border-violet/30 bg-violet-soft py-1.5 text-[11px] font-semibold text-violet-deep"
+                  >
+                    + Ajouter à mes lectures
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -316,37 +318,36 @@ export default function MembrePage() {
             Livres terminés{" "}
             <span className="font-sans text-sm font-normal text-muted">({completed.length})</span>
           </h2>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-2.5 sm:grid-cols-2">
             {completed
               .sort((a, b) => (b.rating || 0) - (a.rating || 0))
               .map((b) => (
-                <div
-                  key={b.id}
-                  className="flex min-h-[96px] items-center gap-3.5 rounded-2xl border border-line bg-card p-3.5"
-                >
-                  <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[78px] w-[54px] shrink-0" rounded="rounded-md" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-serif text-[14px] font-medium text-ink">{b.title}</p>
-                    <p className="truncate text-[11px] text-muted">{b.author}</p>
-                    {(b.rating || 0) > 0 && (
-                      <p className="mt-1.5 text-xs">
-                        <StarDisplay rating={b.rating!} />
-                      </p>
-                    )}
-                    {b.genre && (
-                      <span className="mt-1.5 inline-block rounded-md bg-violet-soft px-2 py-0.5 text-[10.5px] font-medium text-violet-deep">
-                        {b.genre}
-                      </span>
-                    )}
-                    {!isOwn && (
-                      <button
-                        onClick={() => setAddTarget(b)}
-                        className="mt-2 flex w-full items-center justify-center gap-1 rounded-xl border border-violet/30 bg-violet-soft py-1.5 text-[11px] font-semibold text-violet-deep"
-                      >
-                        + Ajouter à mes lectures
-                      </button>
-                    )}
-                  </div>
+                <div key={b.id} className="flex flex-col gap-1.5">
+                  <Link
+                    href={`/livre/${b.id}`}
+                    className="flex h-[96px] items-center gap-3.5 overflow-hidden rounded-2xl border border-line bg-card p-3.5 transition-colors hover:border-violet/40"
+                  >
+                    <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[70px] w-[48px] shrink-0" rounded="rounded-md" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-serif text-[13.5px] font-medium text-ink">{b.title}</p>
+                      <p className="truncate text-[11px] text-muted">{b.author}</p>
+                      {(b.rating || 0) > 0 ? (
+                        <p className="mt-1.5 text-[11px] font-medium text-gold">
+                          {"★".repeat(Math.round(b.rating!))} {b.rating!.toFixed(1).replace(".", ",")}
+                        </p>
+                      ) : (
+                        <p className="mt-1.5 text-[10px] font-medium text-success">✓ Terminé</p>
+                      )}
+                    </div>
+                  </Link>
+                  {!isOwn && (
+                    <button
+                      onClick={() => setAddTarget(b)}
+                      className="flex w-full items-center justify-center gap-1 rounded-xl border border-violet/30 bg-violet-soft py-1.5 text-[11px] font-semibold text-violet-deep"
+                    >
+                      + Ajouter à mes lectures
+                    </button>
+                  )}
                 </div>
               ))}
           </div>
@@ -360,21 +361,22 @@ export default function MembrePage() {
             Abandonnés{" "}
             <span className="font-sans text-sm font-normal text-muted">({abandoned.length})</span>
           </h2>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-2.5 sm:grid-cols-2">
             {abandoned.map((b) => (
-              <div
+              <Link
                 key={b.id}
-                className="flex min-h-[96px] items-center gap-3.5 rounded-2xl border border-[#e7c7bd] bg-[#fdf3f1] p-3.5 opacity-80"
+                href={`/livre/${b.id}`}
+                className="flex h-[96px] items-center gap-3.5 overflow-hidden rounded-2xl border border-[#e7c7bd] bg-[#fdf3f1] p-3.5 opacity-80 transition-colors hover:opacity-90"
               >
-                <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[78px] w-[54px] shrink-0 grayscale" rounded="rounded-md" />
+                <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[70px] w-[48px] shrink-0 grayscale" rounded="rounded-md" />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-serif text-[14px] font-medium text-ink">{b.title}</p>
+                  <p className="truncate font-serif text-[13.5px] font-medium text-ink">{b.title}</p>
                   <p className="truncate text-[11px] text-muted">{b.author}</p>
                   <span className="mt-1.5 inline-block rounded-md bg-[#f6e7e1] px-2 py-0.5 text-[10.5px] font-medium text-danger">
                     Abandonné
                   </span>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </section>

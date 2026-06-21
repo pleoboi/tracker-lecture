@@ -21,7 +21,7 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(null);
 
-    if (!displayName.trim()) return setError("Ton prénom est obligatoire.");
+    if (!displayName.trim()) return setError("Ton pseudo est obligatoire.");
     if (INVITE_CODE && inviteCode.trim() !== INVITE_CODE) {
       return setError("Code d'invitation incorrect.");
     }
@@ -64,7 +64,7 @@ export default function RegisterPage() {
 
           <div className="flex flex-col gap-1.5">
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-              Ton prénom
+              Ton pseudo
             </label>
             <input
               type="text"
@@ -72,7 +72,7 @@ export default function RegisterPage() {
               autoFocus
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="Léo, Emma…"
+              placeholder="Ex : Léo_lit, Emma_B…"
               className="rounded-xl border border-line bg-paper px-3.5 py-3 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
             />
           </div>

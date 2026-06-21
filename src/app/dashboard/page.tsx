@@ -78,6 +78,7 @@ export default function DashboardPage() {
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [championDays, setChampionDays] = useState(0);
+  const [showAllAuthors, setShowAllAuthors] = useState(false);
 
   const loadAll = useCallback(async () => {
     if (!userId) return;
@@ -196,6 +197,28 @@ export default function DashboardPage() {
   });
   const ratingAvg = ratedCount > 0 ? ratingSum / ratedCount : 0;
 
+  // Classement par auteur (livres terminés cette année)
+  const authorMap = new Map<string, number>();
+  books.forEach((book) => {
+    if (book.status !== "completed") return;
+    let completionDate: Date | null = null;
+    if (book.date_read) {
+      completionDate = new Date(book.date_read);
+    } else {
+      const bookLogs = logs
+        .filter((l) => l.book_id === book.id)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      if (bookLogs.length) completionDate = new Date(bookLogs[0].date);
+    }
+    if (!completionDate || completionDate.getFullYear() !== year) return;
+    const author = book.author.trim();
+    authorMap.set(author, (authorMap.get(author) || 0) + 1);
+  });
+  const authorRanking = Array.from(authorMap.entries()).sort((a, b) => b[1] - a[1]);
+  const top5Authors = authorRanking.slice(0, 5);
+  const extraAuthors = authorRanking.slice(5);
+  const maxAuthorBooks = top5Authors[0]?.[1] ?? 1;
+
   return (
     <div className="animate-fadeIn flex flex-col gap-5 pt-4">
       <header className="flex items-center justify-between">
@@ -294,7 +317,60 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* 4. Objectifs (déplacés en bas) */}
+          {/* 4. Classement par auteur */}
+          {top5Authors.length > 0 && (
+            <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
+              <h2 className="font-serif text-[15px] font-medium text-ink">Classement par auteur</h2>
+              <div className="flex flex-col gap-3">
+                {top5Authors.map(([author, count], i) => (
+                  <div key={author} className="flex items-center gap-3">
+                    <span className="w-5 shrink-0 text-center text-xs font-bold text-muted">{i + 1}</span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="truncate text-[13px] font-medium text-ink">{author}</span>
+                        <span className="shrink-0 text-xs font-bold text-violet-deep">
+                          {count} livre{count > 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-violet-light">
+                        <div
+                          className="h-full rounded-full bg-violet transition-all duration-500"
+                          style={{ width: `${(count / maxAuthorBooks) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {extraAuthors.length > 0 && (
+                <>
+                  {showAllAuthors && (
+                    <div className="flex flex-col gap-2 border-t border-line pt-3">
+                      {extraAuthors.map(([author, count]) => (
+                        <div key={author} className="flex items-center justify-between gap-2">
+                          <span className="truncate text-[12.5px] text-ink-2">{author}</span>
+                          <span className="shrink-0 text-[11px] font-semibold text-muted">
+                            {count} livre{count > 1 ? "s" : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => setShowAllAuthors((v) => !v)}
+                    className="flex items-center justify-center gap-1.5 rounded-xl bg-violet-soft px-4 py-2 text-xs font-semibold text-violet-deep"
+                  >
+                    {showAllAuthors
+                      ? "Réduire ↑"
+                      : `Voir tous les auteurs (${extraAuthors.length} de plus)`}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* 5. Objectifs */}
           <div className="grid gap-4 md:grid-cols-2">
             {goals.reading_pages_year !== null ? (
               <GoalIndicator

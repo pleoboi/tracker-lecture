@@ -10,17 +10,18 @@ import { pct, isCompleted } from "../../lib/books";
 import { Cover, ProgressBar, Button, FieldLabel, inputClass } from "../../components/ui";
 import { searchBooks } from "../../lib/googleBooks";
 
-type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes";
+type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes" | "recents";
 type Sort = "ajout" | "titre" | "auteur" | "note";
 
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "tous", label: "Tous" },
   { key: "encours", label: "En cours" },
+  { key: "recents", label: "Derniers lus" },
   { key: "termines", label: "Terminés" },
   { key: "abandonnes", label: "Abandonné" },
   { key: "notes", label: "★ Top notes" },
 ];
-const VALID_FILTERS: Filter[] = ["tous", "encours", "termines", "abandonnes", "notes"];
+const VALID_FILTERS: Filter[] = ["tous", "encours", "termines", "abandonnes", "notes", "recents"];
 const VALID_SORTS: Sort[] = ["ajout", "titre", "auteur", "note"];
 
 // ── CSV Goodreads parser ────────────────────────────────────────────────────
@@ -623,6 +624,9 @@ export default function ComptePage() {
   const [avatarDraft, setAvatarDraft] = useState("");
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [pseudoDraft, setPseudoDraft] = useState("");
+  const [editingPseudo, setEditingPseudo] = useState(false);
+  const [savingPseudo, setSavingPseudo] = useState(false);
   const [bio, setBio] = useState<string | null>(null);
   const [editingBio, setEditingBio] = useState(false);
   const [bioDraft, setBioDraft] = useState("");
@@ -741,6 +745,20 @@ export default function ComptePage() {
     window.dispatchEvent(new CustomEvent("profile-updated"));
   };
 
+  const handleSavePseudo = async () => {
+    if (!userId) return;
+    const name = pseudoDraft.trim();
+    if (!name) return;
+    setSavingPseudo(true);
+    await Promise.all([
+      supabase.auth.updateUser({ data: { display_name: name } }),
+      supabase.from("user_profiles").upsert({ id: userId, display_name: name }, { onConflict: "id" }),
+    ]);
+    setSavingPseudo(false);
+    setEditingPseudo(false);
+    window.dispatchEvent(new CustomEvent("profile-updated"));
+  };
+
   const handleSaveBio = async () => {
     if (!userId) return;
     setSavingBio(true);
@@ -796,6 +814,7 @@ export default function ComptePage() {
   let list = books.filter((b) => {
     if (filter === "encours") return b.status === "reading";
     if (filter === "termines") return isCompleted(b);
+    if (filter === "recents") return isCompleted(b);
     if (filter === "abandonnes") return b.status === "abandoned";
     if (filter === "notes") return (b.rating || 0) > 0;
     return true;
@@ -810,7 +829,13 @@ export default function ComptePage() {
     if (sort === "titre") return a.title.localeCompare(b.title);
     if (sort === "auteur") return a.author.localeCompare(b.author);
     if (sort === "note") return (b.rating || 0) - (a.rating || 0);
-    // Pour les terminés, trier par date de fin de lecture plutôt que date d'ajout
+    // "Derniers lus" : toujours trié par date de fin de lecture DESC
+    if (filter === "recents") {
+      const da = a.date_read || a.created_at || "";
+      const db = b.date_read || b.created_at || "";
+      return db.localeCompare(da);
+    }
+    // Pour les terminés avec tri ajout, utiliser date_read
     if (sort === "ajout" && filter === "termines") {
       const da = a.date_read || a.created_at || "";
       const db = b.date_read || b.created_at || "";
@@ -861,7 +886,33 @@ export default function ComptePage() {
               )}
             </div>
             <div className="text-center">
-              <p className="font-serif text-lg font-semibold text-ink">{displayName}</p>
+              {editingPseudo ? (
+                <div className="flex flex-col gap-2 w-full max-w-[220px]">
+                  <input
+                    value={pseudoDraft}
+                    onChange={(e) => setPseudoDraft(e.target.value)}
+                    placeholder="Ton pseudo"
+                    autoFocus
+                    className="rounded-xl border border-line bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-violet text-center"
+                  />
+                  <div className="flex gap-2">
+                    <Button variant="ghost" onClick={() => setEditingPseudo(false)} className="flex-1 text-xs py-1.5">Annuler</Button>
+                    <Button onClick={handleSavePseudo} disabled={savingPseudo} className="flex-1 text-xs py-1.5">
+                      {savingPseudo ? "…" : "OK"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 justify-center">
+                  <p className="font-serif text-lg font-semibold text-ink">{displayName}</p>
+                  <button
+                    onClick={() => { setPseudoDraft(displayName); setEditingPseudo(true); }}
+                    className="rounded-md border border-line bg-paper px-1.5 py-0.5 text-[10px] font-medium text-muted hover:border-violet/40 hover:text-violet-deep"
+                  >
+                    Modifier
+                  </button>
+                </div>
+              )}
               <p className="text-xs text-muted">{user?.email}</p>
             </div>
             <button
