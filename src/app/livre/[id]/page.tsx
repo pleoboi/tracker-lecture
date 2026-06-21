@@ -18,7 +18,7 @@ const GENRES = [
   "BD / Roman graphique", "Manga", "Comics",
   "Développement personnel", "Philosophie", "Poésie", "Psychologie",
   "Économie", "Science", "Sciences humaines", "Sciences politiques",
-  "Essai", "Aventure", "Romance", "Humour", "Sport",
+  "Essai", "Aventure", "Romance", "Humour", "Sport", "Cinéma",
 ];
 
 interface MemberEntry {

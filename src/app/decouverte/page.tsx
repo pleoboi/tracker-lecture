@@ -113,6 +113,7 @@ const GENRE_TO_QUERY: Record<string, string> = {
   "Sciences humaines": "sociology anthropology",
   "Sciences politiques": "political history",
   "Sport": "sports biography",
+  "Cinéma": "cinema film movies",
 };
 
 // Pool de découverte — genres variés pour diversifier les suggestions
