@@ -534,7 +534,7 @@ function ActivityCard({ log, isChampion }: { log: ActivityLog; isChampion?: bool
         )}
         {log.isCompletion && reviewText && (
           <div className="mt-1.5">
-            <p className="text-[11.5px] italic text-muted">&ldquo;{reviewText}&rdquo;</p>
+            <p className="text-[11.5px] italic text-muted" style={{ whiteSpace: "pre-line" }}>&ldquo;{reviewText}&rdquo;</p>
             {hasLongReview && (
               <button
                 onClick={(e) => { e.stopPropagation(); setReviewExpanded((v) => !v); }}

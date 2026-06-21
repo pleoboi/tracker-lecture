@@ -303,9 +303,14 @@ export default function DecouvertePage() {
       .filter((g) => {
         if (q && !g.canonical.title.toLowerCase().includes(q) && !(g.canonical.author || "").toLowerCase().includes(q)) return false;
         if (selectedGenres.length > 0) {
-          const bookGenres = g.instances.map((i) => (i.book.genre || "").toLowerCase());
+          // Logique OR : le livre correspond si au moins un de ses genres matche un des genres sélectionnés
           const match = selectedGenres.some((sg) =>
-            bookGenres.some((bg) => bg.includes(sg.toLowerCase()) || sg.toLowerCase().includes(bg))
+            g.instances.some((inst) => {
+              const bookGenre = (inst.book.genre || "").trim().toLowerCase();
+              if (!bookGenre) return false; // genre vide → pas de match
+              const sgLower = sg.toLowerCase();
+              return bookGenre === sgLower || bookGenre.includes(sgLower) || sgLower.includes(bookGenre);
+            })
           );
           if (!match) return false;
         }

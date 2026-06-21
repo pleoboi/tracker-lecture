@@ -49,6 +49,8 @@ export default function MembrePage() {
   const [addTarget, setAddTarget] = useState<Book | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [championDays, setChampionDays] = useState(0);
+  const [showAllCompleted, setShowAllCompleted] = useState(false);
+  const COMPLETED_INITIAL = 6;
 
   useEffect(() => {
     const load = async () => {
@@ -146,18 +148,24 @@ export default function MembrePage() {
   const reading = books.filter((b) => b.status === "reading");
   const abandoned = books.filter((b) => b.status === "abandoned");
 
-  // Lecture en cours la plus récente
+  // Recency key : date du dernier log (activité réelle) > date_read > created_at
+  // Cela évite que les imports Goodreads de 2021 remontent devant des lectures de cette semaine
+  const lastLogByBook = new Map<number, string>();
+  logs.forEach((l) => {
+    const existing = lastLogByBook.get(l.book_id);
+    if (!existing || l.date > existing) lastLogByBook.set(l.book_id, l.date);
+  });
+  const recencyKey = (b: Book): string =>
+    lastLogByBook.get(b.id) || b.date_read || b.created_at || "";
+
+  // Lecture en cours la plus récemment loggée
   const currentReading = reading.slice().sort(
-    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    (a, b) => recencyKey(b).localeCompare(recencyKey(a))
   )[0] ?? null;
 
-  // 3 derniers terminés triés par date_read effective DESC
+  // 3 derniers terminés triés par recencyKey DESC (log récent > date Goodreads ancienne)
   const last3Completed = [...completed]
-    .sort((a, b) => {
-      const da = a.date_read || a.created_at || "";
-      const db = b.date_read || b.created_at || "";
-      return db.localeCompare(da);
-    })
+    .sort((a, b) => recencyKey(b).localeCompare(recencyKey(a)))
     .slice(0, 3);
   const ratedBooks = completed.filter((b) => (b.rating || 0) > 0);
   const avgRating =
@@ -274,7 +282,7 @@ export default function MembrePage() {
       {/* Mise en avant lectures : en cours + derniers lus */}
       {(currentReading || last3Completed.length > 0) && (
         <section className="flex flex-col gap-2">
-          <h2 className="font-serif text-[15px] font-medium text-ink">Lectures</h2>
+          <h2 className="font-serif text-[15px] font-medium text-ink">Activités récentes</h2>
           <div className="grid grid-cols-4 gap-2">
             {/* En cours (col 1 — plus large) */}
             <div className="col-span-1">
@@ -395,13 +403,24 @@ export default function MembrePage() {
       {/* Livres terminés */}
       {completed.length > 0 && (
         <section className="flex flex-col gap-3">
-          <h2 className="font-serif text-lg font-medium text-ink">
-            Livres terminés{" "}
-            <span className="font-sans text-sm font-normal text-muted">({completed.length})</span>
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-serif text-lg font-medium text-ink">
+              Livres terminés{" "}
+              <span className="font-sans text-sm font-normal text-muted">({completed.length})</span>
+            </h2>
+            {completed.length > COMPLETED_INITIAL && (
+              <button
+                onClick={() => setShowAllCompleted((v) => !v)}
+                className="text-[11px] font-medium text-violet-deep"
+              >
+                {showAllCompleted ? "Réduire ↑" : `Voir tout (${completed.length - COMPLETED_INITIAL} de plus)`}
+              </button>
+            )}
+          </div>
           <div className="grid gap-2.5 sm:grid-cols-2">
             {completed
               .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+              .slice(0, showAllCompleted ? undefined : COMPLETED_INITIAL)
               .map((b) => (
                 <div key={b.id} className="flex flex-col gap-1.5">
                   <Link
@@ -432,6 +451,14 @@ export default function MembrePage() {
                 </div>
               ))}
           </div>
+          {completed.length > COMPLETED_INITIAL && !showAllCompleted && (
+            <button
+              onClick={() => setShowAllCompleted(true)}
+              className="flex w-full items-center justify-center rounded-xl border border-line bg-card py-2.5 text-[12px] font-medium text-muted hover:border-violet/40 hover:text-violet-deep"
+            >
+              Voir les {completed.length - COMPLETED_INITIAL} autres livres terminés ↓
+            </button>
+          )}
         </section>
       )}
 
