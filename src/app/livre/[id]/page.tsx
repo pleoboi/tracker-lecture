@@ -11,12 +11,14 @@ import { Cover, ProgressBar, Pill, Button, AvatarImg } from "../../../components
 import LogReadingModal from "../../../components/LogReadingModal";
 
 const GENRES = [
-  "Roman", "Thriller", "Policier", "Fantasy", "Science-Fiction",
+  "Roman", "Fiction", "Non-Fiction", "Classique", "Nouvelle",
+  "Thriller", "Policier", "Crime", "Mystère",
+  "Fantasy", "Science-Fiction",
   "Histoire", "Biographie", "Témoignage", "Jeunesse",
-  "BD / Roman graphique", "Manga",
+  "BD / Roman graphique", "Manga", "Comics",
   "Développement personnel", "Philosophie", "Poésie", "Psychologie",
   "Économie", "Science", "Sciences humaines", "Sciences politiques",
-  "Essai", "Aventure", "Romance", "Humour",
+  "Essai", "Aventure", "Romance", "Humour", "Sport",
 ];
 
 interface MemberEntry {

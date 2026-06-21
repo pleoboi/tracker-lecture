@@ -83,8 +83,14 @@ function toParas(text: string): string[] {
 // Traduit les genres français vers des requêtes Google Books plus efficaces
 const GENRE_TO_QUERY: Record<string, string> = {
   "Roman": "literary fiction bestseller",
+  "Fiction": "fiction novel",
+  "Non-Fiction": "nonfiction",
+  "Classique": "classic literature",
+  "Nouvelle": "short stories novella",
   "Thriller": "thriller suspense crime",
   "Policier": "detective mystery crime",
+  "Crime": "crime true crime",
+  "Mystère": "mystery suspense",
   "Science-Fiction": "science fiction",
   "Fantasy": "fantasy magic",
   "Biographie": "biography autobiography",
@@ -94,6 +100,7 @@ const GENRE_TO_QUERY: Record<string, string> = {
   "Poésie": "poetry",
   "BD / Roman graphique": "graphic novel comics",
   "Manga": "manga japanese",
+  "Comics": "comics superhero graphic",
   "Développement personnel": "self-help personal development",
   "Science": "popular science",
   "Psychologie": "psychology",
@@ -105,6 +112,7 @@ const GENRE_TO_QUERY: Record<string, string> = {
   "Économie": "economics business",
   "Sciences humaines": "sociology anthropology",
   "Sciences politiques": "political history",
+  "Sport": "sports biography",
 };
 
 // Pool de découverte — genres variés pour diversifier les suggestions
