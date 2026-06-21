@@ -84,7 +84,7 @@ export default function BookDetailPage() {
   const load = useCallback(async () => {
     if (!userId) return;
     const [{ data: b }, { data: l }] = await Promise.all([
-      supabase.from("books").select("*").eq("id", id).eq("user_id", userId).single(),
+      supabase.from("books").select("*").eq("id", id).single(),
       supabase
         .from("reading_logs")
         .select("*")
@@ -256,6 +256,7 @@ export default function BookDetailPage() {
     );
   }
 
+  const isOwner = book.user_id === userId;
   const p = pct(book);
   const done = isCompleted(book);
   const abandoned = isAbandoned(book);
@@ -277,7 +278,7 @@ export default function BookDetailPage() {
             ‹
           </button>
           <div className="flex items-center gap-2">
-            {!done && !abandoned && (
+            {isOwner && !done && !abandoned && (
               <>
                 <button
                   onClick={markAsReadNoDate}
@@ -294,17 +295,19 @@ export default function BookDetailPage() {
                 </button>
               </>
             )}
-            {abandoned && (
+            {isOwner && abandoned && (
               <span className="rounded-xl border border-[#e7c7bd] bg-[#f6e7e1] px-3 py-1.5 text-xs font-semibold text-danger">
                 Abandonné
               </span>
             )}
-            <button
-              onClick={remove}
-              className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-danger"
-            >
-              Supprimer
-            </button>
+            {isOwner && (
+              <button
+                onClick={remove}
+                className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-danger"
+              >
+                Supprimer
+              </button>
+            )}
           </div>
         </div>
 
@@ -316,7 +319,7 @@ export default function BookDetailPage() {
           rounded="rounded-lg"
         />
 
-        {editingInfo ? (
+        {isOwner && editingInfo ? (
           <div className="flex w-full max-w-sm flex-col gap-2">
             <input
               value={infoDraft.coverUrl}
@@ -356,14 +359,14 @@ export default function BookDetailPage() {
               <Button variant="ghost" onClick={() => setEditingInfo(false)} className="flex-1 py-2">Annuler</Button>
             </div>
           </div>
-        ) : (
+        ) : isOwner ? (
           <button
             onClick={() => setEditingInfo(true)}
             className="text-xs font-medium text-violet-deep underline decoration-violet/40 underline-offset-2"
           >
             Modifier les informations
           </button>
-        )}
+        ) : null}
 
         <div className="text-center">
           <h1 className="font-serif text-2xl font-black text-ink">{book.title}</h1>
@@ -414,9 +417,11 @@ export default function BookDetailPage() {
         <div className="flex flex-col gap-3.5 rounded-2xl border border-line bg-card p-4">
           <div className="flex items-center justify-between">
             <h2 className="font-serif text-[15px] font-medium text-ink">Ma lecture</h2>
-            <button onClick={() => setShowLog(true)} className="text-xs font-medium text-violet-deep">
-              Noter une session
-            </button>
+            {isOwner && (
+              <button onClick={() => setShowLog(true)} className="text-xs font-medium text-violet-deep">
+                Noter une session
+              </button>
+            )}
           </div>
           <div className="flex justify-between">
             <Stat label="Commencé" value={formatDate(stats.startDate)} />
@@ -475,8 +480,8 @@ export default function BookDetailPage() {
           </div>
         )}
 
-        {/* Mes notes */}
-        <div className="flex flex-col gap-2 rounded-2xl border border-[#e4daef] bg-[#f2ecf6] p-4">
+        {/* Mes notes (visible uniquement par le propriétaire) */}
+        {isOwner && <div className="flex flex-col gap-2 rounded-2xl border border-[#e4daef] bg-[#f2ecf6] p-4">
           <div className="flex items-center justify-between">
             <h2 className="font-serif text-[15px] font-medium text-ink">Mes notes</h2>
             {!editingNotes && (
@@ -513,7 +518,7 @@ export default function BookDetailPage() {
           ) : (
             <p className="text-[13px] text-muted">Aucune note pour le moment.</p>
           )}
-        </div>
+        </div>}
 
         {/* Sessions de lecture — groupées par jour */}
         {groupedLogs.length > 0 && (
@@ -579,7 +584,7 @@ export default function BookDetailPage() {
         )}
       </div>
 
-      <LogReadingModal
+      {isOwner && <LogReadingModal
         open={showLog}
         onClose={() => setShowLog(false)}
         books={[book]}
@@ -592,7 +597,7 @@ export default function BookDetailPage() {
             if (!book.genre) setTimeout(() => setShowGenrePicker(true), 700);
           }
         }}
-      />
+      />}
 
       {/* Modale review d'un membre */}
       {selectedMember && (

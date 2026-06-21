@@ -230,7 +230,6 @@ export default function LogReadingModal({
                     <input
                       type="file"
                       accept="image/*"
-                      capture="environment"
                       className="hidden"
                       onChange={handlePhotoUpload}
                       disabled={photoUploading}
