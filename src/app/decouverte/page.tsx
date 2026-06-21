@@ -155,6 +155,8 @@ export default function DecouvertePage() {
   const [selected, setSelected] = useState<UniqueBook | null>(null);
   const [addTarget, setAddTarget] = useState<Book | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  const [showGenrePanel, setShowGenrePanel] = useState(false);
 
   // Recommandations personnalisées
   const [recommendations, setRecommendations] = useState<BookSuggestion[]>([]);
@@ -298,18 +300,23 @@ export default function DecouvertePage() {
 
     const q = query.toLowerCase().trim();
     return Array.from(map.values())
-      .filter(
-        (g) =>
-          !q ||
-          g.canonical.title.toLowerCase().includes(q) ||
-          (g.canonical.author || "").toLowerCase().includes(q)
-      )
+      .filter((g) => {
+        if (q && !g.canonical.title.toLowerCase().includes(q) && !(g.canonical.author || "").toLowerCase().includes(q)) return false;
+        if (selectedGenres.length > 0) {
+          const bookGenres = g.instances.map((i) => (i.book.genre || "").toLowerCase());
+          const match = selectedGenres.some((sg) =>
+            bookGenres.some((bg) => bg.includes(sg.toLowerCase()) || sg.toLowerCase().includes(bg))
+          );
+          if (!match) return false;
+        }
+        return true;
+      })
       .sort((a, b) => {
         const maxA = Math.max(...a.instances.map((i) => new Date(i.book.created_at).getTime()));
         const maxB = Math.max(...b.instances.map((i) => new Date(i.book.created_at).getTime()));
         return maxB - maxA;
       });
-  }, [allBooks, profileMap, avatarMap, query]);
+  }, [allBooks, profileMap, avatarMap, query, selectedGenres]);
 
   return (
     <div className="animate-fadeIn flex flex-col gap-5 pt-4">
@@ -368,6 +375,79 @@ export default function DecouvertePage() {
         placeholder="Rechercher un titre ou un auteur…"
         className="w-full rounded-2xl border border-line bg-card px-4 py-3 text-sm text-ink outline-none focus:border-violet"
       />
+
+      {/* Filtres genres */}
+      <div className="flex flex-col gap-2">
+        <button
+          onClick={() => setShowGenrePanel((v) => !v)}
+          className="flex items-center gap-2 self-start rounded-xl border border-line bg-card px-3.5 py-2 text-[12.5px] font-medium text-muted transition-colors hover:border-violet/40 hover:text-violet-deep"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-3.5 w-3.5">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M7 8h10M11 12h2M9 16h6" />
+          </svg>
+          Filtrer par genre
+          {selectedGenres.length > 0 && (
+            <span className="ml-0.5 flex h-4.5 min-w-4.5 items-center justify-center rounded-full bg-violet px-1 text-[9.5px] font-bold text-cream">
+              {selectedGenres.length}
+            </span>
+          )}
+          <span className="text-xs">{showGenrePanel ? "▾" : "▸"}</span>
+        </button>
+
+        {showGenrePanel && (
+          <div className="rounded-2xl border border-line bg-card p-3.5">
+            <div className="flex flex-wrap gap-2">
+              {Object.keys(GENRE_TO_QUERY).map((genre) => {
+                const active = selectedGenres.includes(genre);
+                return (
+                  <label
+                    key={genre}
+                    className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
+                      active
+                        ? "border-violet bg-violet text-cream"
+                        : "border-line bg-paper text-ink hover:border-violet/40 hover:text-violet-deep"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={active}
+                      className="sr-only"
+                      onChange={() =>
+                        setSelectedGenres((prev) =>
+                          active ? prev.filter((g) => g !== genre) : [...prev, genre]
+                        )
+                      }
+                    />
+                    {genre}
+                  </label>
+                );
+              })}
+            </div>
+            {selectedGenres.length > 0 && (
+              <button
+                onClick={() => setSelectedGenres([])}
+                className="mt-3 text-[11px] font-medium text-violet-deep underline underline-offset-2"
+              >
+                Effacer les filtres
+              </button>
+            )}
+          </div>
+        )}
+
+        {selectedGenres.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {selectedGenres.map((g) => (
+              <span
+                key={g}
+                className="flex items-center gap-1 rounded-full bg-violet-soft px-2.5 py-1 text-[11px] font-medium text-violet-deep"
+              >
+                {g}
+                <button onClick={() => setSelectedGenres((prev) => prev.filter((x) => x !== g))} className="font-bold">✕</button>
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
 
       {loading ? (
         <div className="py-20 text-center text-xs font-medium uppercase tracking-wider text-muted">

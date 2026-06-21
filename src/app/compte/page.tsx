@@ -624,6 +624,7 @@ export default function ComptePage() {
   const [avatarDraft, setAvatarDraft] = useState("");
   const [savingAvatar, setSavingAvatar] = useState(false);
   const [avatarError, setAvatarError] = useState<string | null>(null);
+  const [avatarUploading, setAvatarUploading] = useState(false);
   const [pseudoDraft, setPseudoDraft] = useState("");
   const [editingPseudo, setEditingPseudo] = useState(false);
   const [savingPseudo, setSavingPseudo] = useState(false);
@@ -728,6 +729,25 @@ export default function ComptePage() {
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
+  };
+
+  const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !userId) return;
+    setAvatarUploading(true);
+    setAvatarError(null);
+    await fetch("/api/storage/setup", { method: "POST" }).catch(() => null);
+    const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+    const { data, error: upErr } = await supabase.storage
+      .from("session-photos")
+      .upload(`avatars/${userId}_${Date.now()}.${ext}`, file, { upsert: true });
+    if (!upErr && data) {
+      const { data: { publicUrl } } = supabase.storage.from("session-photos").getPublicUrl(data.path);
+      setAvatarDraft(publicUrl);
+    } else {
+      setAvatarError("Upload échoué. Réessaie.");
+    }
+    setAvatarUploading(false);
   };
 
   const handleSaveAvatar = async () => {
@@ -927,19 +947,44 @@ export default function ComptePage() {
 
             {editingAvatar && (
               <div className="w-full rounded-2xl border border-violet/30 bg-violet-soft p-4">
-                <FieldLabel>URL de l&apos;image (lien web)</FieldLabel>
-                <input
-                  type="url"
-                  value={avatarDraft}
-                  onChange={(e) => setAvatarDraft(e.target.value)}
-                  placeholder="https://exemple.com/photo.jpg"
-                  className={inputClass}
-                  autoFocus
-                />
-                {avatarError && (
-                  <p className="mt-2 text-xs font-medium text-danger">{avatarError}</p>
+                {/* Aperçu de la future photo */}
+                {avatarDraft ? (
+                  <div className="mb-3 flex flex-col items-center gap-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={avatarDraft} alt="Aperçu" className="h-20 w-20 rounded-full object-cover ring-2 ring-violet/30" />
+                    <button
+                      onClick={() => setAvatarDraft("")}
+                      className="text-[11px] font-medium text-danger underline"
+                    >
+                      Changer de photo
+                    </button>
+                  </div>
+                ) : (
+                  <label className="mb-3 flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-violet/30 bg-white px-4 py-5 text-center transition-colors hover:border-violet hover:bg-violet-soft/60">
+                    {avatarUploading ? (
+                      <span className="text-xs font-medium text-violet-deep">Upload en cours…</span>
+                    ) : (
+                      <>
+                        <span className="text-2xl">📷</span>
+                        <span className="text-[12px] font-medium text-ink-2">
+                          Choisir depuis la galerie
+                        </span>
+                        <span className="text-[11px] text-muted">JPG, PNG, WEBP — max 10 Mo</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleAvatarFileUpload}
+                      disabled={avatarUploading}
+                    />
+                  </label>
                 )}
-                <div className="mt-3 flex gap-2">
+                {avatarError && (
+                  <p className="mt-1 text-xs font-medium text-danger">{avatarError}</p>
+                )}
+                <div className="flex gap-2">
                   <Button
                     variant="ghost"
                     onClick={() => { setEditingAvatar(false); setAvatarDraft(avatarUrl ?? ""); }}
@@ -947,7 +992,7 @@ export default function ComptePage() {
                   >
                     Annuler
                   </Button>
-                  <Button onClick={handleSaveAvatar} disabled={savingAvatar} className="flex-1 text-sm">
+                  <Button onClick={handleSaveAvatar} disabled={savingAvatar || !avatarDraft || avatarUploading} className="flex-1 text-sm">
                     {savingAvatar ? "Sauvegarde…" : "Sauvegarder"}
                   </Button>
                 </div>
@@ -990,7 +1035,7 @@ export default function ComptePage() {
                 </div>
               </div>
             ) : bio ? (
-              <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2">{bio}</p>
+              <p className="mt-2 text-[13.5px] leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>{bio}</p>
             ) : (
               <p className="mt-2 text-[13px] text-muted">Pas encore de bio.</p>
             )}
@@ -1007,6 +1052,18 @@ export default function ComptePage() {
             <p className="mt-0.5 text-[11px] text-muted">
               Tes livres coup de cœur, visibles sur ton profil public.
             </p>
+            {completedCount < 4 && (
+              <p className="mt-1.5 rounded-xl border border-violet/20 bg-violet-soft px-3 py-2 text-[11px] text-muted">
+                Pas assez de livres terminés ?{" "}
+                <button
+                  onClick={() => document.getElementById("import-goodreads")?.scrollIntoView({ behavior: "smooth" })}
+                  className="font-semibold text-violet-deep underline underline-offset-2"
+                >
+                  Importez votre historique Goodreads
+                </button>{" "}
+                en un clic plus bas !
+              </p>
+            )}
             <div className="mt-3 grid grid-cols-4 gap-2">
               {[0, 1, 2, 3].map((slot) => {
                 const bkId = favoriteIds[slot];
@@ -1068,8 +1125,17 @@ export default function ComptePage() {
           </div>
 
           {/* Import Goodreads */}
-          <div className="rounded-2xl border border-line bg-card p-4">
+          <div id="import-goodreads" className="rounded-2xl border border-line bg-card p-4">
             <h3 className="font-serif text-[15px] font-medium text-ink">Import Goodreads</h3>
+            <div className="mt-2 rounded-xl border border-line bg-paper px-3.5 py-3">
+              <p className="text-[11.5px] font-semibold text-ink-2">Comment exporter depuis Goodreads ?</p>
+              <ol className="mt-1.5 flex flex-col gap-0.5 text-[11px] text-muted">
+                <li>1. Rendez-vous sur <span className="font-medium text-ink-2">goodreads.com</span> depuis votre ordinateur</li>
+                <li>2. <span className="font-medium text-ink-2">Paramètres du compte</span> → section <span className="font-medium text-ink-2">Importer et exporter</span></li>
+                <li>3. Cliquez sur <span className="font-medium text-ink-2">Export Library</span></li>
+                <li>4. Téléversez le fichier <code className="rounded bg-violet-soft px-1 font-mono text-violet-deep">.csv</code> obtenu ci-dessous</li>
+              </ol>
+            </div>
             <div className="mt-3">
               {userId && (
                 <GoodreadsImport

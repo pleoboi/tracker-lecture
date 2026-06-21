@@ -512,7 +512,7 @@ export default function BookDetailPage() {
               </div>
             </div>
           ) : book.notes ? (
-            <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2">
+            <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
               « {book.notes} »
             </p>
           ) : (
@@ -554,7 +554,7 @@ export default function BookDetailPage() {
                     </div>
                   </div>
                   {log.session_notes && (
-                    <p className="rounded-xl bg-[#f4f0e8] px-3 py-2 font-serif text-[12.5px] italic leading-relaxed text-ink-2">
+                    <p className="rounded-xl bg-[#f4f0e8] px-3 py-2 font-serif text-[12.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
                       « {log.session_notes} »
                     </p>
                   )}
@@ -636,7 +636,7 @@ export default function BookDetailPage() {
               )}
             </div>
             {selectedMember.review ? (
-              <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2">
+              <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
                 « {selectedMember.review} »
               </p>
             ) : (

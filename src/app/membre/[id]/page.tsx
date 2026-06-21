@@ -145,6 +145,20 @@ export default function MembrePage() {
   const completed = books.filter(isCompleted);
   const reading = books.filter((b) => b.status === "reading");
   const abandoned = books.filter((b) => b.status === "abandoned");
+
+  // Lecture en cours la plus récente
+  const currentReading = reading.slice().sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  )[0] ?? null;
+
+  // 3 derniers terminés triés par date_read effective DESC
+  const last3Completed = [...completed]
+    .sort((a, b) => {
+      const da = a.date_read || a.created_at || "";
+      const db = b.date_read || b.created_at || "";
+      return db.localeCompare(da);
+    })
+    .slice(0, 3);
   const ratedBooks = completed.filter((b) => (b.rating || 0) > 0);
   const avgRating =
     ratedBooks.length > 0
@@ -208,7 +222,7 @@ export default function MembrePage() {
           </div>
           <p className="mt-0.5 text-xs font-medium text-muted">Membre depuis {memberSince}</p>
           {profile.bio && (
-            <p className="mt-2 text-[12.5px] leading-relaxed text-ink-2">{profile.bio}</p>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>{profile.bio}</p>
           )}
         </div>
       </div>
@@ -254,6 +268,73 @@ export default function MembrePage() {
               </Link>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Mise en avant lectures : en cours + derniers lus */}
+      {(currentReading || last3Completed.length > 0) && (
+        <section className="flex flex-col gap-2">
+          <h2 className="font-serif text-[15px] font-medium text-ink">Lectures</h2>
+          <div className="grid grid-cols-4 gap-2">
+            {/* En cours (col 1 — plus large) */}
+            <div className="col-span-1">
+              {currentReading ? (
+                <Link href={`/livre/${currentReading.id}`} className="group flex h-full flex-col gap-1.5">
+                  <div className="relative overflow-hidden rounded-xl shadow-sm transition-transform group-hover:scale-[1.03]">
+                    <Cover
+                      id={currentReading.id}
+                      title={currentReading.title}
+                      coverUrl={currentReading.cover_url}
+                      className="aspect-[3/4] w-full"
+                      rounded="rounded-xl"
+                    />
+                    <div className="absolute inset-x-0 bottom-0 rounded-b-xl bg-gradient-to-t from-ink/70 to-transparent px-2 pb-2 pt-6">
+                      <div className="h-1 overflow-hidden rounded-full bg-white/30">
+                        <div className="h-full rounded-full bg-cream" style={{ width: `${pct(currentReading)}%` }} />
+                      </div>
+                      <p className="mt-0.5 text-[9px] font-semibold text-cream">{pct(currentReading)}%</p>
+                    </div>
+                  </div>
+                  <p className="line-clamp-2 text-center text-[9px] font-medium text-muted">{currentReading.title}</p>
+                </Link>
+              ) : (
+                <div className="flex aspect-[3/4] items-center justify-center rounded-xl border border-dashed border-line bg-card">
+                  <span className="text-[9px] text-muted">En cours</span>
+                </div>
+              )}
+            </div>
+
+            {/* 3 derniers terminés */}
+            {[0, 1, 2].map((i) => {
+              const b = last3Completed[i];
+              return b ? (
+                <Link key={b.id} href={`/livre/${b.id}`} className="group flex flex-col gap-1.5">
+                  <div className="relative overflow-hidden rounded-xl shadow-sm transition-transform group-hover:scale-[1.03]">
+                    <Cover
+                      id={b.id}
+                      title={b.title}
+                      coverUrl={b.cover_url}
+                      className="aspect-[3/4] w-full"
+                      rounded="rounded-xl"
+                    />
+                    {(b.rating || 0) > 0 && (
+                      <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-ink/70 to-transparent px-1.5 pb-1.5 pt-4">
+                        <p className="text-[9px] font-bold text-cream">★ {b.rating!.toFixed(1)}</p>
+                      </div>
+                    )}
+                  </div>
+                  <p className="line-clamp-2 text-center text-[9px] font-medium text-muted">{b.title}</p>
+                </Link>
+              ) : (
+                <div key={i} className="flex aspect-[3/4] items-center justify-center rounded-xl border border-dashed border-line bg-card">
+                  <span className="text-[9px] text-muted">—</span>
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-[10px] text-muted">
+            <span className="font-medium text-ink-2">En cours</span> · <span className="font-medium text-ink-2">3 derniers terminés</span>
+          </p>
         </section>
       )}
 
