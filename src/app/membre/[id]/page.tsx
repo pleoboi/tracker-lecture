@@ -370,7 +370,12 @@ export default function MembrePage() {
       {/* Lectures en cours */}
       {reading.length > 0 && (
         <section className="flex flex-col gap-3">
-          <h2 className="font-serif text-lg font-medium text-ink">En cours de lecture</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-serif text-lg font-medium text-ink">
+              En cours de lecture{" "}
+              <span className="font-sans text-sm font-normal text-muted">({reading.length})</span>
+            </h2>
+          </div>
           <div className="grid gap-2.5 sm:grid-cols-2">
             {reading.map((b) => (
               <div key={b.id} className="flex flex-col gap-1.5">
@@ -458,7 +463,7 @@ export default function MembrePage() {
               onClick={() => setShowAllCompleted(true)}
               className="flex w-full items-center justify-center rounded-xl border border-line bg-card py-2.5 text-[12px] font-medium text-muted hover:border-violet/40 hover:text-violet-deep"
             >
-              Voir les {completed.length - COMPLETED_INITIAL} autres livres terminés ↓
+              ↓ Voir les {completed.length - COMPLETED_INITIAL} autres
             </button>
           )}
         </section>
@@ -467,22 +472,24 @@ export default function MembrePage() {
       {/* Livres abandonnés */}
       {abandoned.length > 0 && (
         <section className="flex flex-col gap-3">
-          <h2 className="font-serif text-lg font-medium text-ink">
-            Abandonnés{" "}
-            <span className="font-sans text-sm font-normal text-muted">({abandoned.length})</span>
-          </h2>
+          <div className="flex items-center justify-between">
+            <h2 className="font-serif text-lg font-medium text-ink">
+              Abandonnés{" "}
+              <span className="font-sans text-sm font-normal text-muted">({abandoned.length})</span>
+            </h2>
+          </div>
           <div className="grid gap-2.5 sm:grid-cols-2">
             {abandoned.map((b) => (
               <Link
                 key={b.id}
                 href={`/livre/${b.id}`}
-                className="flex h-[96px] items-center gap-3.5 overflow-hidden rounded-2xl border border-[#e7c7bd] bg-[#fdf3f1] p-3.5 opacity-80 transition-colors hover:opacity-90"
+                className="flex h-[96px] items-center gap-3.5 overflow-hidden rounded-2xl border border-line bg-card p-3.5 opacity-70 transition-colors hover:border-line hover:opacity-90"
               >
                 <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[70px] w-[48px] shrink-0 grayscale" rounded="rounded-md" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-serif text-[13.5px] font-medium text-ink">{b.title}</p>
                   <p className="truncate text-[11px] text-muted">{b.author}</p>
-                  <span className="mt-1.5 inline-block rounded-md bg-[#f6e7e1] px-2 py-0.5 text-[10.5px] font-medium text-danger">
+                  <span className="mt-1.5 inline-block rounded-md bg-paper px-2 py-0.5 text-[10.5px] font-medium text-muted">
                     Abandonné
                   </span>
                 </div>

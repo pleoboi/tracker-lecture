@@ -356,9 +356,9 @@ export default function AccueilPage() {
             <p className="text-sm text-muted">Pas encore d&apos;activité dans le club.</p>
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
+          <div className="flex gap-3 overflow-x-auto pb-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {activity.map((log) => (
-              <ActivityCard
+              <ActivityCarouselItem
                 key={log.id}
                 log={log}
                 isChampion={todayChampion?.userId === log.user_id}
@@ -455,122 +455,65 @@ function ChampionBanner({ champion, isMe }: { champion: Champion; isMe: boolean 
   );
 }
 
-function ActivityCard({ log, isChampion }: { log: ActivityLog; isChampion?: boolean }) {
-  const [reviewExpanded, setReviewExpanded] = useState(false);
-  const TRUNCATE_AT = 150;
+function ActivityCarouselItem({ log, isChampion }: { log: ActivityLog; isChampion?: boolean }) {
   const todayStr = new Date().toISOString().split("T")[0];
-  const isToday = log.date === todayStr;
-  const showBadge = isChampion && isToday;
+  const showBadge = isChampion && log.date === todayStr;
 
-  const dateStr = new Date(log.date).toLocaleDateString("fr-FR", {
-    day: "numeric",
-    month: "short",
-  });
-
-  const subject = log.isMe ? "Tu" : <span className="font-semibold">{log.memberName}</span>;
-  const verb = log.isMe ? "as" : "a";
-
-  const hasLongReview = (log.bookReview?.length ?? 0) > TRUNCATE_AT;
-  const reviewText = log.bookReview
-    ? !reviewExpanded && hasLongReview
-      ? log.bookReview.slice(0, TRUNCATE_AT) + "…"
-      : log.bookReview
-    : null;
-
-  const cardClass = showBadge
-    ? "border-gold/40 bg-[#fdf7e9]"
+  const actionLabel = log.eventType === "start"
+    ? { text: "Commencé", color: "text-violet-deep" }
     : log.isCompletion
-    ? "border-[#cfe0cf] bg-[#eaf1ea]"
-    : log.eventType === "start"
-    ? "border-violet/20 bg-violet-soft"
-    : "border-line bg-card";
-
-  const accentClass = showBadge
-    ? "text-[#b8890a]"
-    : log.isCompletion
-    ? "text-success"
-    : "text-violet-deep";
+    ? {
+        text: (log.bookRating ?? 0) > 0 ? `★ ${log.bookRating!.toFixed(1)}` : "✓ Lu",
+        color: (log.bookRating ?? 0) > 0 ? "text-[#c9a227]" : "text-success",
+      }
+    : { text: `+${log.pages_read} p.`, color: "text-ink-2" };
 
   return (
-    <div className={`flex items-start gap-3 rounded-2xl border p-3 transition-colors ${cardClass}`}>
-      {log.user_id ? (
-        <Link href={`/membre/${log.user_id}`} className="shrink-0">
-          <AvatarImg
-            url={log.memberAvatar}
-            name={log.memberName}
-            className={`h-8 w-8 text-xs font-semibold ${showBadge ? "ring-2 ring-gold ring-offset-1" : ""}`}
-          />
-        </Link>
-      ) : (
-        <AvatarImg
-          url={log.memberAvatar}
-          name={log.memberName}
-          className={`h-8 w-8 shrink-0 text-xs font-semibold ${showBadge ? "ring-2 ring-gold ring-offset-1" : ""}`}
-        />
-      )}
-      <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-medium text-ink">
-          {subject}{" "}
-          {log.eventType === "start" ? (
-            <><span className={`font-semibold ${accentClass}`}>{verb} commencé</span></>
-          ) : log.isCompletion ? (
-            <><span className={`font-semibold ${accentClass}`}>{verb} terminé</span></>
-          ) : (
-            <>{verb} lu{" "}<span className={`font-semibold ${accentClass}`}>+{log.pages_read} p.</span></>
-          )}
-        </p>
-        <Link
-          href={`/livre/${log.book_id}`}
-          className="block truncate text-[11px] font-medium text-muted hover:text-violet-deep hover:underline"
-        >
-          {log.bookTitle}
-        </Link>
-        {log.isCompletion && (log.bookRating ?? 0) > 0 && (
-          <p className="mt-1 text-xs text-[#c9a227]">
-            {"★".repeat(Math.round(log.bookRating!))}
-            {"☆".repeat(5 - Math.round(log.bookRating!))}
-            {" "}{log.bookRating!.toFixed(1).replace(".", ",")}
-          </p>
-        )}
-        {log.isCompletion && reviewText && (
-          <div className="mt-1.5">
-            <p className="text-[11.5px] italic text-muted" style={{ whiteSpace: "pre-line" }}>&ldquo;{reviewText}&rdquo;</p>
-            {hasLongReview && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setReviewExpanded((v) => !v); }}
-                className="mt-0.5 text-[11px] font-semibold text-violet-deep"
-              >
-                {reviewExpanded ? "Voir moins ↑" : "Voir plus ↓"}
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-      <div className="flex shrink-0 flex-col items-end gap-1">
-        {showBadge && (
-          <span className="rounded-full bg-gold/20 px-2 py-0.5 text-[9.5px] font-bold text-[#b8890a]">
-            🏆 Champion
-          </span>
-        )}
-        {log.isCompletion && !showBadge && (
-          <span className="rounded-full bg-[#d4edda] px-2 py-0.5 text-[9.5px] font-bold text-success">
-            ✓ Terminé
-          </span>
-        )}
-        {log.eventType === "start" && (
-          <span className="rounded-full bg-violet/10 px-2 py-0.5 text-[9.5px] font-bold text-violet-deep">
-            ▶ Début
-          </span>
-        )}
+    <div className="flex w-[76px] shrink-0 flex-col gap-1.5">
+      {/* Couverture cliquable */}
+      <Link
+        href={`/livre/${log.book_id}`}
+        className="group relative block overflow-hidden rounded-xl shadow-sm transition-transform active:scale-[0.97] hover:scale-[1.03]"
+      >
         <Cover
-          id={log.bookId}
+          id={log.book_id}
           title={log.bookTitle}
           coverUrl={log.bookCover}
-          className="h-10 w-7"
-          rounded="rounded"
+          className="aspect-[3/4] w-full"
+          rounded="rounded-xl"
         />
-        <p className="text-[10px] text-muted">{dateStr}</p>
-      </div>
+        {/* Indicateur review */}
+        {log.isCompletion && log.bookReview && (
+          <span className="absolute right-1.5 top-1.5 flex h-[18px] w-[18px] items-center justify-center rounded bg-ink/65 text-[9px] leading-none text-cream">
+            ≡
+          </span>
+        )}
+        {/* Badge champion */}
+        {showBadge && (
+          <span className="absolute left-1 top-1 rounded-full bg-gold/90 px-1 py-0.5 text-[7.5px] font-bold leading-none text-ink">
+            🏆
+          </span>
+        )}
+      </Link>
+
+      {/* Action contextuelle */}
+      <p className={`text-center text-[10.5px] font-semibold leading-tight ${actionLabel.color}`}>
+        {actionLabel.text}
+      </p>
+
+      {/* Avatar + pseudo — clic vers profil */}
+      {log.user_id ? (
+        <Link href={`/membre/${log.user_id}`} className="flex items-center justify-center gap-1 overflow-hidden">
+          <AvatarImg url={log.memberAvatar} name={log.memberName} className="h-[14px] w-[14px] shrink-0 text-[6px]" />
+          <span className="max-w-[54px] truncate text-[9.5px] font-medium text-muted">{log.memberName}</span>
+        </Link>
+      ) : (
+        <div className="flex items-center justify-center gap-1 overflow-hidden">
+          <AvatarImg url={log.memberAvatar} name={log.memberName} className="h-[14px] w-[14px] shrink-0 text-[6px]" />
+          <span className="max-w-[54px] truncate text-[9.5px] font-medium text-muted">{log.memberName}</span>
+        </div>
+      )}
     </div>
   );
 }
+
