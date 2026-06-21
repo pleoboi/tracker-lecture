@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
@@ -85,26 +85,27 @@ export default function AccueilPage() {
     setActivityLoading(true);
 
     const todayStr = new Date().toISOString().split("T")[0];
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
 
     const [{ data: logsData }, { data: profilesData }, { data: todayAllLogs }, { data: recentBooksData }] = await Promise.all([
-      // Tous les membres (y compris l'utilisateur courant)
+      // Logs des 3 derniers jours seulement
       supabase
         .from("reading_logs")
         .select("*")
+        .gte("created_at", threeDaysAgo)
         .order("created_at", { ascending: false })
-        .limit(20),
+        .limit(30),
       supabase.from("user_profiles").select("id, display_name, avatar_url"),
       supabase
         .from("reading_logs")
         .select("user_id, pages_read")
         .eq("date", todayStr),
-      // Livres récemment commencés (7 derniers jours, statut "en cours")
+      // Livres récemment commencés (3 derniers jours, statut "en cours")
       supabase
         .from("books")
         .select("id, title, cover_url, author, user_id, created_at")
         .eq("status", "reading")
-        .gte("created_at", sevenDaysAgo)
+        .gte("created_at", threeDaysAgo)
         .order("created_at", { ascending: false })
         .limit(10),
     ]);
@@ -468,8 +469,12 @@ function ActivityCarouselItem({ log, isChampion }: { log: ActivityLog; isChampio
       }
     : { text: `+${log.pages_read} p.`, color: "text-ink-2" };
 
+  const avatarLink = log.user_id
+    ? (children: React.ReactNode) => <Link href={`/membre/${log.user_id}`} className="flex items-center gap-1.5 overflow-hidden">{children}</Link>
+    : (children: React.ReactNode) => <div className="flex items-center gap-1.5 overflow-hidden">{children}</div>;
+
   return (
-    <div className="flex w-[76px] shrink-0 flex-col gap-1.5">
+    <div className="flex w-[128px] shrink-0 flex-col gap-2">
       {/* Couverture cliquable */}
       <Link
         href={`/livre/${log.book_id}`}
@@ -484,34 +489,37 @@ function ActivityCarouselItem({ log, isChampion }: { log: ActivityLog; isChampio
         />
         {/* Indicateur review */}
         {log.isCompletion && log.bookReview && (
-          <span className="absolute right-1.5 top-1.5 flex h-[18px] w-[18px] items-center justify-center rounded bg-ink/65 text-[9px] leading-none text-cream">
+          <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-md bg-ink/65 text-[10px] leading-none text-cream">
             ≡
           </span>
         )}
         {/* Badge champion */}
         {showBadge && (
-          <span className="absolute left-1 top-1 rounded-full bg-gold/90 px-1 py-0.5 text-[7.5px] font-bold leading-none text-ink">
+          <span className="absolute left-1.5 top-1.5 rounded-full bg-gold/90 px-1.5 py-0.5 text-[8px] font-bold leading-none text-ink">
             🏆
           </span>
         )}
       </Link>
 
+      {/* Titre + Auteur */}
+      <div className="flex flex-col gap-0.5">
+        <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-ink">
+          {log.bookTitle}
+        </p>
+        <p className="truncate text-[10px] text-muted">{log.bookAuthor}</p>
+      </div>
+
       {/* Action contextuelle */}
-      <p className={`text-center text-[10.5px] font-semibold leading-tight ${actionLabel.color}`}>
+      <p className={`text-[11px] font-semibold leading-tight ${actionLabel.color}`}>
         {actionLabel.text}
       </p>
 
       {/* Avatar + pseudo — clic vers profil */}
-      {log.user_id ? (
-        <Link href={`/membre/${log.user_id}`} className="flex items-center justify-center gap-1 overflow-hidden">
-          <AvatarImg url={log.memberAvatar} name={log.memberName} className="h-[14px] w-[14px] shrink-0 text-[6px]" />
-          <span className="max-w-[54px] truncate text-[9.5px] font-medium text-muted">{log.memberName}</span>
-        </Link>
-      ) : (
-        <div className="flex items-center justify-center gap-1 overflow-hidden">
-          <AvatarImg url={log.memberAvatar} name={log.memberName} className="h-[14px] w-[14px] shrink-0 text-[6px]" />
-          <span className="max-w-[54px] truncate text-[9.5px] font-medium text-muted">{log.memberName}</span>
-        </div>
+      {avatarLink(
+        <>
+          <AvatarImg url={log.memberAvatar} name={log.memberName} className="h-4 w-4 shrink-0 text-[7px]" />
+          <span className="truncate text-[10px] font-medium text-muted">{log.memberName}</span>
+        </>
       )}
     </div>
   );

@@ -49,8 +49,6 @@ export default function MembrePage() {
   const [addTarget, setAddTarget] = useState<Book | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [championDays, setChampionDays] = useState(0);
-  const [showAllCompleted, setShowAllCompleted] = useState(false);
-  const COMPLETED_INITIAL = 6;
 
   useEffect(() => {
     const load = async () => {
@@ -415,56 +413,46 @@ export default function MembrePage() {
               Livres terminés{" "}
               <span className="font-sans text-sm font-normal text-muted">({completed.length})</span>
             </h2>
-            {completed.length > COMPLETED_INITIAL && (
-              <button
-                onClick={() => setShowAllCompleted((v) => !v)}
-                className="text-[11px] font-medium text-violet-deep"
-              >
-                {showAllCompleted ? "Réduire ↑" : `Voir tout (${completed.length - COMPLETED_INITIAL} de plus)`}
-              </button>
-            )}
           </div>
-          <div className="grid gap-2.5 sm:grid-cols-2">
-            {completed
-              .sort((a, b) => (b.rating || 0) - (a.rating || 0))
-              .slice(0, showAllCompleted ? undefined : COMPLETED_INITIAL)
-              .map((b) => (
-                <div key={b.id} className="flex flex-col gap-1.5">
-                  <Link
-                    href={`/livre/${b.id}`}
-                    className="flex h-[96px] items-center gap-3.5 overflow-hidden rounded-2xl border border-line bg-card p-3.5 transition-colors hover:border-violet/40"
-                  >
-                    <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[70px] w-[48px] shrink-0" rounded="rounded-md" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate font-serif text-[13.5px] font-medium text-ink">{b.title}</p>
-                      <p className="truncate text-[11px] text-muted">{b.author}</p>
-                      {(b.rating || 0) > 0 ? (
-                        <p className="mt-1.5 text-[11px] font-medium text-gold">
-                          {"★".repeat(Math.round(b.rating!))} {b.rating!.toFixed(1).replace(".", ",")}
-                        </p>
-                      ) : (
-                        <p className="mt-1.5 text-[10px] font-medium text-success">✓ Terminé</p>
-                      )}
-                    </div>
-                  </Link>
-                  {!isOwn && (
-                    <button
-                      onClick={() => setAddTarget(b)}
-                      className="flex w-full items-center justify-center gap-1 rounded-xl border border-violet/30 bg-violet-soft py-1.5 text-[11px] font-semibold text-violet-deep"
+          <div className="max-h-[320px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              {completed
+                .sort((a, b) => (b.rating || 0) - (a.rating || 0))
+                .map((b) => (
+                  <div key={b.id} className="flex flex-col gap-1.5">
+                    <Link
+                      href={`/livre/${b.id}`}
+                      className="flex h-[96px] items-center gap-3.5 overflow-hidden rounded-2xl border border-line bg-card p-3.5 transition-colors hover:border-violet/40"
                     >
-                      + Ajouter à mes lectures
-                    </button>
-                  )}
-                </div>
-              ))}
+                      <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[70px] w-[48px] shrink-0" rounded="rounded-md" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-serif text-[13.5px] font-medium text-ink">{b.title}</p>
+                        <p className="truncate text-[11px] text-muted">{b.author}</p>
+                        {(b.rating || 0) > 0 ? (
+                          <p className="mt-1.5 text-[11px] font-medium text-gold">
+                            {"★".repeat(Math.round(b.rating!))} {b.rating!.toFixed(1).replace(".", ",")}
+                          </p>
+                        ) : (
+                          <p className="mt-1.5 text-[10px] font-medium text-success">✓ Terminé</p>
+                        )}
+                      </div>
+                    </Link>
+                    {!isOwn && (
+                      <button
+                        onClick={() => setAddTarget(b)}
+                        className="flex w-full items-center justify-center gap-1 rounded-xl border border-violet/30 bg-violet-soft py-1.5 text-[11px] font-semibold text-violet-deep"
+                      >
+                        + Ajouter à mes lectures
+                      </button>
+                    )}
+                  </div>
+                ))}
+            </div>
           </div>
-          {completed.length > COMPLETED_INITIAL && !showAllCompleted && (
-            <button
-              onClick={() => setShowAllCompleted(true)}
-              className="flex w-full items-center justify-center rounded-xl border border-line bg-card py-2.5 text-[12px] font-medium text-muted hover:border-violet/40 hover:text-violet-deep"
-            >
-              ↓ Voir les {completed.length - COMPLETED_INITIAL} autres
-            </button>
+          {completed.length > 3 && (
+            <p className="text-center text-[10.5px] text-muted">
+              ↑ Défiler pour voir les {completed.length} livres
+            </p>
           )}
         </section>
       )}
