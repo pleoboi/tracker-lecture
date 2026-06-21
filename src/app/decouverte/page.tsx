@@ -303,13 +303,18 @@ export default function DecouvertePage() {
       .filter((g) => {
         if (q && !g.canonical.title.toLowerCase().includes(q) && !(g.canonical.author || "").toLowerCase().includes(q)) return false;
         if (selectedGenres.length > 0) {
-          // Logique OR : le livre correspond si au moins un de ses genres matche un des genres sélectionnés
+          // Support multi-genre CSV ("Manga, BD / Roman graphique") — logique OR
           const match = selectedGenres.some((sg) =>
             g.instances.some((inst) => {
-              const bookGenre = (inst.book.genre || "").trim().toLowerCase();
-              if (!bookGenre) return false; // genre vide → pas de match
+              const bookGenres = (inst.book.genre || "")
+                .split(",")
+                .map((s) => s.trim().toLowerCase())
+                .filter(Boolean);
+              if (bookGenres.length === 0) return false;
               const sgLower = sg.toLowerCase();
-              return bookGenre === sgLower || bookGenre.includes(sgLower) || sgLower.includes(bookGenre);
+              return bookGenres.some(
+                (bg) => bg === sgLower || bg.includes(sgLower) || sgLower.includes(bg)
+              );
             })
           );
           if (!match) return false;

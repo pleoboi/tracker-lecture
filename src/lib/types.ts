@@ -18,6 +18,15 @@ export interface Book {
   import_source?: string | null;
 }
 
+export interface ReadSession {
+  id: number;
+  book_id: number;
+  user_id: string;
+  date_started: string | null;
+  date_read: string | null;
+  created_at: string;
+}
+
 export interface ReadingLog {
   id: number;
   created_at?: string;

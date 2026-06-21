@@ -5,16 +5,18 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth-context";
-import type { Book, ReadingLog } from "../../../lib/types";
+import type { Book, ReadingLog, ReadSession } from "../../../lib/types";
 import { pct, isCompleted, isAbandoned, readingStats, formatDate, formatDateLong } from "../../../lib/books";
 import { Cover, ProgressBar, Pill, Button, AvatarImg } from "../../../components/ui";
 import LogReadingModal from "../../../components/LogReadingModal";
 
 const GENRES = [
   "Roman", "Thriller", "Policier", "Fantasy", "Science-Fiction",
-  "Histoire", "Biographie", "Jeunesse", "BD / Roman graphique",
-  "Développement personnel", "Philosophie", "Poésie",
-  "Économie", "Science", "Sciences humaines",
+  "Histoire", "Biographie", "Témoignage", "Jeunesse",
+  "BD / Roman graphique", "Manga",
+  "Développement personnel", "Philosophie", "Poésie", "Psychologie",
+  "Économie", "Science", "Sciences humaines", "Sciences politiques",
+  "Essai", "Aventure", "Romance", "Humour",
 ];
 
 interface MemberEntry {
@@ -78,12 +80,23 @@ export default function BookDetailPage() {
   const [showGenrePicker, setShowGenrePicker] = useState(false);
   const [savingGenre, setSavingGenre] = useState(false);
 
+  // Édition multi-genres inline
+  const [editingGenre, setEditingGenre] = useState(false);
+  const [genreSelection, setGenreSelection] = useState<string[]>([]);
+  const [savingGenreEdit, setSavingGenreEdit] = useState(false);
+
+  // Relectures
+  const [readSessions, setReadSessions] = useState<ReadSession[]>([]);
+  const [addingRelecture, setAddingRelecture] = useState(false);
+  const [relectureDraft, setRelectureDraft] = useState({ date_started: "", date_read: "" });
+  const [savingRelecture, setSavingRelecture] = useState(false);
+
   // Mark as read (no date)
   const [markingRead, setMarkingRead] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
-    const [{ data: b }, { data: l }] = await Promise.all([
+    const [{ data: b }, { data: l }, { data: sess }] = await Promise.all([
       supabase.from("books").select("*").eq("id", id).single(),
       supabase
         .from("reading_logs")
@@ -92,9 +105,16 @@ export default function BookDetailPage() {
         .eq("user_id", userId)
         .order("date", { ascending: false })
         .order("created_at", { ascending: false }),
+      supabase
+        .from("book_read_sessions")
+        .select("*")
+        .eq("book_id", id)
+        .eq("user_id", userId)
+        .order("date_read", { ascending: true }),
     ]);
     setBook(b as Book);
     setLogs((l as ReadingLog[]) || []);
+    setReadSessions((sess as ReadSession[]) || []);
     const loaded = b as Book;
     setNotesDraft(loaded?.notes || "");
     if (loaded) {
@@ -218,6 +238,34 @@ export default function BookDetailPage() {
     setBook({ ...book, genre });
     setSavingGenre(false);
     setShowGenrePicker(false);
+  };
+
+  const saveGenreMulti = async () => {
+    if (!book || savingGenreEdit) return;
+    setSavingGenreEdit(true);
+    const genre = genreSelection.length > 0 ? genreSelection.join(", ") : null;
+    await supabase.from("books").update({ genre }).eq("id", book.id);
+    setBook({ ...book, genre });
+    setSavingGenreEdit(false);
+    setEditingGenre(false);
+  };
+
+  const addRelecture = async () => {
+    if (!book || !userId || !relectureDraft.date_read || savingRelecture) return;
+    setSavingRelecture(true);
+    const newSession = {
+      book_id: book.id,
+      user_id: userId,
+      date_started: relectureDraft.date_started || null,
+      date_read: relectureDraft.date_read,
+    };
+    await supabase.from("book_read_sessions").insert(newSession);
+    await supabase.from("books").update({ date_read: relectureDraft.date_read }).eq("id", book.id);
+    setBook({ ...book, date_read: relectureDraft.date_read });
+    setSavingRelecture(false);
+    setAddingRelecture(false);
+    setRelectureDraft({ date_started: "", date_read: "" });
+    load();
   };
 
   // Groupement des logs par jour
@@ -404,14 +452,69 @@ export default function BookDetailPage() {
 
       {/* Corps */}
       <div className="flex flex-col gap-5 px-5 pt-5 md:px-10">
-        <div className="flex flex-wrap gap-2">
-          {book.genre && <Pill tone="sage">{book.genre}</Pill>}
+        <div className="flex flex-wrap items-center gap-2">
+          {book.genre
+            ? book.genre.split(", ").filter(Boolean).map((g) => (
+                <Pill key={g} tone="sage">{g}</Pill>
+              ))
+            : null}
           <Pill tone="neutral">{book.pages} pages</Pill>
           {stats.durationDays != null && (
             <Pill tone="violet">Lu en {stats.durationDays} jour{stats.durationDays > 1 ? "s" : ""}</Pill>
           )}
           {book.published_year && <Pill tone="neutral">{book.published_year}</Pill>}
+          {isOwner && (
+            <button
+              onClick={() => {
+                setGenreSelection(book.genre?.split(", ").filter(Boolean) || []);
+                setEditingGenre((v) => !v);
+              }}
+              className="rounded-full border border-dashed border-violet/40 px-2.5 py-0.5 text-[10.5px] font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep"
+            >
+              {editingGenre ? "✕ Fermer" : book.genre ? "Modifier le genre" : "+ Genre"}
+            </button>
+          )}
         </div>
+
+        {/* Panneau d'édition des genres (multi-sélection) */}
+        {editingGenre && (
+          <div className="rounded-2xl border border-violet/20 bg-violet-soft p-4 flex flex-col gap-3">
+            <p className="text-[12.5px] font-medium text-ink-2">
+              Sélectionne le ou les genres :
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {GENRES.map((g) => {
+                const active = genreSelection.includes(g);
+                return (
+                  <button
+                    key={g}
+                    type="button"
+                    onClick={() =>
+                      setGenreSelection((prev) =>
+                        active ? prev.filter((x) => x !== g) : [...prev, g]
+                      )
+                    }
+                    className={`rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
+                      active
+                        ? "border-violet bg-violet text-cream"
+                        : "border-line bg-white text-ink hover:border-violet/40 hover:text-violet-deep"
+                    }`}
+                  >
+                    {g}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setEditingGenre(false)} className="flex-1 py-2 text-sm">
+                Annuler
+              </Button>
+              <Button onClick={saveGenreMulti} disabled={savingGenreEdit} className="flex-1 py-2 text-sm">
+                {savingGenreEdit ? "…" : "Enregistrer"}
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Ma lecture */}
         <div className="flex flex-col gap-3.5 rounded-2xl border border-line bg-card p-4">
@@ -434,6 +537,101 @@ export default function BookDetailPage() {
             {done ? "Terminé · " : ""}
             {book.progress} / {book.pages} pages
           </p>
+
+          {/* Historique des relectures */}
+          {done && (book.date_started || book.date_read || readSessions.length > 0) && (
+            <div className="flex flex-col gap-2 border-t border-line pt-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                Historique des lectures
+              </p>
+              {/* Session originale (book.date_started / book.date_read) */}
+              <div className="flex items-center gap-2 rounded-xl bg-paper px-3 py-2.5">
+                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet text-[9px] font-bold text-cream">1</span>
+                <div className="min-w-0 flex-1">
+                  {book.date_started && (
+                    <span className="text-[11px] text-muted">
+                      {formatDate(book.date_started)} →{" "}
+                    </span>
+                  )}
+                  <span className="text-[11.5px] font-medium text-ink">
+                    {book.date_read ? formatDate(book.date_read) : "Date inconnue"}
+                  </span>
+                  {book.import_source === "goodreads" && (
+                    <span className="ml-1.5 rounded-md bg-[#f4f0e8] px-1.5 py-0.5 text-[9.5px] font-medium text-muted">
+                      Goodreads
+                    </span>
+                  )}
+                </div>
+              </div>
+              {/* Sessions supplémentaires */}
+              {readSessions.map((s, i) => (
+                <div key={s.id} className="flex items-center gap-2 rounded-xl bg-paper px-3 py-2.5">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet text-[9px] font-bold text-cream">
+                    {i + 2}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    {s.date_started && (
+                      <span className="text-[11px] text-muted">
+                        {formatDate(s.date_started)} →{" "}
+                      </span>
+                    )}
+                    <span className="text-[11.5px] font-medium text-ink">
+                      {formatDate(s.date_read)}
+                    </span>
+                    <span className="ml-1.5 rounded-md bg-violet-soft px-1.5 py-0.5 text-[9.5px] font-medium text-violet-deep">
+                      Relecture
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Bouton Relire + formulaire inline */}
+          {isOwner && done && (
+            <div className="border-t border-line pt-3">
+              {!addingRelecture ? (
+                <button
+                  onClick={() => setAddingRelecture(true)}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-violet/30 bg-violet-soft py-2.5 text-[12px] font-semibold text-violet-deep transition-colors hover:border-violet/60"
+                >
+                  ↺ Relire ce livre
+                </button>
+              ) : (
+                <div className="flex flex-col gap-3 rounded-2xl border border-violet/20 bg-violet-soft p-3.5">
+                  <p className="text-[12.5px] font-semibold text-ink">Nouvelle période de lecture</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="mb-1 text-[10.5px] font-medium text-muted">Début (optionnel)</p>
+                      <input
+                        type="date"
+                        value={relectureDraft.date_started}
+                        onChange={(e) => setRelectureDraft({ ...relectureDraft, date_started: e.target.value })}
+                        className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+                      />
+                    </div>
+                    <div>
+                      <p className="mb-1 text-[10.5px] font-medium text-muted">Fin (requis)</p>
+                      <input
+                        type="date"
+                        value={relectureDraft.date_read}
+                        onChange={(e) => setRelectureDraft({ ...relectureDraft, date_read: e.target.value })}
+                        className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button variant="ghost" onClick={() => { setAddingRelecture(false); setRelectureDraft({ date_started: "", date_read: "" }); }} className="flex-1 py-2 text-sm">
+                      Annuler
+                    </Button>
+                    <Button onClick={addRelecture} disabled={savingRelecture || !relectureDraft.date_read} className="flex-1 py-2 text-sm">
+                      {savingRelecture ? "…" : "Enregistrer"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Activité des membres (style Letterboxd) */}
