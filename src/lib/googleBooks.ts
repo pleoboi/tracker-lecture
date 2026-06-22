@@ -112,6 +112,44 @@ export function mapVolume(item: any): BookSuggestion {
   };
 }
 
+/**
+ * Cherche une couverture haute qualité sur Open Library.
+ * Essaie d'abord par ISBN13, puis par titre + auteur.
+ * Retourne l'URL grande taille (-L.jpg) ou null.
+ */
+export async function fetchOpenLibraryCover(
+  title: string,
+  author: string,
+  isbn13?: string | null
+): Promise<string | null> {
+  try {
+    // 1. Par ISBN — le plus précis
+    if (isbn13) {
+      const res = await fetch(
+        `https://openlibrary.org/search.json?isbn=${encodeURIComponent(isbn13)}&limit=1`,
+        { cache: "no-store" }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const coverId = data.docs?.[0]?.cover_i as number | undefined;
+        if (coverId) return `https://covers.openlibrary.org/b/id/${coverId}-L.jpg`;
+      }
+    }
+    // 2. Par titre + auteur
+    const q = [title, author].filter(Boolean).join(" ").trim();
+    if (!q) return null;
+    const res = await fetch(
+      `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=5`,
+      { cache: "no-store" }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    const hit = ((data.docs || []) as { cover_i?: number }[]).find((d) => d.cover_i);
+    if (hit?.cover_i) return `https://covers.openlibrary.org/b/id/${hit.cover_i}-L.jpg`;
+  } catch { /* pas de couverture */ }
+  return null;
+}
+
 /** Recherche côté client (passe par notre route serveur). */
 export async function searchBooks(query: string): Promise<BookSuggestion[]> {
   const q = query.trim();

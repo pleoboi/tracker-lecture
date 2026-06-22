@@ -8,7 +8,7 @@ import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
 import { Cover, ProgressBar, Button } from "../../components/ui";
-import { searchBooks } from "../../lib/googleBooks";
+import { searchBooks, fetchOpenLibraryCover } from "../../lib/googleBooks";
 
 type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes" | "recents";
 type Sort = "ajout" | "titre" | "auteur" | "note";
@@ -215,20 +215,28 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
           try {
             const q = [row.title, row.author].filter(Boolean).join(" ").trim();
             const results = await searchBooks(q);
-            if (results.length === 0) return;
             const authorSurname = (row.author || "").toLowerCase().split(/\s+/).pop() ?? "";
             const withCover = results.filter((r) => r.coverUrl);
             const matchAuthor = (pool: typeof results) =>
               pool.find((r) => !authorSurname || r.author.toLowerCase().includes(authorSurname));
-            const best = matchAuthor(withCover) ?? matchAuthor(results) ?? withCover[0] ?? results[0];
-            enriched[i + j] = {
-              ...row,
-              title: best.title || row.title,
-              cover_url: best.coverUrl ?? null,
-              summary: best.summary ?? null,
-              published_year: best.year ?? null,
-              genre: best.genre ?? null,
-            };
+            const best = matchAuthor(withCover) ?? matchAuthor(results) ?? withCover[0] ?? results[0] ?? null;
+
+            // Fallback Open Library si Google Books n'a pas de couverture
+            let coverUrl = best?.coverUrl ?? null;
+            if (!coverUrl) {
+              coverUrl = await fetchOpenLibraryCover(row.title, row.author, row.isbn13);
+            }
+
+            if (best || coverUrl) {
+              enriched[i + j] = {
+                ...row,
+                title: best?.title || row.title,
+                cover_url: coverUrl,
+                summary: best?.summary ?? null,
+                published_year: best?.year ?? null,
+                genre: best?.genre ?? null,
+              };
+            }
           } catch { /* fallback : données brutes du CSV */ }
         })
       );
@@ -533,11 +541,11 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
 
     const { data: rawBooks } = await supabase
       .from("books")
-      .select("id, title, author")
+      .select("id, title, author, isbn13")
       .eq("user_id", userId)
       .or("cover_url.is.null,cover_url.eq.");
 
-    const toEnrich = (rawBooks as Pick<Book, "id" | "title" | "author">[]) || [];
+    const toEnrich = (rawBooks as (Pick<Book, "id" | "title" | "author"> & { isbn13?: string | null })[]) || [];
     setProgress({ done: 0, total: toEnrich.length });
 
     let updated = 0;
@@ -548,20 +556,25 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
       try {
         const q = `${book.title} ${book.author || ""}`.trim();
         const apiRes = await fetch(`/api/books/search?q=${encodeURIComponent(q)}`);
+        let best = null;
         if (apiRes.ok) {
-          const apiData = await apiRes.json();
-          const best = (apiData.results || [])[0];
-          if (best) {
-            await supabase.from("books").update({
-              cover_url: best.coverUrl ?? null,
-              ...(best.summary ? { summary: best.summary } : {}),
-              ...(best.year ? { published_year: best.year } : {}),
-              ...(best.genre ? { genre: best.genre } : {}),
-            }).eq("id", book.id);
-            updated++;
-          } else {
-            noMatch++;
-          }
+          best = (await apiRes.json()).results?.[0] ?? null;
+        }
+
+        // Fallback Open Library si Google Books n'a pas de couverture
+        let coverUrl = best?.coverUrl ?? null;
+        if (!coverUrl) {
+          coverUrl = await fetchOpenLibraryCover(book.title, book.author || "", book.isbn13);
+        }
+
+        if (best || coverUrl) {
+          await supabase.from("books").update({
+            cover_url: coverUrl,
+            ...(best?.summary ? { summary: best.summary } : {}),
+            ...(best?.year ? { published_year: best.year } : {}),
+            ...(best?.genre ? { genre: best.genre } : {}),
+          }).eq("id", book.id);
+          updated++;
         } else {
           noMatch++;
         }
