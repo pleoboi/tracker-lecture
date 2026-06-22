@@ -7,8 +7,8 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
-import { Cover, ProgressBar, Button, FieldLabel, inputClass } from "../../components/ui";
-import { searchBooks, isFrench } from "../../lib/googleBooks";
+import { Cover, ProgressBar, Button } from "../../components/ui";
+import { searchBooks } from "../../lib/googleBooks";
 
 type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes" | "recents";
 type Sort = "ajout" | "titre" | "auteur" | "note";
@@ -577,60 +577,8 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
     onDone();
   };
 
-  // ── Mise à jour complète (couvertures manquantes + titres FR) ────────────
-  const handleUpdateAll = async () => {
-    setRunning(true);
-    setMode("update");
-    setResult(null);
-
-    const { data: rawBooks } = await supabase
-      .from("books")
-      .select("id, title, author, cover_url, import_source")
-      .eq("user_id", userId);
-
-    const toUpdate = (
-      (rawBooks as (Pick<Book, "id" | "title" | "author" | "cover_url" | "import_source">)[]) || []
-    ).filter((b) => !b.cover_url || b.import_source === "goodreads");
-
-    setProgress({ done: 0, total: toUpdate.length });
-    let updated = 0;
-    let noMatch = 0;
-
-    for (let i = 0; i < toUpdate.length; i++) {
-      const book = toUpdate[i];
-      try {
-        const q = `${book.title} ${book.author || ""}`.trim();
-        const apiRes = await fetch(`/api/books/search?q=${encodeURIComponent(q)}`);
-        if (apiRes.ok) {
-          const apiData = await apiRes.json();
-          const results: { title: string; coverUrl: string | null; summary: string | null; year: number | null; genre: string | null }[] = apiData.results || [];
-          const withCover = results.filter((r) => r.coverUrl);
-          const best = withCover[0] ?? results[0];
-          if (best) {
-            const patch: Record<string, unknown> = {};
-            if (best.coverUrl && !book.cover_url) patch.cover_url = best.coverUrl;
-            if (best.summary) patch.summary = best.summary;
-            if (best.year) patch.published_year = best.year;
-            if (best.genre) patch.genre = best.genre;
-            if (best.title && best.title !== book.title && !isFrench(book.title)) patch.title = best.title;
-            if (Object.keys(patch).length > 0) {
-              await supabase.from("books").update(patch).eq("id", book.id);
-              updated++;
-            } else noMatch++;
-          } else noMatch++;
-        } else noMatch++;
-      } catch { noMatch++; }
-      setProgress({ done: i + 1, total: toUpdate.length });
-      if (i < toUpdate.length - 1) await new Promise((r) => setTimeout(r, 300));
-    }
-
-    setRunning(false);
-    setResult({ updated, noMatch });
-    onDone();
-  };
-
   if (result) {
-    const scope = mode === "club" ? "tous les membres" : mode === "update" ? "ta bibliothèque (mise à jour)" : "ta bibliothèque";
+    const scope = mode === "club" ? "tous les membres" : "ta bibliothèque";
     return (
       <div className="rounded-2xl border border-[#cfe0cf] bg-[#eaf1ea] px-4 py-3">
         <p className="text-[13px] font-semibold text-success">Enrichissement terminé !</p>
@@ -681,12 +629,6 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
         <Button variant="ghost" onClick={handleEnrichOwn} className="w-full text-sm">
           🖼️ Enrichir mes livres uniquement
         </Button>
-        <button
-          onClick={handleUpdateAll}
-          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-violet py-2.5 text-[13px] font-semibold text-cream transition-opacity hover:opacity-90 active:scale-[0.98]"
-        >
-          🔄 Mettre à jour les données de ma bibliothèque
-        </button>
       </div>
     );
   }
@@ -699,12 +641,6 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
       <Button variant="ghost" onClick={handleEnrichOwn} className="w-full text-sm">
         🖼️ Enrichir mes livres uniquement
       </Button>
-      <button
-        onClick={handleUpdateAll}
-        className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-violet py-2.5 text-[13px] font-semibold text-cream transition-opacity hover:opacity-90 active:scale-[0.98]"
-      >
-        🔄 Mettre à jour les données de ma bibliothèque
-      </button>
     </div>
   );
 }
