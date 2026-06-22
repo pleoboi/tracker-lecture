@@ -518,10 +518,15 @@ function ActivityCarouselItem({ log, isChampion }: { log: ActivityLog; isChampio
         <p className="truncate text-[10px] text-muted">{log.bookAuthor}</p>
       </div>
 
-      {/* Action contextuelle */}
-      <p className={`text-[11px] font-semibold leading-tight ${actionLabel.color}`}>
-        {actionLabel.text}
-      </p>
+      {/* Action contextuelle + date */}
+      <div className="flex flex-col gap-0.5">
+        <p className={`text-[11px] font-semibold leading-tight ${actionLabel.color}`}>
+          {actionLabel.text}
+        </p>
+        <p className="text-[9.5px] text-muted">
+          {new Date(log.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+        </p>
+      </div>
 
       {/* Avatar + pseudo — clic vers profil */}
       {avatarLink(
