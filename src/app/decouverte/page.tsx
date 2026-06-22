@@ -114,6 +114,10 @@ const GENRE_TO_QUERY: Record<string, string> = {
   "Sciences politiques": "political history",
   "Sport": "sports biography",
   "Cinéma": "cinema film movies",
+  "Musique": "music biography",
+  "Drame": "drama literary fiction",
+  "Suspense": "suspense psychological thriller",
+  "Théâtre": "theater plays drama",
 };
 
 // Pool de découverte — genres variés pour diversifier les suggestions

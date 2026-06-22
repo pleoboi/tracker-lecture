@@ -8,6 +8,7 @@ import type { Book, ReadingLog } from "../../lib/types";
 import { pct } from "../../lib/books";
 import { Cover, ProgressBar, Button, AvatarImg } from "../../components/ui";
 import AddBookModal from "../../components/AddBookModal";
+import LogReadingModal from "../../components/LogReadingModal";
 
 const today = new Intl.DateTimeFormat("fr-FR", {
   weekday: "long",
@@ -59,6 +60,7 @@ export default function AccueilPage() {
   const [loading, setLoading] = useState(true);
   const [showAllReading, setShowAllReading] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
+  const [showLog, setShowLog] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
   // Club activity
@@ -296,6 +298,9 @@ export default function AccueilPage() {
         </div>
         {/* CTA desktop uniquement (mobile = bouton + dans la nav) */}
         <div className="hidden gap-2 md:flex">
+          <Button variant="ghost" onClick={() => setShowLog(true)} className="text-sm">
+            ✏️ Noter ma lecture
+          </Button>
           <Button variant="ghost" onClick={() => setShowAdd(true)} className="text-sm">
             ＋ Livre
           </Button>
@@ -408,6 +413,12 @@ export default function AccueilPage() {
         open={showAdd}
         onClose={() => setShowAdd(false)}
         onAdded={(m) => { showToast(m); load(); }}
+      />
+      <LogReadingModal
+        open={showLog}
+        onClose={() => setShowLog(false)}
+        books={books.filter((b) => b.status === "reading")}
+        onSaved={(m) => { setShowLog(false); showToast(m); load(); }}
       />
     </div>
   );

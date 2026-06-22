@@ -19,6 +19,7 @@ const GENRES = [
   "Développement personnel", "Philosophie", "Poésie", "Psychologie",
   "Économie", "Science", "Sciences humaines", "Sciences politiques",
   "Essai", "Aventure", "Romance", "Humour", "Sport", "Cinéma",
+  "Musique", "Drame", "Suspense", "Théâtre",
 ];
 
 interface MemberEntry {
@@ -465,17 +466,15 @@ export default function BookDetailPage() {
             <Pill tone="violet">Lu en {stats.durationDays} jour{stats.durationDays > 1 ? "s" : ""}</Pill>
           )}
           {book.published_year && <Pill tone="neutral">{book.published_year}</Pill>}
-          {isOwner && (
-            <button
-              onClick={() => {
-                setGenreSelection(book.genre?.split(", ").filter(Boolean) || []);
-                setEditingGenre((v) => !v);
-              }}
-              className="rounded-full border border-dashed border-violet/40 px-2.5 py-0.5 text-[10.5px] font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep"
-            >
-              {editingGenre ? "✕ Fermer" : book.genre ? "Modifier le genre" : "+ Genre"}
-            </button>
-          )}
+          <button
+            onClick={() => {
+              setGenreSelection(book.genre?.split(", ").filter(Boolean) || []);
+              setEditingGenre((v) => !v);
+            }}
+            className="rounded-full border border-dashed border-violet/40 px-2.5 py-0.5 text-[10.5px] font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep"
+          >
+            {editingGenre ? "✕ Fermer" : book.genre ? "Modifier le genre" : "+ Genre"}
+          </button>
         </div>
 
         {/* Panneau d'édition des genres (multi-sélection) */}

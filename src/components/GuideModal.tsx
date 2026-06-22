@@ -40,6 +40,12 @@ const SLIDES = [
     title: "Analyse tes Statistiques",
     body: "Tes pages lues, ton rythme quotidien, ton classement par auteur et tes objectifs annuels et mensuels — tout est dans l'onglet Statistiques.\n\nLes graphiques des autres membres sont visibles sur leurs profils.",
   },
+  {
+    label: "Installation",
+    icon: "📱",
+    title: "Installe l'appli sur ton iPhone",
+    body: "Accède à Ma Bibliothèque comme une vraie app, sans passer par le navigateur.\n\n1. Ouvre le site sur Safari\n2. Appuie sur le bouton Partager ⬆\n3. Tout en bas, choisis « Sur l'écran d'accueil »\n\nL'icône apparaît comme une appli native — sans pub, sans App Store.",
+  },
 ];
 
 export default function GuideModal({
