@@ -53,6 +53,7 @@ function parseGRDate(s: string): string | null {
 interface GRRow {
   title: string;
   author: string;
+  isbn13: string | null;
   pages: number;
   rating: number;
   status: string;
@@ -80,6 +81,8 @@ function parseGoodreadsCSV(text: string): GRRow[] {
     dateRead: headers.indexOf("date read"),
     dateAdded: headers.indexOf("date added"),
     review: headers.indexOf("my review"),
+    isbn: headers.indexOf("isbn"),
+    isbn13: headers.indexOf("isbn13"),
   };
   if (idx.title === -1) return [];
 
@@ -96,9 +99,18 @@ function parseGoodreadsCSV(text: string): GRRow[] {
       read: "completed",
       "currently-reading": "reading",
     };
+    // Goodreads exporte les ISBN sous la forme ="9782070417858" — on strip les non-chiffres
+    const rawIsbn = (
+      (idx.isbn13 >= 0 ? cols[idx.isbn13] : "") ||
+      (idx.isbn >= 0 ? cols[idx.isbn] : "") ||
+      ""
+    ).replace(/[^0-9]/g, "");
+    const isbn13 = rawIsbn.length >= 10 ? rawIsbn.slice(-13) : null;
+
     rows.push({
       title,
       author: (cols[idx.author] || "").trim(),
+      isbn13,
       pages: Math.max(0, parseInt(cols[idx.pages] || "0", 10) || 0),
       rating: Math.max(0, Math.min(5, parseInt(cols[idx.rating] || "0", 10) || 0)),
       status: statusMap[shelf] ?? "reading",
@@ -108,6 +120,19 @@ function parseGoodreadsCSV(text: string): GRRow[] {
     });
   }
   return rows;
+}
+
+// ── Helpers import ───────────────────────────────────────────────────────────
+
+/** Dice coefficient sur les mots significatifs (>2 car). Retourne 0–1. */
+function titleSimilarity(a: string, b: string): number {
+  const norm = (s: string) =>
+    s.toLowerCase().replace(/[^a-z0-9\s]/g, "").replace(/\s+/g, " ").trim();
+  const wa = norm(a).split(" ").filter((w) => w.length > 2);
+  const wb = new Set(norm(b).split(" ").filter((w) => w.length > 2));
+  if (!wa.length || !wb.size) return a.toLowerCase() === b.toLowerCase() ? 1 : 0;
+  const common = wa.filter((w) => wb.has(w)).length;
+  return (2 * common) / (wa.length + wb.size);
 }
 
 // ── Goodreads Import Component ──────────────────────────────────────────────
@@ -149,21 +174,30 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
     if (!preview) return;
     setImporting(true);
 
-    // ── Phase 1 : déduplication ──────────────────────────────────────────────
+    // ── Phase 1 : déduplication (ISBN13 → similarité Dice titre+auteur) ────────
     const { data: existing } = await supabase
       .from("books")
-      .select("title, author")
+      .select("title, author, isbn13")
       .eq("user_id", userId);
 
-    const existingKeys = new Set(
-      ((existing as Pick<Book, "title" | "author">[]) || []).map(
-        (b) => `${b.title.toLowerCase().trim()}__${(b.author || "").toLowerCase().trim()}`
-      )
-    );
+    const existingBooks = (existing as (Pick<Book, "title" | "author"> & { isbn13?: string | null })[]) || [];
+    const existingIsbns = new Set(existingBooks.map((b) => b.isbn13).filter(Boolean) as string[]);
 
     const toInsert = preview.filter((r) => {
-      const k = `${r.title.toLowerCase().trim()}__${r.author.toLowerCase().trim()}`;
-      return !existingKeys.has(k);
+      // A — Match ISBN13 exact
+      if (r.isbn13 && existingIsbns.has(r.isbn13)) return false;
+      // B — Similarité titre+auteur (Dice ≥ 85 %)
+      const rSurname = (r.author || "").toLowerCase().split(/\s+/).pop() ?? "";
+      for (const eb of existingBooks) {
+        if (titleSimilarity(r.title, eb.title) >= 0.85) {
+          const eSurname = (eb.author || "").toLowerCase().split(/\s+/).pop() ?? "";
+          if (!rSurname || !eSurname || rSurname === eSurname ||
+              eSurname.includes(rSurname) || rSurname.includes(eSurname)) {
+            return false;
+          }
+        }
+      }
+      return true;
     });
     const skipped = preview.length - toInsert.length;
 
@@ -183,9 +217,10 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
             const results = await searchBooks(q);
             if (results.length === 0) return;
             const authorSurname = (row.author || "").toLowerCase().split(/\s+/).pop() ?? "";
-            const best =
-              results.find((r) => !authorSurname || r.author.toLowerCase().includes(authorSurname)) ??
-              results[0];
+            const withCover = results.filter((r) => r.coverUrl);
+            const matchAuthor = (pool: typeof results) =>
+              pool.find((r) => !authorSurname || r.author.toLowerCase().includes(authorSurname));
+            const best = matchAuthor(withCover) ?? matchAuthor(results) ?? withCover[0] ?? results[0];
             enriched[i + j] = {
               ...row,
               title: best.title || row.title,
@@ -213,6 +248,7 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
       const batch = enriched.slice(i, i + BATCH).map((r) => ({
         title: r.title,
         author: r.author || "Auteur inconnu",
+        isbn13: r.isbn13 ?? null,
         pages: r.pages || 0,
         progress: r.status === "completed" ? (r.pages || 0) : 0,
         status: r.status,
@@ -438,7 +474,7 @@ function FavoriteBookPicker({
 function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void }) {
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
-  const [mode, setMode] = useState<"club" | "own" | null>(null);
+  const [mode, setMode] = useState<"club" | "own" | "update" | null>(null);
   const [result, setResult] = useState<{ updated: number; noMatch: number } | null>(null);
   const [serviceKeyMissing, setServiceKeyMissing] = useState(false);
 
@@ -541,8 +577,60 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
     onDone();
   };
 
+  // ── Mise à jour complète (couvertures manquantes + titres FR) ────────────
+  const handleUpdateAll = async () => {
+    setRunning(true);
+    setMode("update");
+    setResult(null);
+
+    const { data: rawBooks } = await supabase
+      .from("books")
+      .select("id, title, author, cover_url, import_source")
+      .eq("user_id", userId);
+
+    const toUpdate = (
+      (rawBooks as (Pick<Book, "id" | "title" | "author" | "cover_url" | "import_source">)[]) || []
+    ).filter((b) => !b.cover_url || b.import_source === "goodreads");
+
+    setProgress({ done: 0, total: toUpdate.length });
+    let updated = 0;
+    let noMatch = 0;
+
+    for (let i = 0; i < toUpdate.length; i++) {
+      const book = toUpdate[i];
+      try {
+        const q = `${book.title} ${book.author || ""}`.trim();
+        const apiRes = await fetch(`/api/books/search?q=${encodeURIComponent(q)}`);
+        if (apiRes.ok) {
+          const apiData = await apiRes.json();
+          const results: { title: string; coverUrl: string | null; summary: string | null; year: number | null; genre: string | null }[] = apiData.results || [];
+          const withCover = results.filter((r) => r.coverUrl);
+          const best = withCover[0] ?? results[0];
+          if (best) {
+            const patch: Record<string, unknown> = {};
+            if (best.coverUrl) patch.cover_url = best.coverUrl;
+            if (best.summary) patch.summary = best.summary;
+            if (best.year) patch.published_year = best.year;
+            if (best.genre) patch.genre = best.genre;
+            if (best.title && best.title !== book.title) patch.title = best.title;
+            if (Object.keys(patch).length > 0) {
+              await supabase.from("books").update(patch).eq("id", book.id);
+              updated++;
+            } else noMatch++;
+          } else noMatch++;
+        } else noMatch++;
+      } catch { noMatch++; }
+      setProgress({ done: i + 1, total: toUpdate.length });
+      if (i < toUpdate.length - 1) await new Promise((r) => setTimeout(r, 300));
+    }
+
+    setRunning(false);
+    setResult({ updated, noMatch });
+    onDone();
+  };
+
   if (result) {
-    const scope = mode === "club" ? "tous les membres" : "ta bibliothèque";
+    const scope = mode === "club" ? "tous les membres" : mode === "update" ? "ta bibliothèque (mise à jour)" : "ta bibliothèque";
     return (
       <div className="rounded-2xl border border-[#cfe0cf] bg-[#eaf1ea] px-4 py-3">
         <p className="text-[13px] font-semibold text-success">Enrichissement terminé !</p>
@@ -561,7 +649,7 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
     return (
       <div className="flex flex-col gap-2">
         <p className="text-[11px] font-medium text-violet-deep">
-          {mode === "club" ? "🌐 Enrichissement pour tout le club…" : "🖼️ Enrichissement de ta bibliothèque…"}
+          {mode === "club" ? "🌐 Enrichissement pour tout le club…" : mode === "update" ? "🔄 Mise à jour des données en cours…" : "🖼️ Enrichissement de ta bibliothèque…"}
         </p>
         <div className="h-2 w-full overflow-hidden rounded-full bg-[#e6decc]">
           <div
@@ -593,6 +681,12 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
         <Button variant="ghost" onClick={handleEnrichOwn} className="w-full text-sm">
           🖼️ Enrichir mes livres uniquement
         </Button>
+        <button
+          onClick={handleUpdateAll}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl bg-violet py-2.5 text-[13px] font-semibold text-cream transition-opacity hover:opacity-90 active:scale-[0.98]"
+        >
+          🔄 Mettre à jour les données de ma bibliothèque
+        </button>
       </div>
     );
   }
@@ -605,6 +699,12 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
       <Button variant="ghost" onClick={handleEnrichOwn} className="w-full text-sm">
         🖼️ Enrichir mes livres uniquement
       </Button>
+      <button
+        onClick={handleUpdateAll}
+        className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl bg-violet py-2.5 text-[13px] font-semibold text-cream transition-opacity hover:opacity-90 active:scale-[0.98]"
+      >
+        🔄 Mettre à jour les données de ma bibliothèque
+      </button>
     </div>
   );
 }

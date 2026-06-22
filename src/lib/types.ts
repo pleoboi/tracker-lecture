@@ -16,6 +16,7 @@ export interface Book {
   date_read?: string | null;
   date_started?: string | null;
   import_source?: string | null;
+  isbn13?: string | null;
 }
 
 export interface ReadSession {
