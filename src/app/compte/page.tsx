@@ -8,7 +8,7 @@ import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
 import { Cover, ProgressBar, Button } from "../../components/ui";
-import { searchBooks, fetchOpenLibraryCover } from "../../lib/googleBooks";
+import { searchBooks, fetchOpenLibraryCover, isFrench } from "../../lib/googleBooks";
 
 type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes" | "recents";
 type Sort = "ajout" | "titre" | "auteur" | "note";
@@ -210,10 +210,10 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
 
     // Pré-charge les fiches déjà en base (autres utilisateurs, avec couverture)
     // pour réutiliser leurs métadonnées sans appel API supplémentaire.
-    type GBok = { isbn13?: string | null; title: string; cover_url: string | null; summary: string | null; published_year: number | null; genre: string | null };
+    type GBok = { isbn13?: string | null; title: string; author: string | null; cover_url: string | null; summary: string | null; published_year: number | null; genre: string | null };
     const { data: globalPool } = await supabase
       .from("books")
-      .select("isbn13, title, cover_url, summary, published_year, genre")
+      .select("isbn13, title, author, cover_url, summary, published_year, genre")
       .neq("user_id", userId)
       .not("cover_url", "is", null);
     const globalBooks = (globalPool as GBok[]) || [];
@@ -224,50 +224,45 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
       await Promise.all(
         chunk.map(async (row, j) => {
           try {
-            // 1. Fiche existante en base (autre utilisateur, avec couverture)
+            const authorSurname = (row.author || "").toLowerCase().split(/\s+/).pop() ?? "";
+
+            // 1. Couverture depuis la base (ISBN exact, ou titre+auteur similaires)
+            //    → on ne prend QUE la couverture, jamais le titre (évite les mauvaises attributions)
             const isbnHit = row.isbn13 ? globalByIsbn.get(row.isbn13) : undefined;
-            const dbMatch: GBok | null =
-              isbnHit ??
-              globalBooks.find((b) => titleSimilarity(b.title, row.title) >= 0.85) ??
-              null;
+            const titleHit = isbnHit
+              ? undefined
+              : globalBooks.find((b) => {
+                  if (titleSimilarity(b.title, row.title) < 0.85) return false;
+                  const bSurname = (b.author || "").toLowerCase().split(/\s+/).pop() ?? "";
+                  return !authorSurname || !bSurname ||
+                    bSurname.includes(authorSurname) || authorSurname.includes(bSurname);
+                });
+            const dbCover = (isbnHit ?? titleHit)?.cover_url ?? null;
 
-            if (dbMatch) {
-              enriched[i + j] = {
-                ...row,
-                title: dbMatch.title || row.title,
-                cover_url: dbMatch.cover_url ?? null,
-                summary: dbMatch.summary ?? null,
-                published_year: dbMatch.published_year ?? null,
-                genre: dbMatch.genre ?? null,
-              };
-              return;
-            }
-
-            // 2. Google Books (langRestrict: fr)
+            // 2. Google Books (langRestrict: fr) — titre FR + métadonnées
+            //    Exige que l'auteur corresponde pour éviter d'attribuer le mauvais livre
             const q = [row.title, row.author].filter(Boolean).join(" ").trim();
             const results = await searchBooks(q);
-            const authorSurname = (row.author || "").toLowerCase().split(/\s+/).pop() ?? "";
             const withCover = results.filter((r) => r.coverUrl);
             const matchAuthor = (pool: typeof results) =>
               pool.find((r) => !authorSurname || r.author.toLowerCase().includes(authorSurname));
-            const best = matchAuthor(withCover) ?? matchAuthor(results) ?? withCover[0] ?? results[0] ?? null;
+            const best = matchAuthor(withCover) ?? matchAuthor(results) ?? null;
 
-            // 3. Fallback Open Library si pas de couverture
-            let coverUrl = best?.coverUrl ?? null;
+            // 3. Open Library en fallback couverture
+            let coverUrl = dbCover ?? best?.coverUrl ?? null;
             if (!coverUrl) {
               coverUrl = await fetchOpenLibraryCover(row.title, row.author, row.isbn13);
             }
 
-            if (best || coverUrl) {
-              enriched[i + j] = {
-                ...row,
-                title: best?.title || row.title,
-                cover_url: coverUrl,
-                summary: best?.summary ?? null,
-                published_year: best?.year ?? null,
-                genre: best?.genre ?? null,
-              };
-            }
+            enriched[i + j] = {
+              ...row,
+              // Titre FR seulement si Google Books confirme un résultat français
+              title: (best?.title && isFrench(best.title)) ? best.title : row.title,
+              cover_url: coverUrl,
+              summary: best?.summary ?? null,
+              published_year: best?.year ?? null,
+              genre: best?.genre ?? null,
+            };
           } catch { /* fallback : données brutes du CSV */ }
         })
       );
