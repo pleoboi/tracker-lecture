@@ -288,10 +288,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const fetchAvatar = async (uid: string) => {
     const { data } = await supabase
       .from("user_profiles")
-      .select("avatar_url")
+      .select("avatar_url, has_seen_onboarding")
       .eq("id", uid)
       .single();
     setAvatarUrl((data as { avatar_url?: string | null } | null)?.avatar_url ?? null);
+
+    // Auto-trigger onboarding for new users (has_seen_onboarding === false)
+    // or users with no profile row who haven't dismissed it via localStorage
+    const hasSeen = (data as { has_seen_onboarding?: boolean | null } | null)?.has_seen_onboarding;
+    if (hasSeen === false) {
+      setShowGuide(true);
+    } else if (data === null && typeof window !== "undefined") {
+      const lsKey = `onboarding_done_${uid}`;
+      if (!localStorage.getItem(lsKey)) setShowGuide(true);
+    }
   };
 
   useEffect(() => {
@@ -413,7 +423,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {showGuide && <GuideModal onClose={() => setShowGuide(false)} />}
+      <GuideModal userId={user?.id} open={showGuide} onClose={() => setShowGuide(false)} />
 
       <AddBookModal
         open={showAdd}
