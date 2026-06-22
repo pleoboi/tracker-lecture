@@ -76,7 +76,7 @@ const FR_MARKERS = [
   " par ", " aussi ", " très ", " comme ", " encore ", " tout ",
 ];
 
-function isFrench(text: string): boolean {
+export function isFrench(text: string): boolean {
   const haystack = " " + text.toLowerCase() + " ";
   let hits = 0;
   for (const w of FR_MARKERS) {

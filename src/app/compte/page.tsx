@@ -8,7 +8,7 @@ import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
 import { Cover, ProgressBar, Button, FieldLabel, inputClass } from "../../components/ui";
-import { searchBooks } from "../../lib/googleBooks";
+import { searchBooks, isFrench } from "../../lib/googleBooks";
 
 type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes" | "recents";
 type Sort = "ajout" | "titre" | "auteur" | "note";
@@ -608,11 +608,11 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
           const best = withCover[0] ?? results[0];
           if (best) {
             const patch: Record<string, unknown> = {};
-            if (best.coverUrl) patch.cover_url = best.coverUrl;
+            if (best.coverUrl && !book.cover_url) patch.cover_url = best.coverUrl;
             if (best.summary) patch.summary = best.summary;
             if (best.year) patch.published_year = best.year;
             if (best.genre) patch.genre = best.genre;
-            if (best.title && best.title !== book.title) patch.title = best.title;
+            if (best.title && best.title !== book.title && !isFrench(book.title)) patch.title = best.title;
             if (Object.keys(patch).length > 0) {
               await supabase.from("books").update(patch).eq("id", book.id);
               updated++;
