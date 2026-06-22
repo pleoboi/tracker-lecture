@@ -208,11 +208,42 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
     const enriched: GRRow[] = toInsert.map((r) => ({ ...r }));
     const ENRICH_CONCURRENCY = 3;
 
+    // Pré-charge les fiches déjà en base (autres utilisateurs, avec couverture)
+    // pour réutiliser leurs métadonnées sans appel API supplémentaire.
+    type GBok = { isbn13?: string | null; title: string; cover_url: string | null; summary: string | null; published_year: number | null; genre: string | null };
+    const { data: globalPool } = await supabase
+      .from("books")
+      .select("isbn13, title, cover_url, summary, published_year, genre")
+      .neq("user_id", userId)
+      .not("cover_url", "is", null);
+    const globalBooks = (globalPool as GBok[]) || [];
+    const globalByIsbn = new Map(globalBooks.filter((b) => b.isbn13).map((b) => [b.isbn13!, b]));
+
     for (let i = 0; i < enriched.length; i += ENRICH_CONCURRENCY) {
       const chunk = enriched.slice(i, Math.min(i + ENRICH_CONCURRENCY, enriched.length));
       await Promise.all(
         chunk.map(async (row, j) => {
           try {
+            // 1. Fiche existante en base (autre utilisateur, avec couverture)
+            const isbnHit = row.isbn13 ? globalByIsbn.get(row.isbn13) : undefined;
+            const dbMatch: GBok | null =
+              isbnHit ??
+              globalBooks.find((b) => titleSimilarity(b.title, row.title) >= 0.85) ??
+              null;
+
+            if (dbMatch) {
+              enriched[i + j] = {
+                ...row,
+                title: dbMatch.title || row.title,
+                cover_url: dbMatch.cover_url ?? null,
+                summary: dbMatch.summary ?? null,
+                published_year: dbMatch.published_year ?? null,
+                genre: dbMatch.genre ?? null,
+              };
+              return;
+            }
+
+            // 2. Google Books (langRestrict: fr)
             const q = [row.title, row.author].filter(Boolean).join(" ").trim();
             const results = await searchBooks(q);
             const authorSurname = (row.author || "").toLowerCase().split(/\s+/).pop() ?? "";
@@ -221,7 +252,7 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
               pool.find((r) => !authorSurname || r.author.toLowerCase().includes(authorSurname));
             const best = matchAuthor(withCover) ?? matchAuthor(results) ?? withCover[0] ?? results[0] ?? null;
 
-            // Fallback Open Library si Google Books n'a pas de couverture
+            // 3. Fallback Open Library si pas de couverture
             let coverUrl = best?.coverUrl ?? null;
             if (!coverUrl) {
               coverUrl = await fetchOpenLibraryCover(row.title, row.author, row.isbn13);
@@ -567,13 +598,8 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
           coverUrl = await fetchOpenLibraryCover(book.title, book.author || "", book.isbn13);
         }
 
-        if (best || coverUrl) {
-          await supabase.from("books").update({
-            cover_url: coverUrl,
-            ...(best?.summary ? { summary: best.summary } : {}),
-            ...(best?.year ? { published_year: best.year } : {}),
-            ...(best?.genre ? { genre: best.genre } : {}),
-          }).eq("id", book.id);
+        if (coverUrl) {
+          await supabase.from("books").update({ cover_url: coverUrl }).eq("id", book.id);
           updated++;
         } else {
           noMatch++;
