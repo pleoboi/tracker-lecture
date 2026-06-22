@@ -5,7 +5,7 @@ import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book, ReadingLog } from "../../lib/types";
-import { pct, isCompleted } from "../../lib/books";
+import { pct } from "../../lib/books";
 import { Cover, ProgressBar, Button, AvatarImg } from "../../components/ui";
 import AddBookModal from "../../components/AddBookModal";
 
@@ -85,14 +85,16 @@ export default function AccueilPage() {
     setActivityLoading(true);
 
     const todayStr = new Date().toISOString().split("T")[0];
-    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const threeDaysAgoDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+      .toISOString().split("T")[0]; // YYYY-MM-DD — date effective de lecture
 
     const [{ data: logsData }, { data: profilesData }, { data: todayAllLogs }, { data: recentBooksData }] = await Promise.all([
-      // Logs des 3 derniers jours seulement
+      // Logs dont la DATE effective de lecture est dans les 3 derniers jours
       supabase
         .from("reading_logs")
         .select("*")
-        .gte("created_at", threeDaysAgo)
+        .gte("date", threeDaysAgoDate)
+        .order("date", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(30),
       supabase.from("user_profiles").select("id, display_name, avatar_url"),
@@ -105,7 +107,7 @@ export default function AccueilPage() {
         .from("books")
         .select("id, title, cover_url, author, user_id, created_at")
         .eq("status", "reading")
-        .gte("created_at", threeDaysAgo)
+        .gte("created_at", threeDaysAgoDate)
         .order("created_at", { ascending: false })
         .limit(10),
     ]);
@@ -160,9 +162,12 @@ export default function AccueilPage() {
           ),
         };
       });
-      aggregatedLogs.sort((a, b) =>
-        (b.created_at ?? b.date).localeCompare(a.created_at ?? a.date)
-      );
+      // Tri par date réelle DESC, puis created_at DESC pour les égalités du même jour
+      aggregatedLogs.sort((a, b) => {
+        const d = (b.date ?? "").localeCompare(a.date ?? "");
+        if (d !== 0) return d;
+        return (b.created_at ?? "").localeCompare(a.created_at ?? "");
+      });
 
       const bookIds = [...new Set(aggregatedLogs.map((l) => l.book_id))];
       const { data: bookData } = await supabase
@@ -245,9 +250,13 @@ export default function AccueilPage() {
         };
       });
 
-    // Fusion triée par date décroissante, max 20 événements
+    // Fusion : date effective DESC, puis created_at DESC pour égalités
     const allEvents = [...enriched, ...startEvents]
-      .sort((a, b) => (b.created_at ?? b.date ?? "").localeCompare(a.created_at ?? a.date ?? ""))
+      .sort((a, b) => {
+        const d = (b.date ?? "").localeCompare(a.date ?? "");
+        if (d !== 0) return d;
+        return (b.created_at ?? "").localeCompare(a.created_at ?? "");
+      })
       .slice(0, 20);
 
     setActivity(allEvents);
