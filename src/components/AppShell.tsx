@@ -91,6 +91,28 @@ function isActive(pathname: string, href: string) {
   return pathname.startsWith(href);
 }
 
+function relativeTime(dateStr: string): string {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "à l'instant";
+  if (mins < 60) return `il y a ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `il y a ${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "hier";
+  if (days < 7) return `il y a ${days} j.`;
+  if (days < 30) return `il y a ${Math.floor(days / 7)} sem.`;
+  return `il y a ${Math.floor(days / 30)} mois`;
+}
+
+function BellIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-[18px] w-[18px]">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />
+    </svg>
+  );
+}
+
 // ── Avatar circulaire (photo ou initiale) ──────────────────────────────────
 function AvatarRound({
   avatarUrl,
@@ -133,11 +155,15 @@ function MobileTopBar({
   initial,
   isAccountActive,
   onGuide,
+  newFollowersCount,
+  onNotifClick,
 }: {
   avatarUrl: string | null;
   initial: string;
   isAccountActive: boolean;
   onGuide: () => void;
+  newFollowersCount: number;
+  onNotifClick: () => void;
 }) {
   return (
     <header className="sticky top-0 z-50 flex items-center justify-between border-b border-line bg-paper/90 px-5 py-2.5 backdrop-blur-md md:hidden">
@@ -152,6 +178,20 @@ function MobileTopBar({
         >
           ?
         </button>
+        <div className="relative">
+          <button
+            onClick={onNotifClick}
+            aria-label="Notifications"
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-card text-muted"
+          >
+            <BellIcon />
+          </button>
+          {newFollowersCount > 0 && (
+            <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-violet text-[9px] font-bold text-cream">
+              {newFollowersCount > 9 ? "9+" : newFollowersCount}
+            </span>
+          )}
+        </div>
         <Link href="/compte" aria-label="Mon compte">
           <AvatarRound avatarUrl={avatarUrl} initial={initial} active={isAccountActive} />
         </Link>
@@ -166,11 +206,15 @@ function TopBar({
   avatarUrl,
   initial,
   onGuide,
+  newFollowersCount,
+  onNotifClick,
 }: {
   pathname: string;
   avatarUrl: string | null;
   initial: string;
   onGuide: () => void;
+  newFollowersCount: number;
+  onNotifClick: () => void;
 }) {
   return (
     <header className="sticky top-0 z-50 hidden border-b border-line bg-paper/90 backdrop-blur-md md:block">
@@ -207,6 +251,20 @@ function TopBar({
           >
             ?
           </button>
+          <div className="relative">
+            <button
+              onClick={onNotifClick}
+              title="Notifications"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-card text-muted transition-colors hover:border-violet hover:text-violet-deep"
+            >
+              <BellIcon />
+            </button>
+            {newFollowersCount > 0 && (
+              <span className="pointer-events-none absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-violet text-[9px] font-bold text-cream">
+                {newFollowersCount > 9 ? "9+" : newFollowersCount}
+              </span>
+            )}
+          </div>
           <Link href="/compte" aria-label="Mon compte">
             <AvatarRound
               avatarUrl={avatarUrl}
@@ -280,6 +338,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [readingBooks, setReadingBooks] = useState<Book[]>([]);
   const [shellToast, setShellToast] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [showNotif, setShowNotif] = useState(false);
+  const [newFollowersCount, setNewFollowersCount] = useState(0);
+  const [notifFollowers, setNotifFollowers] = useState<{
+    id: string;
+    display_name: string;
+    avatar_url: string | null;
+    created_at: string;
+    isNew: boolean;
+  }[]>([]);
 
   const displayName =
     user?.user_metadata?.display_name || user?.email?.split("@")[0] || "?";
@@ -293,8 +360,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       .single();
     setAvatarUrl((data as { avatar_url?: string | null } | null)?.avatar_url ?? null);
 
-    // Auto-trigger onboarding for new users (has_seen_onboarding === false)
-    // or users with no profile row who haven't dismissed it via localStorage
     const hasSeen = (data as { has_seen_onboarding?: boolean | null } | null)?.has_seen_onboarding;
     if (hasSeen === false) {
       setShowGuide(true);
@@ -304,8 +369,53 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const fetchNotifications = async (uid: string) => {
+    const { data: followRows } = await supabase
+      .from("user_follows")
+      .select("follower_id, created_at")
+      .eq("following_id", uid)
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (!followRows || followRows.length === 0) return;
+
+    const ids = (followRows as { follower_id: string; created_at: string }[]).map((r) => r.follower_id);
+    const { data: profiles } = await supabase
+      .from("user_profiles")
+      .select("id, display_name, avatar_url")
+      .in("id", ids);
+
+    const profileMap = new Map(
+      ((profiles || []) as { id: string; display_name: string; avatar_url: string | null }[]).map((p) => [p.id, p])
+    );
+
+    const lastSeen = typeof window !== "undefined"
+      ? (localStorage.getItem(`notif_last_seen_${uid}`) ?? "1970-01-01")
+      : "1970-01-01";
+
+    const enriched = (followRows as { follower_id: string; created_at: string }[]).map((r) => ({
+      id: r.follower_id,
+      created_at: r.created_at,
+      display_name: profileMap.get(r.follower_id)?.display_name ?? "Membre",
+      avatar_url: profileMap.get(r.follower_id)?.avatar_url ?? null,
+      isNew: r.created_at > lastSeen,
+    }));
+
+    setNotifFollowers(enriched);
+    setNewFollowersCount(enriched.filter((f) => f.isNew).length);
+  };
+
+  const openNotif = () => {
+    setShowNotif(true);
+    if (user?.id && typeof window !== "undefined") {
+      localStorage.setItem(`notif_last_seen_${user.id}`, new Date().toISOString());
+      setNewFollowersCount(0);
+      setNotifFollowers((prev) => prev.map((f) => ({ ...f, isNew: false })));
+    }
+  };
+
   useEffect(() => {
-    if (user?.id) fetchAvatar(user.id);
+    if (user?.id) { fetchAvatar(user.id); fetchNotifications(user.id); }
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -359,12 +469,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         avatarUrl={avatarUrl}
         initial={initial}
         onGuide={() => setShowGuide(true)}
+        newFollowersCount={newFollowersCount}
+        onNotifClick={openNotif}
       />
       <MobileTopBar
         avatarUrl={avatarUrl}
         initial={initial}
         isAccountActive={isActive(pathname, "/compte")}
         onGuide={() => setShowGuide(true)}
+        newFollowersCount={newFollowersCount}
+        onNotifClick={openNotif}
       />
 
       <main className="mx-auto w-full max-w-2xl px-5 pb-32 pt-3 md:max-w-6xl md:px-10 md:pb-12 md:pt-6">
@@ -412,6 +526,56 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 <p className="text-[11px] text-muted">Enregistrer une session</p>
               </div>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Panel notifications */}
+      {showNotif && (
+        <div
+          className="fixed inset-0 z-[60]"
+          onClick={() => setShowNotif(false)}
+        >
+          <div
+            className="absolute right-5 top-[3.5rem] w-72 overflow-hidden rounded-2xl border border-line bg-paper shadow-2xl md:right-10 md:top-[4.5rem]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <h3 className="font-serif text-[15px] font-semibold text-ink">Notifications</h3>
+              <button onClick={() => setShowNotif(false)} className="text-xs text-muted">✕</button>
+            </div>
+
+            {notifFollowers.length === 0 ? (
+              <p className="px-4 py-8 text-center text-xs text-muted">
+                Personne ne s&apos;est encore abonné à toi.
+              </p>
+            ) : (
+              <div className="max-h-80 overflow-y-auto">
+                {notifFollowers.map((f) => (
+                  <Link
+                    key={f.id}
+                    href={`/membre/${f.id}`}
+                    onClick={() => setShowNotif(false)}
+                    className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-violet-soft"
+                  >
+                    <AvatarRound
+                      avatarUrl={f.avatar_url}
+                      initial={f.display_name[0]?.toUpperCase() ?? "?"}
+                      size="sm"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12.5px] font-semibold text-ink">{f.display_name}</p>
+                      <p className="text-[11px] text-muted">
+                        s&apos;est abonné · {relativeTime(f.created_at)}
+                      </p>
+                    </div>
+                    {f.isNew && (
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-violet" />
+                    )}
+                  </Link>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
