@@ -7,6 +7,8 @@ import {
   Cell,
   AreaChart,
   Area,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -83,6 +85,16 @@ export function GoalIndicator({
 
 function ChartTooltip({ active, payload, label, unit }: any) {
   if (!active || !payload || !payload.length) return null;
+  const main = payload.find((p: any) => p.dataKey === "value");
+  const friend = payload.find((p: any) => p.dataKey === "friend");
+  if (friend) {
+    return (
+      <div className="rounded-lg border border-line bg-card px-3 py-2 text-xs font-semibold text-ink shadow-sm">
+        <div>{label} — Moi : {fmt(main?.value ?? 0)} {unit}</div>
+        <div className="mt-0.5 text-muted">Amis : {fmt(friend.value)} {unit}</div>
+      </div>
+    );
+  }
   return (
     <div className="rounded-lg border border-line bg-card px-3 py-2 text-xs font-semibold text-ink shadow-sm">
       {label} : {fmt(payload[0].value)} {unit}
@@ -101,6 +113,9 @@ export function ObjectiveChart({
   onObjectiveChange,
   empty,
   type = "bar",
+  friendData,
+  friendColor,
+  friendLabel,
 }: {
   title: string;
   data: { name: string; value: number }[];
@@ -112,10 +127,17 @@ export function ObjectiveChart({
   onObjectiveChange?: (value: number) => void;
   empty?: string;
   type?: "bar" | "area";
+  friendData?: { name: string; value: number }[];
+  friendColor?: string;
+  friendLabel?: string;
 }) {
   const gradId = "grad-" + title.replace(/[^a-zA-Z]/g, "");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(String(objective ?? ""));
+
+  const mergedData = friendData
+    ? data.map((d, i) => ({ ...d, friend: friendData[i]?.value ?? 0 }))
+    : data;
 
   const commit = () => {
     const v = Number(draft);
@@ -157,42 +179,68 @@ export function ObjectiveChart({
           {empty}
         </div>
       ) : type === "area" ? (
-        <ResponsiveContainer width="100%" height={150}>
-          <AreaChart data={data} margin={{ top: 8, right: 10, left: 10, bottom: 0 }}>
-            <defs>
-              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor={color} stopOpacity={0.32} />
-                <stop offset="95%" stopColor={color} stopOpacity={0.02} />
-              </linearGradient>
-            </defs>
-            <XAxis
-              dataKey="name"
-              interval={0}
-              tickLine={false}
-              axisLine={false}
-              padding={{ left: 6, right: 6 }}
-              tick={{ fontSize: 9, fill: "#968da1" }}
-            />
-            <YAxis hide domain={[0, "dataMax"]} />
-            <Tooltip cursor={{ stroke: "#d8cfe6" }} content={(p) => <ChartTooltip {...p} unit={unit} />} />
-            {objective !== null && <ReferenceLine y={objective} stroke={color} strokeDasharray="4 4" strokeOpacity={0.65} />}
-            <Area
-              type="monotone"
-              dataKey="value"
-              stroke={color}
-              strokeWidth={2.5}
-              fill={`url(#${gradId})`}
-              dot={(props: any) =>
-                props.index === currentMonth ? (
-                  <circle key={props.index} cx={props.cx} cy={props.cy} r={3.5} fill={color} stroke="var(--color-card)" strokeWidth={2} />
-                ) : (
-                  <g key={props.index} />
-                )
-              }
-              activeDot={{ r: 4, fill: color }}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
+        <>
+          <ResponsiveContainer width="100%" height={150}>
+            <AreaChart data={mergedData} margin={{ top: 8, right: 10, left: 10, bottom: 0 }}>
+              <defs>
+                <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor={color} stopOpacity={0.32} />
+                  <stop offset="95%" stopColor={color} stopOpacity={0.02} />
+                </linearGradient>
+              </defs>
+              <XAxis
+                dataKey="name"
+                interval={0}
+                tickLine={false}
+                axisLine={false}
+                padding={{ left: 6, right: 6 }}
+                tick={{ fontSize: 9, fill: "#968da1" }}
+              />
+              <YAxis hide domain={[0, "dataMax"]} />
+              <Tooltip cursor={{ stroke: "#d8cfe6" }} content={(p) => <ChartTooltip {...p} unit={unit} />} />
+              {objective !== null && <ReferenceLine y={objective} stroke={color} strokeDasharray="4 4" strokeOpacity={0.65} />}
+              <Area
+                type="monotone"
+                dataKey="value"
+                stroke={color}
+                strokeWidth={2.5}
+                fill={`url(#${gradId})`}
+                dot={(props: any) =>
+                  props.index === currentMonth ? (
+                    <circle key={props.index} cx={props.cx} cy={props.cy} r={3.5} fill={color} stroke="var(--color-card)" strokeWidth={2} />
+                  ) : (
+                    <g key={props.index} />
+                  )
+                }
+                activeDot={{ r: 4, fill: color }}
+              />
+              {friendData && (
+                <Area
+                  type="monotone"
+                  dataKey="friend"
+                  stroke={friendColor || "#a0c4b8"}
+                  strokeWidth={1.5}
+                  strokeDasharray="5 3"
+                  fill="none"
+                  dot={false}
+                  activeDot={{ r: 3 }}
+                />
+              )}
+            </AreaChart>
+          </ResponsiveContainer>
+          {friendData && (
+            <div className="flex items-center gap-4 px-1">
+              <div className="flex items-center gap-1.5">
+                <span className="block h-0.5 w-4 rounded-full" style={{ backgroundColor: color }} />
+                <span className="text-[10px] text-muted">Moi</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="block w-4 border-t-2 border-dashed" style={{ borderColor: friendColor || "#a0c4b8" }} />
+                <span className="text-[10px] text-muted">{friendLabel || "Amis mutuels (moy.)"}</span>
+              </div>
+            </div>
+          )}
+        </>
       ) : (
         <ResponsiveContainer width="100%" height={150}>
           <BarChart data={data} margin={{ top: 8, right: 6, left: 6, bottom: 0 }}>
@@ -295,6 +343,104 @@ export function RatingsChart({ counts, average, total }: { counts: number[]; ave
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/* ---------------- Graphique comparatif jour par jour (mois en cours) ---------------- */
+
+const MONTHS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+
+function DailyTooltip({ active, payload }: any) {
+  if (!active || !payload || !payload.length) return null;
+  return (
+    <div className="rounded-lg border border-line bg-card px-3 py-2 shadow-sm">
+      {payload.map((p: any) => (
+        <div key={p.dataKey} className="flex items-center gap-2 text-[11px] font-semibold">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: p.color }} />
+          <span style={{ color: p.color }}>{p.name}</span>
+          <span className="text-ink">: {fmt(p.value)} p.</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function DailyComparisonChart({
+  myData,
+  mutuals,
+  month,
+  year,
+  myColor = "var(--color-violet)",
+}: {
+  myData: { day: number; pages: number }[];
+  mutuals: { name: string; color: string; data: { day: number; pages: number }[] }[];
+  month: number;
+  year: number;
+  myColor?: string;
+}) {
+  const chartData = myData.map(({ day, pages }) => {
+    const row: Record<string, number> = { day, Moi: pages };
+    mutuals.forEach(({ name, data }) => {
+      row[name] = data.find((d) => d.day === day)?.pages ?? 0;
+    });
+    return row;
+  });
+
+  if (chartData.length === 0) return null;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="font-serif text-[15px] font-medium text-ink">
+          Pages / jour — {MONTHS_FR[month]} {year}
+        </h3>
+      </div>
+      <ResponsiveContainer width="100%" height={160}>
+        <LineChart data={chartData} margin={{ top: 6, right: 10, left: 0, bottom: 0 }}>
+          <XAxis
+            dataKey="day"
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 9, fill: "#968da1" }}
+            interval={Math.floor(chartData.length / 6)}
+          />
+          <YAxis hide />
+          <Tooltip content={<DailyTooltip />} />
+          <Line
+            type="monotone"
+            dataKey="Moi"
+            stroke={myColor}
+            strokeWidth={2.5}
+            dot={false}
+            activeDot={{ r: 4, fill: myColor }}
+          />
+          {mutuals.map(({ name, color }) => (
+            <Line
+              key={name}
+              type="monotone"
+              dataKey={name}
+              stroke={color}
+              strokeWidth={1.5}
+              strokeDasharray="5 3"
+              dot={false}
+              activeDot={{ r: 3 }}
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap items-center gap-3 px-1">
+        <div className="flex items-center gap-1.5">
+          <span className="block h-0.5 w-4 rounded-full" style={{ backgroundColor: myColor }} />
+          <span className="text-[10px] text-muted">Moi</span>
+        </div>
+        {mutuals.map(({ name, color }) => (
+          <div key={name} className="flex items-center gap-1.5">
+            <span className="block w-4 border-t-2 border-dashed" style={{ borderColor: color }} />
+            <span className="text-[10px] text-muted">{name}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

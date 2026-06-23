@@ -70,6 +70,7 @@ export default function AccueilPage() {
 
   // Members
   const [members, setMembers] = useState<Profile[]>([]);
+  const [hasFollows, setHasFollows] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -90,24 +91,31 @@ export default function AccueilPage() {
     const threeDaysAgoDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
       .toISOString().split("T")[0]; // YYYY-MM-DD — date effective de lecture
 
-    const [{ data: logsData }, { data: profilesData }, { data: todayAllLogs }, { data: recentBooksData }] = await Promise.all([
-      // Logs dont la DATE effective de lecture est dans les 3 derniers jours
+    // Étape 1 : profils, champion du jour (non filtré), et liste des suivis
+    const [{ data: profilesData }, { data: todayAllLogs }, { data: followData }] = await Promise.all([
+      supabase.from("user_profiles").select("id, display_name, avatar_url"),
+      supabase.from("reading_logs").select("user_id, pages_read").eq("date", todayStr),
+      supabase.from("user_follows").select("following_id").eq("follower_id", userId),
+    ]);
+
+    const followingIds = ((followData || []) as { following_id: string }[]).map((f) => f.following_id);
+    setHasFollows(followingIds.length > 0);
+    const allowedIds = [userId, ...followingIds];
+
+    // Étape 2 : logs et livres filtrés par les utilisateurs suivis (+ soi-même)
+    const [{ data: logsData }, { data: recentBooksData }] = await Promise.all([
       supabase
         .from("reading_logs")
         .select("*")
+        .in("user_id", allowedIds)
         .gte("date", threeDaysAgoDate)
         .order("date", { ascending: false })
         .order("created_at", { ascending: false })
         .limit(30),
-      supabase.from("user_profiles").select("id, display_name, avatar_url"),
-      supabase
-        .from("reading_logs")
-        .select("user_id, pages_read")
-        .eq("date", todayStr),
-      // Livres récemment commencés (3 derniers jours, statut "en cours")
       supabase
         .from("books")
         .select("id, title, cover_url, author, user_id, created_at")
+        .in("user_id", allowedIds)
         .eq("status", "reading")
         .gte("created_at", threeDaysAgoDate)
         .order("created_at", { ascending: false })
@@ -362,6 +370,20 @@ export default function AccueilPage() {
         {/* Champion du jour */}
         {todayChampion && (
           <ChampionBanner champion={todayChampion} isMe={todayChampion.userId === userId} />
+        )}
+
+        {!hasFollows && !activityLoading && (
+          <Link
+            href="/membres"
+            className="flex items-center gap-3 rounded-2xl border border-violet/30 bg-violet-soft px-4 py-3"
+          >
+            <span className="text-lg">👥</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-violet-deep">Suis des membres pour voir leur activité</p>
+              <p className="text-[11px] text-muted">Visite les profils → &quot;S&apos;abonner&quot;</p>
+            </div>
+            <span className="shrink-0 text-xs font-medium text-violet-deep">Voir →</span>
+          </Link>
         )}
 
         {activityLoading ? (

@@ -5,7 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book, ReadingLog } from "../../lib/types";
 import { loadGoals, updateGoal, DEFAULT_GOALS, type Goals } from "../../lib/settings";
-import { GoalIndicator, ObjectiveChart, StatCard, RatingsChart } from "../../components/DashboardWidgets";
+import { GoalIndicator, ObjectiveChart, StatCard, RatingsChart, DailyComparisonChart } from "../../components/DashboardWidgets";
 
 const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 const MS_DAY = 86_400_000;
@@ -80,6 +80,11 @@ export default function DashboardPage() {
   const [championDays, setChampionDays] = useState(0);
   const [showAllAuthors, setShowAllAuthors] = useState(false);
 
+  // Données des amis mutuels (chargées une seule fois pour l'année en cours)
+  const [mutualMonthlyAvg, setMutualMonthlyAvg] = useState<number[]>(Array(12).fill(0));
+  const [mutualDailyData, setMutualDailyData] = useState<{ name: string; color: string; data: { day: number; pages: number }[] }[]>([]);
+  const [hasMutuals, setHasMutuals] = useState(false);
+
   const loadAll = useCallback(async () => {
     if (!userId) return;
     const [g, { data: l }, { data: b }, { data: allLogs }] = await Promise.all([
@@ -114,6 +119,92 @@ export default function DashboardPage() {
   useEffect(() => {
     loadAll();
   }, [loadAll]);
+
+  // Chargement des données mutuelles (uniquement pour l'année en cours)
+  useEffect(() => {
+    if (!userId || year !== now.getFullYear()) {
+      setMutualMonthlyAvg(Array(12).fill(0));
+      setMutualDailyData([]);
+      setHasMutuals(false);
+      return;
+    }
+    const loadMutuals = async () => {
+      const { data: myFollowsData } = await supabase
+        .from("user_follows")
+        .select("following_id")
+        .eq("follower_id", userId);
+
+      const followingIds = ((myFollowsData || []) as { following_id: string }[]).map((f) => f.following_id);
+      if (followingIds.length === 0) { setHasMutuals(false); return; }
+
+      const { data: mutualCheck } = await supabase
+        .from("user_follows")
+        .select("follower_id")
+        .eq("following_id", userId)
+        .in("follower_id", followingIds);
+
+      const mutualIds = [...new Set(((mutualCheck || []) as { follower_id: string }[]).map((f) => f.follower_id))];
+      if (mutualIds.length === 0) { setHasMutuals(false); return; }
+      setHasMutuals(true);
+
+      const currentYear = now.getFullYear();
+      const [{ data: mutualLogsData }, { data: mutualProfilesData }] = await Promise.all([
+        supabase
+          .from("reading_logs")
+          .select("user_id, pages_read, date")
+          .in("user_id", mutualIds)
+          .gte("date", `${currentYear}-01-01`)
+          .lte("date", `${currentYear}-12-31`),
+        supabase.from("user_profiles").select("id, display_name").in("id", mutualIds),
+      ]);
+
+      type LogRow = { user_id: string; pages_read: number; date: string };
+      type ProfRow = { id: string; display_name: string };
+      const allLogs = (mutualLogsData as LogRow[]) || [];
+      const profiles = (mutualProfilesData as ProfRow[]) || [];
+
+      // Moyenne mensuelle
+      const pagesPerUserPerMonth = new Map<string, number[]>();
+      mutualIds.forEach((id) => pagesPerUserPerMonth.set(id, Array(12).fill(0)));
+      allLogs.forEach((l) => {
+        const m = new Date(l.date).getMonth();
+        const arr = pagesPerUserPerMonth.get(l.user_id);
+        if (arr) arr[m] += l.pages_read || 0;
+      });
+      const avgByMonth = Array(12).fill(0).map((_, m) => {
+        const total = [...pagesPerUserPerMonth.values()].reduce((s, arr) => s + arr[m], 0);
+        return mutualIds.length > 0 ? Math.round(total / mutualIds.length) : 0;
+      });
+      setMutualMonthlyAvg(avgByMonth);
+
+      // Pages par jour pour chaque mutual (mois en cours)
+      const COLORS = ["#c8b8e8", "#8ec5b0", "#f4b09a", "#b8c89a", "#c4a8c4"];
+      const profileMap = new Map(profiles.map((p) => [p.id, p.display_name]));
+      const currentMonth = now.getMonth();
+      const monthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
+
+      const dailyResult = mutualIds.slice(0, 4).map((id, idx) => {
+        const dayMap = new Map<number, number>();
+        allLogs
+          .filter((l) => l.user_id === id && l.date.startsWith(monthStr))
+          .forEach((l) => {
+            const day = new Date(l.date).getDate();
+            dayMap.set(day, (dayMap.get(day) || 0) + (l.pages_read || 0));
+          });
+        const data = Array.from({ length: now.getDate() }, (_, i) => ({
+          day: i + 1,
+          pages: dayMap.get(i + 1) || 0,
+        }));
+        return {
+          name: profileMap.get(id) || "Membre",
+          color: COLORS[idx % COLORS.length],
+          data,
+        };
+      });
+      setMutualDailyData(dailyResult);
+    };
+    loadMutuals();
+  }, [userId, year]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setGoal = async (key: keyof Goals, value: number) => {
     if (!userId) return;
@@ -181,6 +272,17 @@ export default function DashboardPage() {
   });
 
   const monthChart = (arr: number[]) => arr.map((v, i) => ({ name: MONTHS[i], value: v }));
+
+  // Données journalières du mois en cours (pour le graphique comparatif)
+  const myDailyData = isCurrentYear
+    ? Array.from({ length: now.getDate() }, (_, i) => {
+        const day = i + 1;
+        const dateStr = `${year}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        return { day, pages: dayPages.get(dateStr) || 0 };
+      })
+    : [];
+
+  const mutualMonthlyChartData = mutualMonthlyAvg.map((v, i) => ({ name: MONTHS[i], value: v }));
 
   // Répartition des notes
   const ratingCounts = Array(10).fill(0);
@@ -276,6 +378,9 @@ export default function DashboardPage() {
                   ? (v) => setGoal("reading_pages_year", v * 12)
                   : undefined
               }
+              friendData={hasMutuals && isCurrentYear ? mutualMonthlyChartData : undefined}
+              friendColor="#8ec5b0"
+              friendLabel="Amis mutuels (moy.)"
             />
             <ObjectiveChart
               title="Livres lus / mois"
@@ -297,6 +402,17 @@ export default function DashboardPage() {
               }
             />
           </div>
+
+          {/* 2b. Graphique comparatif jour par jour (mois en cours, si amis mutuels) */}
+          {isCurrentYear && hasMutuals && mutualDailyData.length > 0 && (
+            <DailyComparisonChart
+              myData={myDailyData}
+              mutuals={mutualDailyData}
+              month={now.getMonth()}
+              year={year}
+              myColor={VIOLET}
+            />
+          )}
 
           {/* 3. Champion du jour */}
           <div className="flex items-center gap-4 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-4">

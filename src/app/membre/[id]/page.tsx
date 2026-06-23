@@ -43,23 +43,48 @@ export default function MembrePage() {
   const [championDays, setChampionDays] = useState(0);
   const [completedLimit, setCompletedLimit] = useState(1);
 
+  // Follow system
+  const [followersCount, setFollowersCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [loadingFollow, setLoadingFollow] = useState(false);
+  const [followListType, setFollowListType] = useState<"followers" | "following" | null>(null);
+  const [followList, setFollowList] = useState<{ id: string; display_name: string; avatar_url: string | null }[]>([]);
+
   useEffect(() => {
     const load = async () => {
       type LogRow = { user_id: string; pages_read: number; date: string };
-      const [{ data: prof }, { data: bs }, { data: ls }, { data: allLogs }, { data: logsWithPhotos }] =
-        await Promise.all([
-          supabase.from("user_profiles").select("*").eq("id", memberId).single(),
-          supabase.from("books").select("*").eq("user_id", memberId),
-          supabase.from("reading_logs").select("*").eq("user_id", memberId),
-          supabase.from("reading_logs").select("user_id, pages_read, date"),
-          supabase
-            .from("reading_logs")
-            .select("session_photo_url, date, book_id")
-            .eq("user_id", memberId)
-            .not("session_photo_url", "is", null)
-            .order("date", { ascending: false })
-            .limit(12),
-        ]);
+      const [
+        { data: prof }, { data: bs }, { data: ls }, { data: allLogs }, { data: logsWithPhotos },
+        { count: fCount }, { count: ingCount },
+      ] = await Promise.all([
+        supabase.from("user_profiles").select("*").eq("id", memberId).single(),
+        supabase.from("books").select("*").eq("user_id", memberId),
+        supabase.from("reading_logs").select("*").eq("user_id", memberId),
+        supabase.from("reading_logs").select("user_id, pages_read, date"),
+        supabase
+          .from("reading_logs")
+          .select("session_photo_url, date, book_id")
+          .eq("user_id", memberId)
+          .not("session_photo_url", "is", null)
+          .order("date", { ascending: false })
+          .limit(12),
+        supabase.from("user_follows").select("*", { count: "exact", head: true }).eq("following_id", memberId),
+        supabase.from("user_follows").select("*", { count: "exact", head: true }).eq("follower_id", memberId),
+      ]);
+      setFollowersCount(fCount ?? 0);
+      setFollowingCount(ingCount ?? 0);
+
+      // Vérifier si l'utilisateur courant suit ce membre
+      if (user?.id && user.id !== memberId) {
+        const { data: myFollowRow } = await supabase
+          .from("user_follows")
+          .select("id")
+          .eq("follower_id", user.id)
+          .eq("following_id", memberId)
+          .maybeSingle();
+        setIsFollowing(!!myFollowRow);
+      }
 
       const profileData = prof as Profile;
       setProfile(profileData);
@@ -113,6 +138,36 @@ export default function MembrePage() {
     };
     load();
   }, [memberId]);
+
+  const handleFollow = async () => {
+    if (!user?.id) return;
+    setLoadingFollow(true);
+    if (isFollowing) {
+      await supabase.from("user_follows").delete().eq("follower_id", user.id).eq("following_id", memberId);
+      setIsFollowing(false);
+      setFollowersCount((n) => Math.max(0, n - 1));
+    } else {
+      await supabase.from("user_follows").insert({ follower_id: user.id, following_id: memberId });
+      setIsFollowing(true);
+      setFollowersCount((n) => n + 1);
+    }
+    setLoadingFollow(false);
+  };
+
+  const handleShowFollowList = async (type: "followers" | "following") => {
+    setFollowList([]);
+    setFollowListType(type);
+    const filterCol = type === "followers" ? "following_id" : "follower_id";
+    const selectCol = type === "followers" ? "follower_id" : "following_id";
+    const { data } = await supabase.from("user_follows").select(selectCol).eq(filterCol, memberId);
+    const ids = ((data || []) as Record<string, string>[]).map((r) => r[selectCol]);
+    if (ids.length === 0) return;
+    const { data: profiles } = await supabase
+      .from("user_profiles")
+      .select("id, display_name, avatar_url")
+      .in("id", ids);
+    setFollowList((profiles || []) as { id: string; display_name: string; avatar_url: string | null }[]);
+  };
 
   if (loading) {
     return (
@@ -225,6 +280,37 @@ export default function MembrePage() {
           {profile.bio && (
             <p className="mt-2 text-[12.5px] leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>{profile.bio}</p>
           )}
+          {/* Compteurs + bouton follow */}
+          <div className="mt-3 flex items-center gap-3">
+            <button
+              onClick={() => handleShowFollowList("followers")}
+              className="flex items-center gap-1 text-[12px] text-ink hover:text-violet-deep"
+            >
+              <span className="font-bold">{followersCount}</span>
+              <span className="text-muted"> abonné{followersCount !== 1 ? "s" : ""}</span>
+            </button>
+            <span className="text-line text-muted">·</span>
+            <button
+              onClick={() => handleShowFollowList("following")}
+              className="flex items-center gap-1 text-[12px] text-ink hover:text-violet-deep"
+            >
+              <span className="font-bold">{followingCount}</span>
+              <span className="text-muted"> abonnement{followingCount !== 1 ? "s" : ""}</span>
+            </button>
+            {!isOwn && user?.id && (
+              <button
+                onClick={handleFollow}
+                disabled={loadingFollow}
+                className={`ml-auto shrink-0 rounded-xl px-3 py-1.5 text-[11.5px] font-semibold transition-colors disabled:opacity-50 ${
+                  isFollowing
+                    ? "border border-line bg-card text-muted hover:border-danger/50 hover:text-danger"
+                    : "bg-violet text-cream hover:opacity-90"
+                }`}
+              >
+                {isFollowing ? "Abonné ✓" : "S'abonner"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -555,6 +641,45 @@ export default function MembrePage() {
         book={addTarget}
         onAdded={(msg) => { setToast(msg); setTimeout(() => setToast(null), 3500); }}
       />
+
+      {/* Modal liste abonnés / abonnements */}
+      {followListType !== null && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-ink/30 backdrop-blur-sm"
+          onClick={() => setFollowListType(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-t-3xl bg-paper p-5 pb-10 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="font-serif text-lg font-semibold text-ink">
+                {followListType === "followers" ? "Abonnés" : "Abonnements"}
+              </h3>
+              <button onClick={() => setFollowListType(null)} className="text-sm text-muted">✕</button>
+            </div>
+            {followList.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted">
+                {followListType === "followers" ? "Aucun abonné pour l'instant." : "Aucun abonnement pour l'instant."}
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2 overflow-y-auto max-h-72">
+                {followList.map((m) => (
+                  <Link
+                    key={m.id}
+                    href={`/membre/${m.id}`}
+                    onClick={() => setFollowListType(null)}
+                    className="flex items-center gap-3 rounded-xl border border-line bg-card px-3 py-2.5 hover:border-violet/40"
+                  >
+                    <AvatarImg url={m.avatar_url} name={m.display_name} className="h-8 w-8 shrink-0 text-sm" />
+                    <span className="text-sm font-medium text-ink">{m.display_name}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
