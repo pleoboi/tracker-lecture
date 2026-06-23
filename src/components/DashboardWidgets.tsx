@@ -21,7 +21,7 @@ import {
 interface Period {
   cur: number;
   goal: number;
-  expected: number; // attendu à date (pour calculer l'avance/retard)
+  expected: number;
 }
 
 function fmt(n: number) {
@@ -83,21 +83,25 @@ export function GoalIndicator({
 
 /* ---------------- Graphe mensuel avec objectif ajustable ---------------- */
 
+export interface FriendLine {
+  name: string;
+  color: string;
+  data: { name: string; value: number }[];
+}
+
 function ChartTooltip({ active, payload, label, unit }: any) {
   if (!active || !payload || !payload.length) return null;
-  const main = payload.find((p: any) => p.dataKey === "value");
-  const friend = payload.find((p: any) => p.dataKey === "friend");
-  if (friend) {
-    return (
-      <div className="rounded-lg border border-line bg-card px-3 py-2 text-xs font-semibold text-ink shadow-sm">
-        <div>{label} — Moi : {fmt(main?.value ?? 0)} {unit}</div>
-        <div className="mt-0.5 text-muted">Amis : {fmt(friend.value)} {unit}</div>
-      </div>
-    );
-  }
   return (
-    <div className="rounded-lg border border-line bg-card px-3 py-2 text-xs font-semibold text-ink shadow-sm">
-      {label} : {fmt(payload[0].value)} {unit}
+    <div className="rounded-lg border border-line bg-card px-3 py-2 shadow-sm">
+      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted">{label}</p>
+      {payload.map((p: any) => (
+        <div key={p.dataKey} className="flex items-center gap-2 text-[11px] font-semibold">
+          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: p.color || p.fill }} />
+          <span className="text-ink">
+            {p.dataKey === "value" ? "Moi" : p.name || p.dataKey} : {fmt(p.value)} {unit}
+          </span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -113,9 +117,7 @@ export function ObjectiveChart({
   onObjectiveChange,
   empty,
   type = "bar",
-  friendData,
-  friendColor,
-  friendLabel,
+  friendLines,
 }: {
   title: string;
   data: { name: string; value: number }[];
@@ -127,16 +129,20 @@ export function ObjectiveChart({
   onObjectiveChange?: (value: number) => void;
   empty?: string;
   type?: "bar" | "area";
-  friendData?: { name: string; value: number }[];
-  friendColor?: string;
-  friendLabel?: string;
+  friendLines?: FriendLine[];
 }) {
   const gradId = "grad-" + title.replace(/[^a-zA-Z]/g, "");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(String(objective ?? ""));
 
-  const mergedData = friendData
-    ? data.map((d, i) => ({ ...d, friend: friendData[i]?.value ?? 0 }))
+  const mergedData = friendLines
+    ? data.map((d, i) => {
+        const row: Record<string, number | string> = { name: d.name, value: d.value };
+        friendLines.forEach(({ name, data: fd }) => {
+          row[name] = fd[i]?.value ?? 0;
+        });
+        return row;
+      })
     : data;
 
   const commit = () => {
@@ -214,30 +220,32 @@ export function ObjectiveChart({
                 }
                 activeDot={{ r: 4, fill: color }}
               />
-              {friendData && (
-                <Area
+              {friendLines && friendLines.map(({ name, color: c }) => (
+                <Line
+                  key={name}
                   type="monotone"
-                  dataKey="friend"
-                  stroke={friendColor || "#a0c4b8"}
-                  strokeWidth={1.5}
+                  dataKey={name}
+                  stroke={c}
+                  strokeWidth={1.8}
                   strokeDasharray="5 3"
-                  fill="none"
                   dot={false}
-                  activeDot={{ r: 3 }}
+                  activeDot={{ r: 3, fill: c }}
                 />
-              )}
+              ))}
             </AreaChart>
           </ResponsiveContainer>
-          {friendData && (
-            <div className="flex items-center gap-4 px-1">
+          {friendLines && friendLines.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3 px-1">
               <div className="flex items-center gap-1.5">
                 <span className="block h-0.5 w-4 rounded-full" style={{ backgroundColor: color }} />
-                <span className="text-[10px] text-muted">Moi</span>
+                <span className="text-[10px] font-medium text-muted">Moi</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="block w-4 border-t-2 border-dashed" style={{ borderColor: friendColor || "#a0c4b8" }} />
-                <span className="text-[10px] text-muted">{friendLabel || "Amis mutuels (moy.)"}</span>
-              </div>
+              {friendLines.map(({ name, color: c }) => (
+                <div key={name} className="flex items-center gap-1.5">
+                  <span className="block w-4 border-t-[2px] border-dashed" style={{ borderColor: c }} />
+                  <span className="text-[10px] font-medium text-muted">{name}</span>
+                </div>
+              ))}
             </div>
           )}
         </>
@@ -271,7 +279,6 @@ export function ObjectiveChart({
 
 const HALF_LABELS = ["½", "1", "1½", "2", "2½", "3", "3½", "4", "4½", "5"];
 
-// Gradient linéaire de crème-dorée (#e8d9a8) vers or vif (#d7a33f) selon la valeur de la note
 function barFill(stars: number) {
   const t = (stars - 0.5) / 4.5;
   return `rgb(${Math.round(232 - 17 * t)},${Math.round(217 - 54 * t)},${Math.round(168 - 105 * t)})`;
@@ -288,7 +295,6 @@ function RatingsTooltip({ active, payload }: any) {
 }
 
 export function RatingsChart({ counts, average, total }: { counts: number[]; average: number; total: number }) {
-  // counts[0] = 0,5★ ... counts[9] = 5★  (paliers de 0,5 point)
   const data = counts.map((c, i) => {
     const stars = (i + 1) * 0.5;
     return {
@@ -421,7 +427,7 @@ export function DailyComparisonChart({
               type="monotone"
               dataKey={name}
               stroke={color}
-              strokeWidth={1.5}
+              strokeWidth={1.8}
               strokeDasharray="5 3"
               dot={false}
               activeDot={{ r: 3 }}
@@ -432,12 +438,12 @@ export function DailyComparisonChart({
       <div className="flex flex-wrap items-center gap-3 px-1">
         <div className="flex items-center gap-1.5">
           <span className="block h-0.5 w-4 rounded-full" style={{ backgroundColor: myColor }} />
-          <span className="text-[10px] text-muted">Moi</span>
+          <span className="text-[10px] font-medium text-muted">Moi</span>
         </div>
         {mutuals.map(({ name, color }) => (
           <div key={name} className="flex items-center gap-1.5">
-            <span className="block w-4 border-t-2 border-dashed" style={{ borderColor: color }} />
-            <span className="text-[10px] text-muted">{name}</span>
+            <span className="block w-4 border-t-[2px] border-dashed" style={{ borderColor: color }} />
+            <span className="text-[10px] font-medium text-muted">{name}</span>
           </div>
         ))}
       </div>

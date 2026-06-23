@@ -280,7 +280,7 @@ export default function MembrePage() {
           {profile.bio && (
             <p className="mt-2 text-[12.5px] leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>{profile.bio}</p>
           )}
-          {/* Compteurs + bouton follow */}
+          {/* Compteurs abonnés */}
           <div className="mt-3 flex items-center gap-3">
             <button
               onClick={() => handleShowFollowList("followers")}
@@ -297,20 +297,21 @@ export default function MembrePage() {
               <span className="font-bold">{followingCount}</span>
               <span className="text-muted"> abonnement{followingCount !== 1 ? "s" : ""}</span>
             </button>
-            {!isOwn && user?.id && (
-              <button
-                onClick={handleFollow}
-                disabled={loadingFollow}
-                className={`ml-auto shrink-0 rounded-xl px-3 py-1.5 text-[11.5px] font-semibold transition-colors disabled:opacity-50 ${
-                  isFollowing
-                    ? "border border-line bg-card text-muted hover:border-danger/50 hover:text-danger"
-                    : "bg-violet text-cream hover:opacity-90"
-                }`}
-              >
-                {isFollowing ? "Abonné ✓" : "S'abonner"}
-              </button>
-            )}
           </div>
+          {/* Bouton follow — pleine largeur sur mobile */}
+          {!isOwn && user?.id && (
+            <button
+              onClick={handleFollow}
+              disabled={loadingFollow}
+              className={`mt-3 w-full rounded-2xl py-3 text-sm font-semibold transition-colors disabled:opacity-50 sm:w-auto sm:rounded-xl sm:px-5 sm:py-2 ${
+                isFollowing
+                  ? "border border-line bg-card text-muted hover:border-danger/50 hover:text-danger"
+                  : "bg-violet text-cream hover:opacity-90"
+              }`}
+            >
+              {loadingFollow ? "…" : isFollowing ? "Abonné ✓" : "S'abonner"}
+            </button>
+          )}
         </div>
       </div>
 

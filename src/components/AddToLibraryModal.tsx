@@ -37,18 +37,20 @@ export default function AddToLibraryModal({
 }) {
   const { user } = useAuth();
   const [status, setStatus] = useState<Status>("to-read");
-  const [startDate, setStartDate] = useState(todayISO());
-  const [endDate, setEndDate] = useState(todayISO());
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [pages, setPages] = useState("");
+  const [rating, setRating] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (open && book) {
       setStatus("to-read");
-      setStartDate(todayISO());
-      setEndDate(todayISO());
+      setStartDate("");
+      setEndDate("");
       setPages(book.pages ? String(book.pages) : "");
+      setRating(0);
       setError(null);
     }
   }, [open, book]);
@@ -58,11 +60,8 @@ export default function AddToLibraryModal({
   const handleSave = async () => {
     if (!user) return;
 
-    const n = status === "to-read" ? (book.pages || 0) : Number(pages);
-    if (status !== "to-read" && (!pages || isNaN(n) || n <= 0)) {
-      setError("Indique le nombre de pages de ton édition.");
-      return;
-    }
+    const n = Number(pages) || book.pages || 0;
+
     setSaving(true);
     setError(null);
 
@@ -89,7 +88,7 @@ export default function AddToLibraryModal({
       genre: book.genre ?? null,
       published_year: book.published_year ?? null,
       summary: book.summary ?? null,
-      rating: 0,
+      rating: rating || 0,
       user_id: user.id,
     };
 
@@ -111,7 +110,7 @@ export default function AddToLibraryModal({
       return;
     }
 
-    if (status === "completed") {
+    if (status === "completed" && endDate && n > 0) {
       if (startDate && startDate !== endDate && n > 1) {
         await supabase.from("reading_logs").insert([
           { book_id: inserted.id, date: startDate, pages_read: 1, end_page: 1, user_id: user.id },
@@ -154,6 +153,7 @@ export default function AddToLibraryModal({
           <p className="text-xs text-muted">{book.author}</p>
         </div>
 
+        {/* Statut */}
         <div>
           <FieldLabel>Statut</FieldLabel>
           <div className="flex gap-2">
@@ -173,39 +173,65 @@ export default function AddToLibraryModal({
           </div>
         </div>
 
+        {/* Note (pour Terminé) */}
+        {status === "completed" && (
+          <div>
+            <FieldLabel>Note (optionnel)</FieldLabel>
+            <div className="flex items-center gap-0.5">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => setRating(rating === s ? 0 : s)}
+                  className="p-1 text-2xl leading-none"
+                >
+                  <span style={{ color: s <= rating ? "#c9a227" : "#dad2c2" }}>★</span>
+                </button>
+              ))}
+              {rating > 0 && (
+                <span className="ml-1 text-xs text-muted">{rating}/5</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Pages (optionnel pour non-wishlist) */}
         {status !== "to-read" && (
           <div>
-            <FieldLabel>Pages (ton édition)</FieldLabel>
+            <FieldLabel>Pages de ton édition (optionnel)</FieldLabel>
             <input
               type="number"
               min={1}
               value={pages}
               onChange={(e) => setPages(e.target.value)}
+              placeholder={book.pages ? String(book.pages) : "Ex : 320"}
               className={inputClass}
             />
           </div>
         )}
 
+        {/* Date de début */}
         {(status === "reading" || status === "completed") && (
           <div>
-            <FieldLabel>Date de début{status === "reading" ? " (optionnel)" : ""}</FieldLabel>
+            <FieldLabel>Date de début (optionnel)</FieldLabel>
             <input
               type="date"
               value={startDate}
-              max={status === "completed" ? endDate : undefined}
+              max={endDate || undefined}
               onChange={(e) => setStartDate(e.target.value)}
               className={inputClass}
             />
           </div>
         )}
 
+        {/* Date de fin */}
         {status === "completed" && (
           <div>
-            <FieldLabel>Date de fin</FieldLabel>
+            <FieldLabel>Date de fin (optionnel)</FieldLabel>
             <input
               type="date"
               value={endDate}
-              min={startDate}
+              min={startDate || undefined}
               onChange={(e) => setEndDate(e.target.value)}
               className={inputClass}
             />
