@@ -1,11 +1,11 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
-import { Cover, AvatarImg } from "../../components/ui";
+import { Cover } from "../../components/ui";
 import AddToLibraryModal, { type BookRef } from "../../components/AddToLibraryModal";
 import { searchBooks, type BookSuggestion } from "../../lib/googleBooks";
 
@@ -148,16 +148,6 @@ const DISCOVERY_POOL = [
   "true crime",
 ];
 
-function StarRow({ rating, count }: { rating: number; count: number }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-[#c9a227]">{"★".repeat(Math.round(rating))}{"☆".repeat(5 - Math.round(rating))}</span>
-      <span className="text-sm font-semibold text-ink">{rating.toFixed(1).replace(".", ",")}</span>
-      <span className="text-[11.5px] text-muted">— {count} avis</span>
-    </div>
-  );
-}
-
 export default function DecouvertePage() {
   const { user } = useAuth();
   const [allBooks, setAllBooks] = useState<Book[]>([]);
@@ -165,8 +155,6 @@ export default function DecouvertePage() {
   const [avatarMap, setAvatarMap] = useState<Map<string, string | null>>(new Map());
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
-  const [selected, setSelected] = useState<UniqueBook | null>(null);
-  const [addTarget, setAddTarget] = useState<Book | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [showGenrePanel, setShowGenrePanel] = useState(false);
@@ -482,55 +470,46 @@ export default function DecouvertePage() {
         </div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {groups.map((g) => (
-            <button
-              key={g.key}
-              onClick={() => setSelected(g)}
-              className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3 text-left transition-colors hover:border-violet/50"
-            >
-              <Cover
-                id={g.canonical.id}
-                title={g.canonical.title}
-                coverUrl={g.canonical.cover_url}
-                className="h-[84px] w-[58px] shrink-0"
-                rounded="rounded-md"
-              />
-              <div className="min-w-0 flex-1 pt-0.5">
-                <p className="line-clamp-2 font-serif text-[14px] font-medium leading-snug text-ink">
-                  {g.canonical.title}
-                </p>
-                <p className="mt-0.5 truncate text-[11.5px] text-muted">{g.canonical.author}</p>
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  {g.avgRating != null ? (
-                    <span className="text-xs font-semibold text-[#c9a227]">
-                      ★ {g.avgRating.toFixed(1).replace(".", ",")}
-                      <span className="font-normal text-muted"> ({g.ratingCount})</span>
-                    </span>
-                  ) : (
-                    <span className="text-[11px] text-muted">Pas encore noté</span>
-                  )}
-                  {g.instances.length > 1 && (
-                    <span className="rounded-md bg-violet-soft px-1.5 py-0.5 text-[10px] font-semibold text-violet-deep">
-                      {g.instances.length} lecteurs
-                    </span>
-                  )}
+          {groups.map((g) => {
+            const myId = g.instances.find(i => i.book.user_id === user?.id)?.book.id ?? g.canonical.id;
+            return (
+              <Link
+                key={g.key}
+                href={`/livre/${myId}`}
+                className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3 text-left transition-colors hover:border-violet/50"
+              >
+                <Cover
+                  id={g.canonical.id}
+                  title={g.canonical.title}
+                  coverUrl={g.canonical.cover_url}
+                  className="h-[84px] w-[58px] shrink-0"
+                  rounded="rounded-md"
+                />
+                <div className="min-w-0 flex-1 pt-0.5">
+                  <p className="line-clamp-2 font-serif text-[14px] font-medium leading-snug text-ink">
+                    {g.canonical.title}
+                  </p>
+                  <p className="mt-0.5 truncate text-[11.5px] text-muted">{g.canonical.author}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    {g.avgRating != null ? (
+                      <span className="text-xs font-semibold text-[#c9a227]">
+                        ★ {g.avgRating.toFixed(1).replace(".", ",")}
+                        <span className="font-normal text-muted"> ({g.ratingCount})</span>
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-muted">Pas encore noté</span>
+                    )}
+                    {g.instances.length > 1 && (
+                      <span className="rounded-md bg-violet-soft px-1.5 py-0.5 text-[10px] font-semibold text-violet-deep">
+                        {g.instances.length} lecteurs
+                      </span>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </button>
-          ))}
+              </Link>
+            );
+          })}
         </div>
-      )}
-
-      {/* Modal détail livre du club */}
-      {selected && (
-        <BookDetailModal
-          group={selected}
-          onClose={() => setSelected(null)}
-          onAddToLibrary={(b) => { setSelected(null); setAddTarget(b); }}
-          onBookUpdated={(bookId, updates) =>
-            setAllBooks((prev) => prev.map((bk) => bk.id === bookId ? { ...bk, ...updates } : bk))
-          }
-        />
       )}
 
       {/* Modal détail recommandation */}
@@ -551,14 +530,6 @@ export default function DecouvertePage() {
           {toast}
         </div>
       )}
-
-      {/* AddToLibraryModal pour les livres du club */}
-      <AddToLibraryModal
-        open={addTarget !== null}
-        onClose={() => setAddTarget(null)}
-        book={addTarget}
-        onAdded={(msg) => { setToast(msg); setTimeout(() => setToast(null), 3500); }}
-      />
 
       {/* AddToLibraryModal pour les recommandations */}
       <AddToLibraryModal
@@ -678,246 +649,4 @@ function RecoDetailModal({
     </div>
   );
 }
-
-// ─── Modale détail d'un livre du club ───────────────────────────────────────
-function BookDetailModal({
-  group,
-  onClose,
-  onAddToLibrary,
-  onBookUpdated,
-}: {
-  group: UniqueBook;
-  onClose: () => void;
-  onAddToLibrary: (b: Book) => void;
-  onBookUpdated: (bookId: number, updates: Partial<Book>) => void;
-}) {
-  const [localBook, setLocalBook] = useState(group.canonical);
-  const [editingMeta, setEditingMeta] = useState(false);
-  const [metaDraft, setMetaDraft] = useState({
-    title: group.canonical.title,
-    author: group.canonical.author,
-    coverUrl: group.canonical.cover_url || "",
-    year: group.canonical.published_year ? String(group.canonical.published_year) : "",
-    summary: group.canonical.summary || "",
-  });
-  const [savingMeta, setSavingMeta] = useState(false);
-  const [metaError, setMetaError] = useState<string | null>(null);
-
-  const b = localBook;
-
-  const saveMeta = async () => {
-    setSavingMeta(true);
-    setMetaError(null);
-    const updates = {
-      title: metaDraft.title.trim() || b.title,
-      author: metaDraft.author.trim() || b.author,
-      cover_url: metaDraft.coverUrl.trim() || null,
-      summary: metaDraft.summary.trim() || null,
-      published_year: metaDraft.year ? Number(metaDraft.year) : null,
-    };
-    const { error } = await supabase.rpc("update_book_metadata", {
-      p_book_id: b.id,
-      p_title: updates.title,
-      p_author: updates.author,
-      p_cover_url: updates.cover_url,
-      p_summary: updates.summary,
-      p_year: updates.published_year,
-    });
-    if (error) {
-      setMetaError(error.message);
-      setSavingMeta(false);
-      return;
-    }
-    setLocalBook({ ...b, ...updates });
-    onBookUpdated(b.id, updates);
-    setEditingMeta(false);
-    setSavingMeta(false);
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 backdrop-blur-sm sm:items-center"
-      onClick={onClose}
-    >
-      <div
-        className="flex max-h-[90dvh] w-full max-w-lg flex-col overflow-y-auto rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* En-tête */}
-        <div className="flex items-start gap-4">
-          <Cover
-            id={b.id}
-            title={b.title}
-            coverUrl={b.cover_url}
-            className="h-[110px] w-[76px] shrink-0"
-            rounded="rounded-xl"
-          />
-          <div className="min-w-0 flex-1">
-            <h2 className="font-serif text-xl font-black leading-snug text-ink">{b.title}</h2>
-            <p className="mt-0.5 text-sm text-ink-2">{b.author}</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {b.genre && (
-                <span className="rounded-md bg-violet-soft px-2 py-0.5 text-[11px] font-medium text-violet-deep">
-                  {b.genre}
-                </span>
-              )}
-              {b.published_year && (
-                <span className="rounded-md bg-[#f4f0e8] px-2 py-0.5 text-[11px] font-medium text-muted">
-                  {b.published_year}
-                </span>
-              )}
-              <span className="rounded-md bg-[#f4f0e8] px-2 py-0.5 text-[11px] font-medium text-muted">
-                {b.pages} p.
-              </span>
-            </div>
-            {group.avgRating != null && (
-              <div className="mt-2">
-                <StarRow rating={group.avgRating} count={group.ratingCount} />
-              </div>
-            )}
-          </div>
-          <button
-            onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-line text-sm text-muted"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Résumé */}
-        {b.summary && !editingMeta && (
-          <div className="mt-5">
-            <h3 className="mb-2 font-serif text-[14px] font-semibold text-ink">Résumé</h3>
-            <div className="flex flex-col gap-2.5">
-              {toParas(b.summary).map((para, i) => (
-                <p key={i} className="text-[13px] leading-relaxed text-ink-2">{para.trim()}</p>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Édition des métadonnées */}
-        {editingMeta ? (
-          <div className="mt-5 flex flex-col gap-2.5">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">Modifier les informations</p>
-            <input
-              value={metaDraft.coverUrl}
-              onChange={(e) => setMetaDraft({ ...metaDraft, coverUrl: e.target.value })}
-              placeholder="URL de la couverture (https://…)"
-              className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
-              autoFocus
-            />
-            <input
-              value={metaDraft.title}
-              onChange={(e) => setMetaDraft({ ...metaDraft, title: e.target.value })}
-              placeholder="Titre"
-              className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
-            />
-            <input
-              value={metaDraft.author}
-              onChange={(e) => setMetaDraft({ ...metaDraft, author: e.target.value })}
-              placeholder="Auteur"
-              className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
-            />
-            <input
-              value={metaDraft.year}
-              onChange={(e) => setMetaDraft({ ...metaDraft, year: e.target.value })}
-              placeholder="Année de publication"
-              type="number"
-              className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
-            />
-            <textarea
-              value={metaDraft.summary}
-              onChange={(e) => setMetaDraft({ ...metaDraft, summary: e.target.value })}
-              placeholder="Résumé…"
-              rows={4}
-              className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
-            />
-            {metaError && <p className="text-xs font-medium text-danger">{metaError}</p>}
-            <div className="flex gap-2">
-              <button
-                onClick={saveMeta}
-                disabled={savingMeta}
-                className="flex-1 rounded-2xl bg-violet py-2.5 text-sm font-semibold text-cream disabled:opacity-50"
-              >
-                {savingMeta ? "Enregistrement…" : "Enregistrer"}
-              </button>
-              <button
-                onClick={() => { setEditingMeta(false); setMetaError(null); }}
-                className="flex-1 rounded-2xl border border-line bg-card py-2.5 text-sm font-medium text-ink"
-              >
-                Annuler
-              </button>
-            </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setEditingMeta(true)}
-            className="mt-4 w-full text-center text-xs font-medium text-muted underline decoration-muted/40 underline-offset-2"
-          >
-            Modifier les informations
-          </button>
-        )}
-
-        {/* CTA */}
-        <button
-          onClick={() => onAddToLibrary(b)}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-violet/40 bg-violet-soft py-3 text-sm font-semibold text-violet-deep transition-colors hover:bg-violet hover:text-cream"
-        >
-          + Ajouter à mes lectures
-        </button>
-
-        {/* Avis des membres */}
-        <div className="mt-5 flex flex-col gap-3">
-          <h3 className="font-serif text-[14px] font-semibold text-ink">
-            Avis des membres{" "}
-            <span className="font-sans text-xs font-normal text-muted">
-              ({group.instances.length} lecteur{group.instances.length > 1 ? "s" : ""})
-            </span>
-          </h3>
-          {group.instances.map(({ book, memberName, memberAvatar }, i) => (
-            <div
-              key={i}
-              className="flex flex-col gap-1.5 rounded-2xl border border-line bg-card p-3.5"
-            >
-              <div className="flex items-center gap-2">
-                <Link href={`/membre/${book.user_id}`} className="shrink-0">
-                  <AvatarImg url={memberAvatar} name={memberName} className="h-7 w-7 text-xs font-semibold" />
-                </Link>
-                <Link href={`/membre/${book.user_id}`} className="text-[13px] font-semibold text-ink hover:underline">
-                  {memberName}
-                </Link>
-                <span className="ml-auto rounded-md bg-[#f4f0e8] px-2 py-0.5 text-[10.5px] font-medium text-muted">
-                  {book.status === "completed" ? "Terminé" : "En cours"}
-                </span>
-              </div>
-              {(book.rating || 0) > 0 && (
-                <div className="flex items-center gap-1">
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <span
-                      key={s}
-                      className="text-base leading-none"
-                      style={{ color: s <= Math.round(book.rating!) ? "#c9a227" : "#dad2c2" }}
-                    >
-                      ★
-                    </span>
-                  ))}
-                  <span className="ml-1 text-xs font-semibold text-ink">
-                    {book.rating!.toFixed(1).replace(".", ",")}
-                  </span>
-                </div>
-              )}
-              {book.notes ? (
-                <p className="font-serif text-[13px] italic leading-relaxed text-ink-2">
-                  « {book.notes} »
-                </p>
-              ) : (book.rating || 0) === 0 ? (
-                <p className="text-[12px] text-muted">Pas encore d'avis.</p>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
+

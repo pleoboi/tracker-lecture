@@ -9,6 +9,7 @@ import type { Book, ReadingLog, ReadSession } from "../../../lib/types";
 import { pct, isCompleted, isAbandoned, readingStats, formatDate, formatDateLong } from "../../../lib/books";
 import { Cover, ProgressBar, Pill, Button, AvatarImg } from "../../../components/ui";
 import LogReadingModal from "../../../components/LogReadingModal";
+import AddToLibraryModal from "../../../components/AddToLibraryModal";
 
 const GENRES = [
   "Roman", "Fiction", "Non-Fiction", "Classique", "Nouvelle",
@@ -96,6 +97,10 @@ export default function BookDetailPage() {
 
   // Mark as read (no date)
   const [markingRead, setMarkingRead] = useState(false);
+
+  // Ajouter à ma bibliothèque (non-propriétaire)
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addedMsg, setAddedMsg] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -359,6 +364,14 @@ export default function BookDetailPage() {
                 Supprimer
               </button>
             )}
+            {!isOwner && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-violet/40 bg-violet-soft px-3 text-xs font-semibold text-violet-deep transition-colors hover:bg-violet hover:text-cream"
+              >
+                + Ajouter
+              </button>
+            )}
           </div>
         </div>
 
@@ -424,33 +437,35 @@ export default function BookDetailPage() {
           <p className="mt-0.5 text-sm text-ink-2">{book.author}</p>
         </div>
 
-        <div className="flex flex-col items-center gap-2.5">
-          <div className="flex items-center gap-1">
-            {[1, 2, 3, 4, 5].map((s) => (
-              <button key={s} onClick={() => setRating(s)} className="text-2xl leading-none">
-                <span style={{ color: s <= Math.round(rating) ? "var(--color-gold)" : "#dad2c2" }}>★</span>
+        {isOwner && (
+          <div className="flex flex-col items-center gap-2.5">
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <button key={s} onClick={() => setRating(s)} className="text-2xl leading-none">
+                  <span style={{ color: s <= Math.round(rating) ? "var(--color-gold)" : "#dad2c2" }}>★</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setRating(Math.max(0, Math.round((rating - 0.1) * 10) / 10))}
+                className="flex h-8 w-9 items-center justify-center rounded-lg border border-line bg-card text-xs font-bold text-ink"
+              >
+                −0,1
               </button>
-            ))}
+              <span className="min-w-[58px] rounded-lg border border-line bg-card py-1.5 text-center text-sm font-bold text-ink">
+                {rating > 0 ? rating.toFixed(1).replace(".", ",") : "—"}{" "}
+                <span className="text-xs font-medium text-muted">/ 5</span>
+              </span>
+              <button
+                onClick={() => setRating(Math.min(5, Math.round((rating + 0.1) * 10) / 10))}
+                className="flex h-8 w-9 items-center justify-center rounded-lg border border-line bg-card text-xs font-bold text-ink"
+              >
+                +0,1
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setRating(Math.max(0, Math.round((rating - 0.1) * 10) / 10))}
-              className="flex h-8 w-9 items-center justify-center rounded-lg border border-line bg-card text-xs font-bold text-ink"
-            >
-              −0,1
-            </button>
-            <span className="min-w-[58px] rounded-lg border border-line bg-card py-1.5 text-center text-sm font-bold text-ink">
-              {rating > 0 ? rating.toFixed(1).replace(".", ",") : "—"}{" "}
-              <span className="text-xs font-medium text-muted">/ 5</span>
-            </span>
-            <button
-              onClick={() => setRating(Math.min(5, Math.round((rating + 0.1) * 10) / 10))}
-              className="flex h-8 w-9 items-center justify-center rounded-lg border border-line bg-card text-xs font-bold text-ink"
-            >
-              +0,1
-            </button>
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Corps */}
@@ -517,7 +532,8 @@ export default function BookDetailPage() {
           </div>
         )}
 
-        {/* Ma lecture */}
+        {/* Ma lecture — visible uniquement par le propriétaire */}
+        {isOwner && (
         <div className="flex flex-col gap-3.5 rounded-2xl border border-line bg-card p-4">
           <div className="flex items-center justify-between">
             <h2 className="font-serif text-[15px] font-medium text-ink">Ma lecture</h2>
@@ -634,6 +650,7 @@ export default function BookDetailPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* Activité des membres (style Letterboxd) */}
         {memberActivity.length > 0 && (
@@ -797,6 +814,21 @@ export default function BookDetailPage() {
           }
         }}
       />}
+
+      {!isOwner && (
+        <AddToLibraryModal
+          open={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          book={{ title: book.title, author: book.author, pages: book.pages, cover_url: book.cover_url, genre: book.genre, published_year: book.published_year, summary: book.summary }}
+          onAdded={(msg) => { setAddedMsg(msg); setTimeout(() => setAddedMsg(null), 4000); }}
+        />
+      )}
+
+      {addedMsg && (
+        <div className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-cream shadow-xl">
+          {addedMsg}
+        </div>
+      )}
 
       {/* Modale review d'un membre */}
       {selectedMember && (

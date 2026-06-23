@@ -16,6 +16,14 @@ export interface BookRef {
   summary?: string | null;
 }
 
+type Status = "to-read" | "reading" | "completed";
+
+const STATUS_OPTIONS: { value: Status; label: string }[] = [
+  { value: "to-read", label: "Envie de lire" },
+  { value: "reading", label: "En cours" },
+  { value: "completed", label: "Terminé ✓" },
+];
+
 export default function AddToLibraryModal({
   open,
   onClose,
@@ -28,7 +36,7 @@ export default function AddToLibraryModal({
   onAdded: (msg: string) => void;
 }) {
   const { user } = useAuth();
-  const [status, setStatus] = useState<"reading" | "completed">("reading");
+  const [status, setStatus] = useState<Status>("to-read");
   const [startDate, setStartDate] = useState(todayISO());
   const [endDate, setEndDate] = useState(todayISO());
   const [pages, setPages] = useState("");
@@ -37,10 +45,10 @@ export default function AddToLibraryModal({
 
   useEffect(() => {
     if (open && book) {
-      setStatus("reading");
+      setStatus("to-read");
       setStartDate(todayISO());
       setEndDate(todayISO());
-      setPages(String(book.pages));
+      setPages(book.pages ? String(book.pages) : "");
       setError(null);
     }
   }, [open, book]);
@@ -49,15 +57,15 @@ export default function AddToLibraryModal({
 
   const handleSave = async () => {
     if (!user) return;
-    const n = Number(pages);
-    if (!pages || isNaN(n) || n <= 0) {
+
+    const n = status === "to-read" ? (book.pages || 0) : Number(pages);
+    if (status !== "to-read" && (!pages || isNaN(n) || n <= 0)) {
       setError("Indique le nombre de pages de ton édition.");
       return;
     }
     setSaving(true);
     setError(null);
 
-    // Vérifie doublon
     const { data: existing } = await supabase
       .from("books")
       .select("id")
@@ -71,21 +79,29 @@ export default function AddToLibraryModal({
       return;
     }
 
+    const bookData: Record<string, unknown> = {
+      title: book.title,
+      author: book.author,
+      pages: n,
+      progress: status === "completed" ? n : 0,
+      status,
+      cover_url: book.cover_url ?? null,
+      genre: book.genre ?? null,
+      published_year: book.published_year ?? null,
+      summary: book.summary ?? null,
+      rating: 0,
+      user_id: user.id,
+    };
+
+    if (status === "reading" && startDate) bookData.date_started = startDate;
+    if (status === "completed") {
+      if (startDate) bookData.date_started = startDate;
+      if (endDate) bookData.date_read = endDate;
+    }
+
     const { data: inserted, error: err } = await supabase
       .from("books")
-      .insert({
-        title: book.title,
-        author: book.author,
-        pages: n,
-        progress: status === "completed" ? n : 0,
-        status,
-        cover_url: book.cover_url ?? null,
-        genre: book.genre ?? null,
-        published_year: book.published_year ?? null,
-        summary: book.summary ?? null,
-        rating: 0,
-        user_id: user.id,
-      })
+      .insert(bookData)
       .select("id")
       .single();
 
@@ -97,7 +113,6 @@ export default function AddToLibraryModal({
 
     if (status === "completed") {
       if (startDate && startDate !== endDate && n > 1) {
-        // Deux sessions : une au début (1 page) et une à la fin (reste)
         await supabase.from("reading_logs").insert([
           { book_id: inserted.id, date: startDate, pages_read: 1, end_page: 1, user_id: user.id },
           { book_id: inserted.id, date: endDate, pages_read: n - 1, end_page: n, user_id: user.id },
@@ -114,89 +129,93 @@ export default function AddToLibraryModal({
     }
 
     setSaving(false);
-    onAdded(
-      status === "completed"
-        ? `« ${book.title} » marqué comme terminé dans ta bibliothèque.`
-        : `« ${book.title} » ajouté à tes lectures en cours.`
-    );
+    const msgs: Record<Status, string> = {
+      "to-read": `« ${book.title} » ajouté à ta liste de souhaits.`,
+      "reading": `« ${book.title} » ajouté à tes lectures en cours.`,
+      "completed": `« ${book.title} » marqué comme terminé dans ta bibliothèque.`,
+    };
+    onAdded(msgs[status]);
     onClose();
   };
 
+  const btnLabel = saving
+    ? "Ajout…"
+    : status === "to-read"
+      ? "Ajouter à ma liste"
+      : status === "completed"
+        ? "Marquer comme terminé"
+        : "Commencer la lecture";
+
   return (
-    <Modal open={open} onClose={onClose} title="Ajouter à mes lectures">
+    <Modal open={open} onClose={onClose} title="Ajouter à ma bibliothèque">
       <div className="flex flex-col gap-4">
-        {/* Aperçu */}
         <div className="rounded-2xl border border-line bg-card px-4 py-3">
           <p className="font-serif text-[15px] font-medium text-ink">{book.title}</p>
           <p className="text-xs text-muted">{book.author}</p>
         </div>
 
-        {/* Statut */}
         <div>
           <FieldLabel>Statut</FieldLabel>
           <div className="flex gap-2">
-            {(["reading", "completed"] as const).map((s) => (
+            {STATUS_OPTIONS.map((s) => (
               <button
-                key={s}
-                onClick={() => setStatus(s)}
-                className={`flex-1 rounded-xl border py-2.5 text-sm font-semibold transition-colors ${
-                  status === s
+                key={s.value}
+                onClick={() => setStatus(s.value)}
+                className={`flex-1 rounded-xl border py-2.5 text-xs font-semibold transition-colors ${
+                  status === s.value
                     ? "border-violet bg-violet-soft text-violet-deep"
                     : "border-line bg-card text-muted hover:border-violet/40"
                 }`}
               >
-                {s === "reading" ? "En cours" : "Terminé ✓"}
+                {s.label}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Pages */}
-        <div>
-          <FieldLabel>Pages (ton édition)</FieldLabel>
-          <input
-            type="number"
-            min={1}
-            value={pages}
-            onChange={(e) => setPages(e.target.value)}
-            className={inputClass}
-          />
-        </div>
+        {status !== "to-read" && (
+          <div>
+            <FieldLabel>Pages (ton édition)</FieldLabel>
+            <input
+              type="number"
+              min={1}
+              value={pages}
+              onChange={(e) => setPages(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+        )}
 
-        {/* Dates début + fin */}
+        {(status === "reading" || status === "completed") && (
+          <div>
+            <FieldLabel>Date de début{status === "reading" ? " (optionnel)" : ""}</FieldLabel>
+            <input
+              type="date"
+              value={startDate}
+              max={status === "completed" ? endDate : undefined}
+              onChange={(e) => setStartDate(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+        )}
+
         {status === "completed" && (
-          <div className="flex flex-col gap-3">
-            <div>
-              <FieldLabel>Date de début de lecture</FieldLabel>
-              <input
-                type="date"
-                value={startDate}
-                max={endDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div>
-              <FieldLabel>Date de fin de lecture</FieldLabel>
-              <input
-                type="date"
-                value={endDate}
-                min={startDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className={inputClass}
-              />
-            </div>
+          <div>
+            <FieldLabel>Date de fin</FieldLabel>
+            <input
+              type="date"
+              value={endDate}
+              min={startDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className={inputClass}
+            />
           </div>
         )}
 
         {error && <p className="text-xs font-medium text-danger">{error}</p>}
 
         <Button onClick={handleSave} disabled={saving} className="w-full">
-          {saving
-            ? "Ajout…"
-            : status === "completed"
-              ? "Marquer comme terminé"
-              : "Commencer la lecture"}
+          {btnLabel}
         </Button>
       </div>
     </Modal>
