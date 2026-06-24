@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
@@ -33,13 +33,11 @@ function dedupeKey(b: Book) {
   return `${b.title.toLowerCase().trim()}__${(b.author || "").toLowerCase().trim()}`;
 }
 
-// Articles à ignorer dans la normalisation des titres (FR + EN)
 const ARTICLES = new Set([
   "le", "la", "les", "l", "un", "une", "des", "du", "de",
   "the", "a", "an",
 ]);
 
-// Fingerprint insensible à la langue : nom de famille + 4 premiers mots significatifs du titre
 function fuzzyKey(title: string, author: string): string {
   const surname = (author || "")
     .toLowerCase()
@@ -57,14 +55,10 @@ function fuzzyKey(title: string, author: string): string {
   return `${surname}_${normTitle}`;
 }
 
-// Découpe un résumé en paragraphes lisibles :
-// - si le texte a déjà des sauts de ligne doubles → split naturel
-// - sinon → regroupement de phrases par tranches de ~380 caractères
 function toParas(text: string): string[] {
   if (/\n\n/.test(text)) {
     return text.split(/\n\n+/).map((p) => p.trim()).filter(Boolean);
   }
-  // Découpe aux fins de phrases (point, !, ?, …)
   const sentences = text.split(/(?<=[.!?…])\s+/);
   const paras: string[] = [];
   let buf = "";
@@ -80,7 +74,6 @@ function toParas(text: string): string[] {
   return paras.length > 0 ? paras : [text];
 }
 
-// Traduit les genres français vers des requêtes Google Books plus efficaces
 const GENRE_TO_QUERY: Record<string, string> = {
   "Roman": "literary fiction bestseller",
   "Fiction": "fiction novel",
@@ -120,7 +113,6 @@ const GENRE_TO_QUERY: Record<string, string> = {
   "Théâtre": "theater plays drama",
 };
 
-// Pool de découverte — genres variés pour diversifier les suggestions
 const DISCOVERY_POOL = [
   "literary fiction contemporary",
   "thriller psychological suspense",
@@ -165,32 +157,35 @@ export default function DecouvertePage() {
   const [addFromReco, setAddFromReco] = useState<{ ref: BookRef; googleId: string } | null>(null);
   const recoLoadedRef = useRef(false);
 
-  useEffect(() => {
-    const load = async () => {
-      const [{ data: books }, { data: profiles }] = await Promise.all([
-        supabase.from("books").select("*"),
-        supabase.from("user_profiles").select("id, display_name, avatar_url"),
-      ]);
-      const pmap = new Map<string, string>();
-      const amap = new Map<string, string | null>();
-      ((profiles as Profile[]) || []).forEach((p) => {
-        pmap.set(p.id, p.display_name);
-        amap.set(p.id, p.avatar_url ?? null);
-      });
-      setAllBooks((books as Book[]) || []);
-      setProfileMap(pmap);
-      setAvatarMap(amap);
-      setLoading(false);
-    };
-    load();
+  // Résultats web (fallback Google Books pour la recherche)
+  const [webResults, setWebResults] = useState<BookSuggestion[]>([]);
+  const [webLoading, setWebLoading] = useState(false);
+  const [webTarget, setWebTarget] = useState<BookRef | null>(null);
+
+  const loadBooks = useCallback(async () => {
+    const [{ data: books }, { data: profiles }] = await Promise.all([
+      supabase.from("books").select("*"),
+      supabase.from("user_profiles").select("id, display_name, avatar_url"),
+    ]);
+    const pmap = new Map<string, string>();
+    const amap = new Map<string, string | null>();
+    ((profiles as Profile[]) || []).forEach((p) => {
+      pmap.set(p.id, p.display_name);
+      amap.set(p.id, p.avatar_url ?? null);
+    });
+    setAllBooks((books as Book[]) || []);
+    setProfileMap(pmap);
+    setAvatarMap(amap);
+    setLoading(false);
   }, []);
 
-  // Calcul + chargement des recommandations (une seule fois, après chargement des livres)
+  useEffect(() => { loadBooks(); }, [loadBooks]);
+
+  // Recommandations (une seule fois)
   useEffect(() => {
     if (!user?.id || allBooks.length === 0 || recoLoadedRef.current) return;
     recoLoadedRef.current = true;
 
-    // Seulement les livres de l'utilisateur connecté
     const myBooks = allBooks.filter((b) => b.user_id === user.id);
     if (myBooks.length === 0) return;
 
@@ -207,21 +202,16 @@ export default function DecouvertePage() {
       const topGenre = [...genreCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
       const topAuthor = [...authorCount.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
 
-      // Double filtre d'exclusion : exact (même langue) + fuzzy (même livre, autre langue)
       const existingExact = new Set(myBooks.map((b) => dedupeKey(b)));
       const existingFuzzy = new Set(myBooks.map((b) => fuzzyKey(b.title, b.author || "")));
 
-      // 3-4 requêtes : genre perso + auteur perso + 2 genres de découverte aléatoires
       const queries: string[] = [];
-
       if (topGenre) queries.push(GENRE_TO_QUERY[topGenre] || topGenre);
-
       if (topAuthor) {
         const lastName = topAuthor.split(" ").pop() || topAuthor;
         queries.push(`inauthor:"${lastName}"`);
       }
 
-      // Genres de découverte — rotation aléatoire, hors des goûts connus
       const knownQueries = new Set(
         [...genreCount.keys()].map((g) => (GENRE_TO_QUERY[g] || g).toLowerCase())
       );
@@ -240,7 +230,6 @@ export default function DecouvertePage() {
         const seen = new Set<string>();
         const slots: BookSuggestion[] = [];
 
-        // Max 2 résultats par requête pour diversifier les sources
         results.forEach((r) => {
           if (r.status !== "fulfilled") return;
           let taken = 0;
@@ -262,13 +251,39 @@ export default function DecouvertePage() {
         });
 
         setRecommendations(slots.slice(0, 4));
-      } catch {
-        // Silencieux : l'absence de recommandations n'est pas bloquante
-      }
+      } catch { /* silencieux */ }
     };
 
     loadReco();
   }, [allBooks, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Recherche web fallback (debounced, déclenché quand query >= 2 chars)
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) {
+      setWebResults([]);
+      setWebLoading(false);
+      return;
+    }
+    setWebLoading(true);
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchBooks(q);
+        const existingKeys = new Set(allBooks.map((b) => dedupeKey(b)));
+        const fresh = results.filter(
+          (r) =>
+            r.coverUrl &&
+            !existingKeys.has(dedupeKey({ title: r.title, author: r.author } as Book))
+        );
+        setWebResults(fresh.slice(0, 8));
+      } catch {
+        setWebResults([]);
+      } finally {
+        setWebLoading(false);
+      }
+    }, 600);
+    return () => { clearTimeout(timer); };
+  }, [query]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const groups = useMemo<UniqueBook[]>(() => {
     const map = new Map<string, UniqueBook>();
@@ -282,7 +297,6 @@ export default function DecouvertePage() {
       const existing = map.get(key);
       if (existing) {
         existing.instances.push(instance);
-        // Upgrade canonical if this instance has more data
         if (!existing.canonical.cover_url && book.cover_url) existing.canonical = book;
         if (!existing.canonical.summary && book.summary) existing.canonical = book;
       } else {
@@ -304,7 +318,6 @@ export default function DecouvertePage() {
       .filter((g) => {
         if (q && !g.canonical.title.toLowerCase().includes(q) && !(g.canonical.author || "").toLowerCase().includes(q)) return false;
         if (selectedGenres.length > 0) {
-          // Support multi-genre CSV ("Manga, BD / Roman graphique") — logique OR
           const match = selectedGenres.some((sg) =>
             g.instances.some((inst) => {
               const bookGenres = (inst.book.genre || "")
@@ -328,6 +341,8 @@ export default function DecouvertePage() {
         return maxB - maxA;
       });
   }, [allBooks, profileMap, avatarMap, query, selectedGenres]);
+
+  const showWebSection = query.trim().length >= 2 && groups.length < 3;
 
   return (
     <div className="animate-fadeIn flex flex-col gap-5 pt-4">
@@ -464,52 +479,129 @@ export default function DecouvertePage() {
         <div className="py-20 text-center text-xs font-medium uppercase tracking-wider text-muted">
           Chargement…
         </div>
-      ) : groups.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-line bg-card p-10 text-center">
-          <p className="font-serif text-base text-ink">Aucun livre trouvé.</p>
-        </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {groups.map((g) => {
-            const myId = g.instances.find(i => i.book.user_id === user?.id)?.book.id ?? g.canonical.id;
-            return (
-              <Link
-                key={g.key}
-                href={`/livre/${myId}`}
-                className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3 text-left transition-colors hover:border-violet/50"
-              >
-                <Cover
-                  id={g.canonical.id}
-                  title={g.canonical.title}
-                  coverUrl={g.canonical.cover_url}
-                  className="h-[84px] w-[58px] shrink-0"
-                  rounded="rounded-md"
-                />
-                <div className="min-w-0 flex-1 pt-0.5">
-                  <p className="line-clamp-2 font-serif text-[14px] font-medium leading-snug text-ink">
-                    {g.canonical.title}
-                  </p>
-                  <p className="mt-0.5 truncate text-[11.5px] text-muted">{g.canonical.author}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                    {g.avgRating != null ? (
-                      <span className="text-xs font-semibold text-[#c9a227]">
-                        ★ {g.avgRating.toFixed(1).replace(".", ",")}
-                        <span className="font-normal text-muted"> ({g.ratingCount})</span>
+        <>
+          {/* Résultats locaux */}
+          {groups.length > 0 ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {groups.map((g) => {
+                const myId = g.instances.find(i => i.book.user_id === user?.id)?.book.id ?? g.canonical.id;
+                return (
+                  <Link
+                    key={g.key}
+                    href={`/livre/${myId}`}
+                    className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3 text-left transition-colors hover:border-violet/50"
+                  >
+                    <Cover
+                      id={g.canonical.id}
+                      title={g.canonical.title}
+                      coverUrl={g.canonical.cover_url}
+                      className="h-[84px] w-[58px] shrink-0"
+                      rounded="rounded-md"
+                    />
+                    <div className="min-w-0 flex-1 pt-0.5">
+                      <p className="line-clamp-2 font-serif text-[14px] font-medium leading-snug text-ink">
+                        {g.canonical.title}
+                      </p>
+                      <p className="mt-0.5 truncate text-[11.5px] text-muted">{g.canonical.author}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {g.avgRating != null ? (
+                          <span className="text-xs font-semibold text-[#c9a227]">
+                            ★ {g.avgRating.toFixed(1).replace(".", ",")}
+                            <span className="font-normal text-muted"> ({g.ratingCount})</span>
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-muted">Pas encore noté</span>
+                        )}
+                        {g.instances.length > 1 && (
+                          <span className="rounded-md bg-violet-soft px-1.5 py-0.5 text-[10px] font-semibold text-violet-deep">
+                            {g.instances.length} lecteurs
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          ) : !showWebSection ? (
+            <div className="rounded-2xl border border-dashed border-line bg-card p-10 text-center">
+              <p className="font-serif text-base text-ink">Aucun livre trouvé.</p>
+            </div>
+          ) : null}
+
+          {/* Résultats web — fallback Google Books */}
+          {showWebSection && (webLoading || webResults.length > 0) && (
+            <section className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <span className="h-px flex-1 bg-line" />
+                <span className="text-[10.5px] font-semibold uppercase tracking-wider text-muted">
+                  Résultats du web — Ajouter à la plateforme
+                </span>
+                <span className="h-px flex-1 bg-line" />
+              </div>
+
+              {webLoading ? (
+                <div className="py-6 text-center text-xs text-muted">Recherche en cours…</div>
+              ) : (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {webResults.map((r) => (
+                    <button
+                      key={r.googleId}
+                      onClick={() =>
+                        setWebTarget({
+                          title: r.title,
+                          author: r.author,
+                          pages: 0,
+                          cover_url: r.coverUrl,
+                          genre: r.genre,
+                          published_year: r.year,
+                          summary: r.summary,
+                        })
+                      }
+                      className="flex items-start gap-3 rounded-2xl border border-dashed border-violet/30 bg-violet-soft/40 p-3 text-left transition-colors hover:border-violet/60 hover:bg-violet-soft"
+                    >
+                      {r.coverUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={r.coverUrl}
+                          alt={r.title}
+                          className="h-[72px] w-[48px] shrink-0 rounded-md object-cover shadow-sm"
+                        />
+                      ) : (
+                        <div className="flex h-[72px] w-[48px] shrink-0 items-center justify-center rounded-md bg-violet/10 text-xl">
+                          📚
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-2 font-serif text-[13.5px] font-medium leading-snug text-ink">
+                          {r.title}
+                        </p>
+                        <p className="mt-0.5 truncate text-[11px] text-muted">{r.author}</p>
+                        {r.genre && (
+                          <span className="mt-1 inline-block rounded-md bg-violet/10 px-1.5 py-0.5 text-[9.5px] font-medium text-violet-deep">
+                            {r.genre}
+                          </span>
+                        )}
+                      </div>
+                      <span className="shrink-0 rounded-xl border border-violet/40 bg-violet-soft px-2 py-1 text-[10px] font-semibold text-violet-deep">
+                        + Ajouter
                       </span>
-                    ) : (
-                      <span className="text-[11px] text-muted">Pas encore noté</span>
-                    )}
-                    {g.instances.length > 1 && (
-                      <span className="rounded-md bg-violet-soft px-1.5 py-0.5 text-[10px] font-semibold text-violet-deep">
-                        {g.instances.length} lecteurs
-                      </span>
-                    )}
-                  </div>
+                    </button>
+                  ))}
                 </div>
-              </Link>
-            );
-          })}
-        </div>
+              )}
+            </section>
+          )}
+
+          {/* Aucun résultat nulle part */}
+          {showWebSection && !webLoading && webResults.length === 0 && groups.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-line bg-card p-10 text-center">
+              <p className="font-serif text-base text-ink">Aucun résultat pour « {query.trim()} ».</p>
+              <p className="mt-1 text-xs text-muted">Essaie un autre titre ou auteur.</p>
+            </div>
+          )}
+        </>
       )}
 
       {/* Modal détail recommandation */}
@@ -539,6 +631,19 @@ export default function DecouvertePage() {
         onAdded={(msg) => {
           setRecommendations((prev) => prev.filter((r) => r.googleId !== addFromReco?.googleId));
           setAddFromReco(null);
+          setToast(msg);
+          setTimeout(() => setToast(null), 3500);
+        }}
+      />
+
+      {/* AddToLibraryModal pour les résultats web */}
+      <AddToLibraryModal
+        open={webTarget !== null}
+        onClose={() => setWebTarget(null)}
+        book={webTarget}
+        onAdded={(msg) => {
+          setWebTarget(null);
+          loadBooks();
           setToast(msg);
           setTimeout(() => setToast(null), 3500);
         }}
@@ -576,7 +681,6 @@ function RecoDetailModal({
         className="flex max-h-[92dvh] w-full max-w-lg flex-col overflow-y-auto rounded-t-3xl bg-paper p-5 shadow-2xl sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* En-tête */}
         <div className="flex items-start gap-4">
           {s.coverUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -614,7 +718,6 @@ function RecoDetailModal({
           </button>
         </div>
 
-        {/* Résumé */}
         <div className="mt-5">
           <h3 className="mb-2 font-serif text-[14px] font-semibold text-ink">Résumé</h3>
           {s.summary ? (
@@ -628,7 +731,6 @@ function RecoDetailModal({
           )}
         </div>
 
-        {/* CTA */}
         <button
           onClick={() =>
             onAddToLibrary({
@@ -649,4 +751,3 @@ function RecoDetailModal({
     </div>
   );
 }
-

@@ -436,11 +436,11 @@ export default function DashboardPage() {
             />
           </div>
 
-          {/* 2b. Comparatif jour par jour (mois en cours) */}
+          {/* 2b. Comparatif jour par jour — 10 derniers jours */}
           {isCurrentYear && hasMutuals && mutualDailyData.length > 0 && (
             <DailyComparisonChart
-              myData={myDailyData}
-              mutuals={mutualDailyData}
+              myData={myDailyData.slice(-10)}
+              mutuals={mutualDailyData.map((m) => ({ ...m, data: m.data.slice(-10) }))}
               month={now.getMonth()}
               year={year}
               myColor={VIOLET}

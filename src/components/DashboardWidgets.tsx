@@ -397,10 +397,9 @@ export function DailyComparisonChart({
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
-      <div className="flex items-center justify-between">
-        <h3 className="font-serif text-[15px] font-medium text-ink">
-          Pages / jour — {MONTHS_FR[month]} {year}
-        </h3>
+      <div>
+        <h3 className="font-serif text-[15px] font-medium text-ink">Pages / jour — 10 derniers jours</h3>
+        <p className="text-[10px] text-muted">{MONTHS_FR[month]} {year}</p>
       </div>
       <ResponsiveContainer width="100%" height={160}>
         <LineChart data={chartData} margin={{ top: 6, right: 10, left: 0, bottom: 0 }}>
@@ -409,7 +408,7 @@ export function DailyComparisonChart({
             tickLine={false}
             axisLine={false}
             tick={{ fontSize: 9, fill: "#968da1" }}
-            interval={Math.floor(chartData.length / 6)}
+            interval={0}
           />
           <YAxis hide />
           <Tooltip content={<DailyTooltip />} />

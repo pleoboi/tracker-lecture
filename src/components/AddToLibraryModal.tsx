@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
-import { todayISO } from "../lib/books";
 import { Modal, Button, FieldLabel, inputClass } from "./ui";
+import CoverPickerModal from "./CoverPickerModal";
 
 export interface BookRef {
   title: string;
@@ -41,6 +41,8 @@ export default function AddToLibraryModal({
   const [endDate, setEndDate] = useState("");
   const [pages, setPages] = useState("");
   const [rating, setRating] = useState(0);
+  const [coverUrl, setCoverUrl] = useState<string | null>(null);
+  const [showCoverPicker, setShowCoverPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -51,6 +53,8 @@ export default function AddToLibraryModal({
       setEndDate("");
       setPages(book.pages ? String(book.pages) : "");
       setRating(0);
+      setCoverUrl(book.cover_url ?? null);
+      setShowCoverPicker(false);
       setError(null);
     }
   }, [open, book]);
@@ -84,7 +88,7 @@ export default function AddToLibraryModal({
       pages: n,
       progress: status === "completed" ? n : 0,
       status,
-      cover_url: book.cover_url ?? null,
+      cover_url: coverUrl ?? null,
       genre: book.genre ?? null,
       published_year: book.published_year ?? null,
       summary: book.summary ?? null,
@@ -146,104 +150,138 @@ export default function AddToLibraryModal({
         : "Commencer la lecture";
 
   return (
-    <Modal open={open} onClose={onClose} title="Ajouter à ma bibliothèque">
-      <div className="flex flex-col gap-4">
-        <div className="rounded-2xl border border-line bg-card px-4 py-3">
-          <p className="font-serif text-[15px] font-medium text-ink">{book.title}</p>
-          <p className="text-xs text-muted">{book.author}</p>
-        </div>
-
-        {/* Statut */}
-        <div>
-          <FieldLabel>Statut</FieldLabel>
-          <div className="flex gap-2">
-            {STATUS_OPTIONS.map((s) => (
-              <button
-                key={s.value}
-                onClick={() => setStatus(s.value)}
-                className={`flex-1 rounded-xl border py-2.5 text-xs font-semibold transition-colors ${
-                  status === s.value
-                    ? "border-violet bg-violet-soft text-violet-deep"
-                    : "border-line bg-card text-muted hover:border-violet/40"
-                }`}
-              >
-                {s.label}
-              </button>
-            ))}
+    <>
+      <Modal open={open} onClose={onClose} title="Ajouter à ma bibliothèque">
+        <div className="flex flex-col gap-4">
+          {/* Aperçu du livre + bouton changer couverture */}
+          <div className="flex items-center gap-3 rounded-2xl border border-line bg-card px-4 py-3">
+            {coverUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={coverUrl}
+                alt={book.title}
+                className="h-16 w-11 shrink-0 rounded-lg object-cover shadow-sm"
+              />
+            ) : (
+              <div className="flex h-16 w-11 shrink-0 items-center justify-center rounded-lg bg-violet/10 text-2xl">
+                📚
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="font-serif text-[15px] font-medium text-ink">{book.title}</p>
+              <p className="text-xs text-muted">{book.author}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowCoverPicker(true)}
+              className="shrink-0 rounded-xl border border-line bg-paper px-2.5 py-1.5 text-[10.5px] font-medium text-muted hover:border-violet/40 hover:text-violet-deep"
+            >
+              Couverture
+            </button>
           </div>
-        </div>
 
-        {/* Note (pour Terminé) */}
-        {status === "completed" && (
+          {/* Statut */}
           <div>
-            <FieldLabel>Note (optionnel)</FieldLabel>
-            <div className="flex items-center gap-0.5">
-              {[1, 2, 3, 4, 5].map((s) => (
+            <FieldLabel>Statut</FieldLabel>
+            <div className="flex gap-2">
+              {STATUS_OPTIONS.map((s) => (
                 <button
-                  key={s}
-                  type="button"
-                  onClick={() => setRating(rating === s ? 0 : s)}
-                  className="p-1 text-2xl leading-none"
+                  key={s.value}
+                  onClick={() => setStatus(s.value)}
+                  className={`flex-1 rounded-xl border py-2.5 text-xs font-semibold transition-colors ${
+                    status === s.value
+                      ? "border-violet bg-violet-soft text-violet-deep"
+                      : "border-line bg-card text-muted hover:border-violet/40"
+                  }`}
                 >
-                  <span style={{ color: s <= rating ? "#c9a227" : "#dad2c2" }}>★</span>
+                  {s.label}
                 </button>
               ))}
-              {rating > 0 && (
-                <span className="ml-1 text-xs text-muted">{rating}/5</span>
-              )}
             </div>
           </div>
-        )}
 
-        {/* Pages (optionnel pour non-wishlist) */}
-        {status !== "to-read" && (
-          <div>
-            <FieldLabel>Pages de ton édition (optionnel)</FieldLabel>
-            <input
-              type="number"
-              min={1}
-              value={pages}
-              onChange={(e) => setPages(e.target.value)}
-              placeholder={book.pages ? String(book.pages) : "Ex : 320"}
-              className={inputClass}
-            />
-          </div>
-        )}
+          {/* Note (pour Terminé) */}
+          {status === "completed" && (
+            <div>
+              <FieldLabel>Note (optionnel)</FieldLabel>
+              <div className="flex items-center gap-0.5">
+                {[1, 2, 3, 4, 5].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => setRating(rating === s ? 0 : s)}
+                    className="p-1 text-2xl leading-none"
+                  >
+                    <span style={{ color: s <= rating ? "#c9a227" : "#dad2c2" }}>★</span>
+                  </button>
+                ))}
+                {rating > 0 && (
+                  <span className="ml-1 text-xs text-muted">{rating}/5</span>
+                )}
+              </div>
+            </div>
+          )}
 
-        {/* Date de début */}
-        {(status === "reading" || status === "completed") && (
-          <div>
-            <FieldLabel>Date de début (optionnel)</FieldLabel>
-            <input
-              type="date"
-              value={startDate}
-              max={endDate || undefined}
-              onChange={(e) => setStartDate(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-        )}
+          {/* Pages (optionnel pour non-wishlist) */}
+          {status !== "to-read" && (
+            <div>
+              <FieldLabel>Pages de ton édition (optionnel)</FieldLabel>
+              <input
+                type="number"
+                min={1}
+                value={pages}
+                onChange={(e) => setPages(e.target.value)}
+                placeholder={book.pages ? String(book.pages) : "Ex : 320"}
+                className={inputClass}
+              />
+            </div>
+          )}
 
-        {/* Date de fin */}
-        {status === "completed" && (
-          <div>
-            <FieldLabel>Date de fin (optionnel)</FieldLabel>
-            <input
-              type="date"
-              value={endDate}
-              min={startDate || undefined}
-              onChange={(e) => setEndDate(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-        )}
+          {/* Date de début */}
+          {(status === "reading" || status === "completed") && (
+            <div>
+              <FieldLabel>Date de début (optionnel)</FieldLabel>
+              <input
+                type="date"
+                value={startDate}
+                max={endDate || undefined}
+                onChange={(e) => setStartDate(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+          )}
 
-        {error && <p className="text-xs font-medium text-danger">{error}</p>}
+          {/* Date de fin */}
+          {status === "completed" && (
+            <div>
+              <FieldLabel>Date de fin (optionnel)</FieldLabel>
+              <input
+                type="date"
+                value={endDate}
+                min={startDate || undefined}
+                onChange={(e) => setEndDate(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+          )}
 
-        <Button onClick={handleSave} disabled={saving} className="w-full">
-          {btnLabel}
-        </Button>
-      </div>
-    </Modal>
+          {error && <p className="text-xs font-medium text-danger">{error}</p>}
+
+          <Button onClick={handleSave} disabled={saving} className="w-full">
+            {btnLabel}
+          </Button>
+        </div>
+      </Modal>
+
+      {open && showCoverPicker && (
+        <CoverPickerModal
+          title={book.title}
+          author={book.author}
+          currentCover={coverUrl}
+          onPick={(url) => setCoverUrl(url)}
+          onClose={() => setShowCoverPicker(false)}
+        />
+      )}
+    </>
   );
 }
