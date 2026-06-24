@@ -5,15 +5,24 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book, ReadingLog } from "../../lib/types";
 import { loadGoals, updateGoal, DEFAULT_GOALS, type Goals } from "../../lib/settings";
-import { GoalIndicator, ObjectiveChart, StatCard, RatingsChart, DailyComparisonChart, type FriendLine } from "../../components/DashboardWidgets";
+import {
+  GoalIndicator,
+  ObjectiveChart,
+  StatCard,
+  RatingsChart,
+  DailyComparisonChart,
+  type FriendLine,
+} from "../../components/DashboardWidgets";
+import { DateRangePicker, DEFAULT_RANGE, type DateRange } from "../../components/DateRangePicker";
+import PodiumModal from "../../components/PodiumModal";
 
 const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 const MS_DAY = 86_400_000;
 const VIOLET = "var(--color-violet)";
 const VIOLET_LT = "#d8cfe6";
 const VIOLET_DEEP = "var(--color-violet-deep)";
+const FRIEND_COLOR = "#e07246";
 
-// Palette bien contrastée pour les membres mutuels
 const MEMBER_COLORS = ["#e07246", "#2e9e6e", "#3a7dc9", "#d4902a", "#a8558a"];
 
 function GoalSetupCard({ label, onSet }: { label: string; onSet: (v: number) => void }) {
@@ -73,22 +82,37 @@ function GoalSetupCard({ label, onSet }: { label: string; onSet: (v: number) => 
 export default function DashboardPage() {
   const { user } = useAuth();
   const userId = user?.id;
-
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
+
+  // ── Période ──────────────────────────────────────────────────────────────────
+  const [dateRange, setDateRange] = useState<DateRange>(DEFAULT_RANGE);
+  const dateFrom = dateRange.from;
+  const dateTo = dateRange.to;
+  const isCurrentYearPreset = dateRange.preset === "year";
+
+  // ── Données propres ───────────────────────────────────────────────────────────
   const [goals, setGoals] = useState<Goals>(DEFAULT_GOALS);
   const [logs, setLogs] = useState<ReadingLog[]>([]);
   const [books, setBooks] = useState<Book[]>([]);
   const [loading, setLoading] = useState(true);
   const [championDays, setChampionDays] = useState(0);
   const [showAllAuthors, setShowAllAuthors] = useState(false);
+  const [showPodium, setShowPodium] = useState(false);
 
-  // Données mutuelles — par membre individuel
+  // ── Mutuels (graphiques) ──────────────────────────────────────────────────────
   const [mutualPagesPerMember, setMutualPagesPerMember] = useState<FriendLine[]>([]);
   const [mutualBooksPerMember, setMutualBooksPerMember] = useState<FriendLine[]>([]);
   const [mutualDailyData, setMutualDailyData] = useState<{ name: string; color: string; data: { day: number; pages: number }[] }[]>([]);
   const [hasMutuals, setHasMutuals] = useState(false);
 
+  // ── Duel ─────────────────────────────────────────────────────────────────────
+  const [mutualProfiles, setMutualProfiles] = useState<{ id: string; name: string }[]>([]);
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  const [friendName, setFriendName] = useState("");
+  const [friendLogs, setFriendLogs] = useState<{ date: string; pages_read: number; book_id?: number | null }[]>([]);
+  const [friendBooks, setFriendBooks] = useState<{ id: number; date_read: string | null }[]>([]);
+
+  // ── Chargement données propres ────────────────────────────────────────────────
   const loadAll = useCallback(async () => {
     if (!userId) return;
     const [g, { data: l }, { data: b }, { data: allLogs }] = await Promise.all([
@@ -101,7 +125,6 @@ export default function DashboardPage() {
     setLogs((l as ReadingLog[]) || []);
     setBooks((b as Book[]) || []);
 
-    // Calcul Champion du jour
     type LogRow = { user_id: string; pages_read: number; date: string };
     const rows = (allLogs as LogRow[]) || [];
     const dateMap = new Map<string, Map<string, number>>();
@@ -119,13 +142,32 @@ export default function DashboardPage() {
     setLoading(false);
   }, [userId]);
 
-  useEffect(() => {
-    loadAll();
-  }, [loadAll]);
+  useEffect(() => { loadAll(); }, [loadAll]);
 
-  // Chargement des données mutuelles (uniquement pour l'année en cours)
+  // ── Liste des mutuels pour le dropdown duel ───────────────────────────────────
   useEffect(() => {
-    if (!userId || year !== now.getFullYear()) {
+    if (!userId) return;
+    const load = async () => {
+      const { data: f1 } = await supabase.from("user_follows").select("following_id").eq("follower_id", userId);
+      const followingIds = ((f1 || []) as { following_id: string }[]).map((f) => f.following_id);
+      if (!followingIds.length) return;
+      const { data: f2 } = await supabase
+        .from("user_follows")
+        .select("follower_id")
+        .eq("following_id", userId)
+        .in("follower_id", followingIds);
+      const mutualIds = [...new Set(((f2 || []) as { follower_id: string }[]).map((f) => f.follower_id))];
+      if (!mutualIds.length) return;
+      const { data: p } = await supabase.from("user_profiles").select("id, display_name").in("id", mutualIds);
+      setMutualProfiles(((p || []) as { id: string; display_name: string }[]).map((pr) => ({ id: pr.id, name: pr.display_name })));
+    };
+    load();
+  }, [userId]);
+
+  // ── Données mutuels pour graphiques (uniquement year preset = année en cours) ─
+  useEffect(() => {
+    const isYear = dateRange.preset === "year";
+    if (!userId || !isYear) {
       setMutualPagesPerMember([]);
       setMutualBooksPerMember([]);
       setMutualDailyData([]);
@@ -137,18 +179,16 @@ export default function DashboardPage() {
         .from("user_follows")
         .select("following_id")
         .eq("follower_id", userId);
-
       const followingIds = ((myFollowsData || []) as { following_id: string }[]).map((f) => f.following_id);
-      if (followingIds.length === 0) { setHasMutuals(false); return; }
+      if (!followingIds.length) { setHasMutuals(false); return; }
 
       const { data: mutualCheck } = await supabase
         .from("user_follows")
         .select("follower_id")
         .eq("following_id", userId)
         .in("follower_id", followingIds);
-
       const mutualIds = [...new Set(((mutualCheck || []) as { follower_id: string }[]).map((f) => f.follower_id))];
-      if (mutualIds.length === 0) { setHasMutuals(false); return; }
+      if (!mutualIds.length) { setHasMutuals(false); return; }
       setHasMutuals(true);
 
       const currentYear = now.getFullYear();
@@ -160,11 +200,7 @@ export default function DashboardPage() {
           .gte("date", `${currentYear}-01-01`)
           .lte("date", `${currentYear}-12-31`),
         supabase.from("user_profiles").select("id, display_name").in("id", mutualIds),
-        supabase
-          .from("books")
-          .select("id, user_id, status, date_read")
-          .in("user_id", mutualIds)
-          .eq("status", "completed"),
+        supabase.from("books").select("id, user_id, status, date_read").in("user_id", mutualIds).eq("status", "completed"),
       ]);
 
       type LogRow = { user_id: string; pages_read: number; date: string; book_id?: string | null };
@@ -173,78 +209,73 @@ export default function DashboardPage() {
 
       const allLogs = (mutualLogsData as LogRow[]) || [];
       const profiles = (mutualProfilesData as ProfRow[]) || [];
-      const allBooks = (mutualBooksData as BookRow[]) || [];
-
+      const allMBooks = (mutualBooksData as BookRow[]) || [];
       const profileMap = new Map(profiles.map((p) => [p.id, p.display_name]));
       const shownIds = mutualIds.slice(0, 4);
 
-      // Pages par mois par membre
       const pagesPerMember: FriendLine[] = shownIds.map((id, idx) => {
         const monthly = Array(12).fill(0);
-        allLogs
-          .filter((l) => l.user_id === id)
-          .forEach((l) => {
-            monthly[new Date(l.date).getMonth()] += l.pages_read || 0;
-          });
-        return {
-          name: profileMap.get(id) || "Membre",
-          color: MEMBER_COLORS[idx % MEMBER_COLORS.length],
-          data: monthly.map((v, i) => ({ name: MONTHS[i], value: v })),
-        };
+        allLogs.filter((l) => l.user_id === id).forEach((l) => {
+          monthly[new Date(l.date + "T00:00:00").getMonth()] += l.pages_read || 0;
+        });
+        return { name: profileMap.get(id) || "Membre", color: MEMBER_COLORS[idx % MEMBER_COLORS.length], data: monthly.map((v, i) => ({ name: MONTHS[i], value: v })) };
       });
       setMutualPagesPerMember(pagesPerMember);
 
-      // Livres terminés par mois par membre
       const booksPerMember: FriendLine[] = shownIds.map((id, idx) => {
         const monthly = Array(12).fill(0);
-        allBooks
-          .filter((b) => b.user_id === id)
-          .forEach((book) => {
-            let completionDate: Date | null = null;
-            if (book.date_read) {
-              completionDate = new Date(book.date_read);
-            } else {
-              const lastLog = allLogs
-                .filter((l) => l.user_id === id && l.book_id === book.id)
-                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
-              if (lastLog) completionDate = new Date(lastLog.date);
-            }
-            if (completionDate && completionDate.getFullYear() === currentYear) {
-              monthly[completionDate.getMonth()]++;
-            }
-          });
-        return {
-          name: profileMap.get(id) || "Membre",
-          color: MEMBER_COLORS[idx % MEMBER_COLORS.length],
-          data: monthly.map((v, i) => ({ name: MONTHS[i], value: v })),
-        };
+        allMBooks.filter((b) => b.user_id === id).forEach((book) => {
+          let cs: string | null = book.date_read;
+          if (!cs) {
+            const last = allLogs.filter((l) => l.user_id === id && l.book_id === book.id).sort((a, b) => b.date.localeCompare(a.date))[0];
+            if (last) cs = last.date;
+          }
+          if (cs && cs.startsWith(String(currentYear))) {
+            monthly[new Date(cs + "T00:00:00").getMonth()]++;
+          }
+        });
+        return { name: profileMap.get(id) || "Membre", color: MEMBER_COLORS[idx % MEMBER_COLORS.length], data: monthly.map((v, i) => ({ name: MONTHS[i], value: v })) };
       });
       setMutualBooksPerMember(booksPerMember);
 
-      // Pages par jour (mois en cours) par membre
       const currentMonth = now.getMonth();
       const monthStr = `${currentYear}-${String(currentMonth + 1).padStart(2, "0")}`;
       const dailyResult = shownIds.map((id, idx) => {
         const dayMap = new Map<number, number>();
-        allLogs
-          .filter((l) => l.user_id === id && l.date.startsWith(monthStr))
-          .forEach((l) => {
-            const day = new Date(l.date).getDate();
-            dayMap.set(day, (dayMap.get(day) || 0) + (l.pages_read || 0));
-          });
+        allLogs.filter((l) => l.user_id === id && l.date.startsWith(monthStr)).forEach((l) => {
+          const day = new Date(l.date + "T00:00:00").getDate();
+          dayMap.set(day, (dayMap.get(day) || 0) + (l.pages_read || 0));
+        });
         return {
           name: profileMap.get(id) || "Membre",
           color: MEMBER_COLORS[idx % MEMBER_COLORS.length],
-          data: Array.from({ length: now.getDate() }, (_, i) => ({
-            day: i + 1,
-            pages: dayMap.get(i + 1) || 0,
-          })),
+          data: Array.from({ length: now.getDate() }, (_, i) => ({ day: i + 1, pages: dayMap.get(i + 1) || 0 })),
         };
       });
       setMutualDailyData(dailyResult);
     };
     loadMutuals();
-  }, [userId, year]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [userId, dateRange.preset]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Chargement données de l'ami sélectionné ───────────────────────────────────
+  useEffect(() => {
+    if (!selectedFriendId) {
+      setFriendLogs([]);
+      setFriendBooks([]);
+      setFriendName("");
+      return;
+    }
+    setFriendName(mutualProfiles.find((p) => p.id === selectedFriendId)?.name || "Ami");
+    const load = async () => {
+      const [{ data: l }, { data: b }] = await Promise.all([
+        supabase.from("reading_logs").select("date, pages_read, book_id").eq("user_id", selectedFriendId),
+        supabase.from("books").select("id, date_read").eq("user_id", selectedFriendId).eq("status", "completed"),
+      ]);
+      setFriendLogs((l as { date: string; pages_read: number; book_id?: number | null }[]) || []);
+      setFriendBooks((b as { id: number; date_read: string | null }[]) || []);
+    };
+    load();
+  }, [selectedFriendId, mutualProfiles]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const setGoal = async (key: keyof Goals, value: number) => {
     if (!userId) return;
@@ -252,129 +283,193 @@ export default function DashboardPage() {
     await updateGoal(key, value, userId);
   };
 
-  // ----- Calculs lecture -----
-  const isCurrentYear = year === now.getFullYear();
+  // ── Calculs lecture (filtrés par dateRange) ───────────────────────────────────
   const pagesByMonth = Array(12).fill(0);
   const booksByMonth = Array(12).fill(0);
   const dayPages = new Map<string, number>();
 
   logs.forEach((log) => {
-    const d = new Date(log.date);
-    if (d.getFullYear() === year) {
-      const key = d.toISOString().split("T")[0];
-      pagesByMonth[d.getMonth()] += log.pages_read || 0;
-      dayPages.set(key, (dayPages.get(key) || 0) + (log.pages_read || 0));
+    if (log.date >= dateFrom && log.date <= dateTo) {
+      const m = new Date(log.date + "T00:00:00").getMonth();
+      pagesByMonth[m] += log.pages_read || 0;
+      dayPages.set(log.date, (dayPages.get(log.date) || 0) + (log.pages_read || 0));
     }
   });
 
   books.forEach((book) => {
     if (book.status !== "completed") return;
-    let completionDate: Date | null = null;
-    if (book.date_read) {
-      completionDate = new Date(book.date_read);
-    } else {
-      const bookLogs = logs
-        .filter((l) => l.book_id === book.id)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      if (bookLogs.length) completionDate = new Date(bookLogs[0].date);
+    let completionStr: string | null = book.date_read ?? null;
+    if (!completionStr) {
+      const lastLog = logs
+        .filter((l) => l.book_id === book.id && l.date >= dateFrom && l.date <= dateTo)
+        .sort((a, b) => b.date.localeCompare(a.date))[0];
+      if (lastLog) completionStr = lastLog.date;
     }
-    if (completionDate && completionDate.getFullYear() === year) {
-      booksByMonth[completionDate.getMonth()] += 1;
+    if (completionStr && completionStr >= dateFrom && completionStr <= dateTo) {
+      booksByMonth[new Date(completionStr + "T00:00:00").getMonth()] += 1;
     }
   });
 
   const totalPages = pagesByMonth.reduce((a, b) => a + b, 0);
   const totalBooks = booksByMonth.reduce((a, b) => a + b, 0);
-  const pagesThisMonth = isCurrentYear ? pagesByMonth[now.getMonth()] : 0;
-  const booksThisMonth = isCurrentYear ? booksByMonth[now.getMonth()] : 0;
 
-  const dayOfYear = isCurrentYear
-    ? Math.floor((now.getTime() - new Date(year, 0, 1).getTime()) / MS_DAY) + 1
-    : 365;
-  const daysInMonth = new Date(year, now.getMonth() + 1, 0).getDate();
-  const dayOfMonth = isCurrentYear ? now.getDate() : daysInMonth;
+  const rangeEndDate = new Date(dateTo + "T23:59:59");
+  const rangeStartDate = new Date(dateFrom + "T00:00:00");
+  const effectiveEnd = now < rangeEndDate ? now : rangeEndDate;
+  const rangeElapsedDays = Math.max(1, Math.floor((effectiveEnd.getTime() - rangeStartDate.getTime()) / MS_DAY) + 1);
 
-  const avgPerDay = dayOfYear > 0 ? Math.round(totalPages / dayOfYear) : 0;
+  const avgPerDay = Math.round(totalPages / rangeElapsedDays);
   const recordDay = Math.max(0, ...Array.from(dayPages.values()));
-  const currentMonthIdx = isCurrentYear ? now.getMonth() : -1;
+  const currentMonthIdx = isCurrentYearPreset ? now.getMonth() : -1;
 
-  const yearPeriod = (cur: number, goal: number) => ({
-    cur,
-    goal,
-    expected: goal * (dayOfYear / 365),
-  });
+  // Pour GoalIndicator (year preset uniquement)
+  const dayOfYear = Math.floor((now.getTime() - new Date(now.getFullYear() + "-01-01T00:00:00").getTime()) / MS_DAY) + 1;
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const pagesThisMonth = pagesByMonth[now.getMonth()];
+  const booksThisMonth = booksByMonth[now.getMonth()];
 
-  const monthPeriod = (cur: number, goal: number) => ({
-    cur,
-    goal,
-    expected: goal * (dayOfMonth / daysInMonth),
-  });
+  const yearPeriod = (cur: number, goal: number) => ({ cur, goal, expected: goal * (dayOfYear / 365) });
+  const monthPeriod = (cur: number, goal: number) => ({ cur, goal, expected: goal * (now.getDate() / daysInMonth) });
 
   const monthChart = (arr: number[]) => arr.map((v, i) => ({ name: MONTHS[i], value: v }));
 
-  const myDailyData = isCurrentYear
+  const myDailyData = isCurrentYearPreset
     ? Array.from({ length: now.getDate() }, (_, i) => {
         const day = i + 1;
-        const dateStr = `${year}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
         return { day, pages: dayPages.get(dateStr) || 0 };
       })
     : [];
 
+  // Calculs ami sélectionné
+  const friendPagesByMonth = Array(12).fill(0);
+  friendLogs.forEach((log) => {
+    if (log.date >= dateFrom && log.date <= dateTo) {
+      friendPagesByMonth[new Date(log.date + "T00:00:00").getMonth()] += log.pages_read || 0;
+    }
+  });
+
+  const friendBooksByMonth = Array(12).fill(0);
+  friendBooks.forEach((book) => {
+    let cs: string | null = book.date_read;
+    if (!cs) {
+      const last = friendLogs
+        .filter((l) => l.book_id === book.id)
+        .sort((a, b) => b.date.localeCompare(a.date))[0];
+      if (last) cs = last.date;
+    }
+    if (cs && cs >= dateFrom && cs <= dateTo) {
+      friendBooksByMonth[new Date(cs + "T00:00:00").getMonth()]++;
+    }
+  });
+
+  const friendTotalPages = friendPagesByMonth.reduce((a, b) => a + b, 0);
+  const friendTotalBooks = friendBooksByMonth.reduce((a, b) => a + b, 0);
+  const friendAvgPerDay = Math.round(friendTotalPages / rangeElapsedDays);
+
+  // Lignes amis actives sur les graphiques
+  const activePagesLines: FriendLine[] | undefined = selectedFriendId
+    ? [{ name: friendName || "Ami", color: FRIEND_COLOR, data: monthChart(friendPagesByMonth) }]
+    : isCurrentYearPreset && hasMutuals && mutualPagesPerMember.length > 0
+    ? mutualPagesPerMember
+    : undefined;
+
+  const activeBooksLines: FriendLine[] | undefined = selectedFriendId
+    ? [{ name: friendName || "Ami", color: FRIEND_COLOR, data: monthChart(friendBooksByMonth) }]
+    : isCurrentYearPreset && hasMutuals && mutualBooksPerMember.length > 0
+    ? mutualBooksPerMember
+    : undefined;
+
+  // Notes
   const ratingCounts = Array(10).fill(0);
   let ratingSum = 0;
   let ratedCount = 0;
   books.forEach((b) => {
     const r = b.rating || 0;
     if (r > 0) {
-      const bucket = Math.min(9, Math.max(0, Math.round(r * 2) - 1));
-      ratingCounts[bucket] += 1;
+      ratingCounts[Math.min(9, Math.max(0, Math.round(r * 2) - 1))] += 1;
       ratingSum += r;
       ratedCount += 1;
     }
   });
   const ratingAvg = ratedCount > 0 ? ratingSum / ratedCount : 0;
 
+  // Auteurs
   const authorMap = new Map<string, number>();
   books.forEach((book) => {
     if (book.status !== "completed") return;
-    let completionDate: Date | null = null;
-    if (book.date_read) {
-      completionDate = new Date(book.date_read);
-    } else {
-      const bookLogs = logs
+    let cs: string | null = book.date_read ?? null;
+    if (!cs) {
+      const lastLog = logs
         .filter((l) => l.book_id === book.id)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-      if (bookLogs.length) completionDate = new Date(bookLogs[0].date);
+        .sort((a, b) => b.date.localeCompare(a.date))[0];
+      if (lastLog) cs = lastLog.date;
     }
-    if (!completionDate || completionDate.getFullYear() !== year) return;
-    const author = book.author.trim();
-    authorMap.set(author, (authorMap.get(author) || 0) + 1);
+    if (!cs || cs < dateFrom || cs > dateTo) return;
+    authorMap.set(book.author.trim(), (authorMap.get(book.author.trim()) || 0) + 1);
   });
   const authorRanking = Array.from(authorMap.entries()).sort((a, b) => b[1] - a[1]);
   const top5Authors = authorRanking.slice(0, 5);
   const extraAuthors = authorRanking.slice(5);
   const maxAuthorBooks = top5Authors[0]?.[1] ?? 1;
 
+  // Labels de période
+  const periodLabels: Record<string, string> = {
+    "year": "cette année",
+    "7d": "ces 7 jours",
+    "month": "ce mois",
+    "prev-year": String(now.getFullYear() - 1),
+    "custom": "sur la période",
+  };
+  const periodLabel = periodLabels[dateRange.preset] ?? "sur la période";
+
+  const rangeLabel = isCurrentYearPreset
+    ? String(now.getFullYear())
+    : dateRange.preset === "prev-year"
+    ? String(now.getFullYear() - 1)
+    : dateRange.preset === "7d"
+    ? "7 derniers jours"
+    : dateRange.preset === "month"
+    ? now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" })
+    : `${dateRange.from} → ${dateRange.to}`;
+
   return (
     <div className="animate-fadeIn flex flex-col gap-5 pt-4">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="font-serif text-3xl font-black text-ink">Statistiques</h1>
-          <p className="text-xs font-medium text-muted">Lecture {year}</p>
+      <header className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="font-serif text-3xl font-black text-ink">Statistiques</h1>
+            <p className="text-xs font-medium text-muted">Lecture — {rangeLabel}</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2 rounded-xl border border-line bg-card px-2 py-1.5">
-          <button onClick={() => setYear((y) => y - 1)} className="px-1.5 text-sm font-bold text-muted">
-            ‹
-          </button>
-          <span className="w-12 text-center text-sm font-semibold text-ink">{year}</span>
-          <button
-            onClick={() => setYear((y) => Math.min(y + 1, now.getFullYear()))}
-            disabled={year >= now.getFullYear()}
-            className="px-1.5 text-sm font-bold text-muted disabled:opacity-30"
-          >
-            ›
-          </button>
-        </div>
+
+        {/* Sélecteur de période */}
+        <DateRangePicker value={dateRange} onChange={setDateRange} />
+
+        {/* Dropdown duel */}
+        {mutualProfiles.length > 0 && (
+          <div className="flex items-center gap-2 rounded-2xl border border-line bg-card px-3 py-2.5">
+            <span className="text-[11px] font-bold text-muted">VS</span>
+            <select
+              value={selectedFriendId || ""}
+              onChange={(e) => setSelectedFriendId(e.target.value || null)}
+              className="flex-1 bg-transparent text-[12.5px] font-medium text-ink outline-none"
+            >
+              <option value="">Comparer avec un ami mutuel…</option>
+              {mutualProfiles.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+            {selectedFriendId && (
+              <button
+                onClick={() => setSelectedFriendId(null)}
+                className="shrink-0 text-[11px] font-medium text-muted hover:text-danger"
+              >
+                ✕ Annuler
+              </button>
+            )}
+          </div>
+        )}
       </header>
 
       {loading ? (
@@ -385,15 +480,32 @@ export default function DashboardPage() {
         <>
           {/* 1. Indicateurs clés */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatCard label="Pages cette année" value={totalPages.toLocaleString("fr-FR")} accent="#2b2733" />
             <StatCard
-              label={`Livres terminés ${year}`}
-              value={String(totalBooks)}
-              unit={goals.reading_books_year !== null ? `/ ${goals.reading_books_year}` : undefined}
-              accent={VIOLET_DEEP}
+              label={`Pages ${periodLabel}`}
+              value={totalPages.toLocaleString("fr-FR")}
+              accent="#2b2733"
+              vs={selectedFriendId ? { label: friendName, value: friendTotalPages.toLocaleString("fr-FR") } : undefined}
             />
-            <StatCard label="Moyenne / jour" value={String(avgPerDay)} unit="pages" accent="#6e7a5a" />
-            <StatCard label="Journée record" value={String(recordDay)} unit="pages" accent="#d7a33f" />
+            <StatCard
+              label={`Livres terminés ${periodLabel}`}
+              value={String(totalBooks)}
+              unit={isCurrentYearPreset && goals.reading_books_year !== null ? `/ ${goals.reading_books_year}` : undefined}
+              accent={VIOLET_DEEP}
+              vs={selectedFriendId ? { label: friendName, value: String(friendTotalBooks) } : undefined}
+            />
+            <StatCard
+              label="Moyenne / jour"
+              value={String(avgPerDay)}
+              unit="pages"
+              accent="#6e7a5a"
+              vs={selectedFriendId ? { label: friendName, value: `${friendAvgPerDay} p.` } : undefined}
+            />
+            <StatCard
+              label="Journée record"
+              value={String(recordDay)}
+              unit="pages"
+              accent="#d7a33f"
+            />
           </div>
 
           {/* 2. Graphiques mensuels */}
@@ -402,24 +514,24 @@ export default function DashboardPage() {
               title="Pages lues / mois"
               type="area"
               data={monthChart(pagesByMonth)}
-              objective={goals.reading_pages_year !== null ? Math.round(goals.reading_pages_year / 12) : null}
+              objective={isCurrentYearPreset && goals.reading_pages_year !== null ? Math.round(goals.reading_pages_year / 12) : null}
               unit="p."
               color={VIOLET}
               lightColor={VIOLET_LT}
               currentMonth={currentMonthIdx}
               onObjectiveChange={
-                goals.reading_pages_year !== null
+                isCurrentYearPreset && goals.reading_pages_year !== null
                   ? (v) => setGoal("reading_pages_year", v * 12)
                   : undefined
               }
-              friendLines={hasMutuals && isCurrentYear && mutualPagesPerMember.length > 0 ? mutualPagesPerMember : undefined}
+              friendLines={activePagesLines}
             />
             <ObjectiveChart
               title="Livres lus / mois"
               type="area"
               data={monthChart(booksByMonth)}
               objective={
-                goals.reading_books_year !== null
+                isCurrentYearPreset && goals.reading_books_year !== null
                   ? Math.max(1, Math.round(goals.reading_books_year / 12))
                   : null
               }
@@ -428,27 +540,30 @@ export default function DashboardPage() {
               lightColor={VIOLET_LT}
               currentMonth={currentMonthIdx}
               onObjectiveChange={
-                goals.reading_books_year !== null
+                isCurrentYearPreset && goals.reading_books_year !== null
                   ? (v) => setGoal("reading_books_year", v * 12)
                   : undefined
               }
-              friendLines={hasMutuals && isCurrentYear && mutualBooksPerMember.length > 0 ? mutualBooksPerMember : undefined}
+              friendLines={activeBooksLines}
             />
           </div>
 
           {/* 2b. Comparatif jour par jour — 10 derniers jours */}
-          {isCurrentYear && hasMutuals && mutualDailyData.length > 0 && (
+          {isCurrentYearPreset && hasMutuals && !selectedFriendId && mutualDailyData.length > 0 && (
             <DailyComparisonChart
               myData={myDailyData.slice(-10)}
               mutuals={mutualDailyData.map((m) => ({ ...m, data: m.data.slice(-10) }))}
               month={now.getMonth()}
-              year={year}
+              year={now.getFullYear()}
               myColor={VIOLET}
             />
           )}
 
-          {/* 3. Champion du jour */}
-          <div className="flex items-center gap-4 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-4">
+          {/* 3. Champion du jour — cliquable */}
+          <button
+            onClick={() => setShowPodium(true)}
+            className="flex w-full items-center gap-4 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-4 text-left transition-colors hover:border-gold/70"
+          >
             <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gold/15 text-2xl">
               🏆
             </span>
@@ -460,11 +575,10 @@ export default function DashboardPage() {
             </div>
             <div className="text-right">
               <p className="font-serif text-3xl font-black text-[#b8890a]">{championDays}</p>
-              <p className="text-[11px] font-medium text-muted">
-                {championDays > 1 ? "jours" : "jour"}
-              </p>
+              <p className="text-[11px] font-medium text-muted">{championDays > 1 ? "jours" : "jour"}</p>
+              <p className="mt-0.5 text-[9.5px] text-muted/70">Voir le podium →</p>
             </div>
-          </div>
+          </button>
 
           {/* 4. Classement par auteur */}
           {top5Authors.length > 0 && (
@@ -491,7 +605,6 @@ export default function DashboardPage() {
                   </div>
                 ))}
               </div>
-
               {extraAuthors.length > 0 && (
                 <>
                   {showAllAuthors && (
@@ -510,51 +623,47 @@ export default function DashboardPage() {
                     onClick={() => setShowAllAuthors((v) => !v)}
                     className="flex items-center justify-center gap-1.5 rounded-xl bg-violet-soft px-4 py-2 text-xs font-semibold text-violet-deep"
                   >
-                    {showAllAuthors
-                      ? "Réduire ↑"
-                      : `Voir tous les auteurs (${extraAuthors.length} de plus)`}
+                    {showAllAuthors ? "Réduire ↑" : `Voir tous les auteurs (${extraAuthors.length} de plus)`}
                   </button>
                 </>
               )}
             </div>
           )}
 
-          {/* 5. Objectifs */}
-          <div className="grid gap-4 md:grid-cols-2">
-            {goals.reading_pages_year !== null ? (
-              <GoalIndicator
-                title="Objectif pages"
-                accent="#8b79be"
-                unit="p."
-                year={yearPeriod(totalPages, goals.reading_pages_year)}
-                month={monthPeriod(pagesThisMonth, goals.reading_pages_year / 12)}
-              />
-            ) : (
-              <GoalSetupCard
-                label="Objectif pages"
-                onSet={(v) => setGoal("reading_pages_year", v)}
-              />
-            )}
-            {goals.reading_books_year !== null ? (
-              <GoalIndicator
-                title="Objectif livres"
-                accent="#6f5da6"
-                unit="livres"
-                year={yearPeriod(totalBooks, goals.reading_books_year)}
-                month={monthPeriod(booksThisMonth, goals.reading_books_year / 12)}
-              />
-            ) : (
-              <GoalSetupCard
-                label="Objectif livres"
-                onSet={(v) => setGoal("reading_books_year", v)}
-              />
-            )}
-          </div>
+          {/* 5. Objectifs (uniquement année en cours) */}
+          {isCurrentYearPreset && (
+            <div className="grid gap-4 md:grid-cols-2">
+              {goals.reading_pages_year !== null ? (
+                <GoalIndicator
+                  title="Objectif pages"
+                  accent="#8b79be"
+                  unit="p."
+                  year={yearPeriod(totalPages, goals.reading_pages_year)}
+                  month={monthPeriod(pagesThisMonth, goals.reading_pages_year / 12)}
+                />
+              ) : (
+                <GoalSetupCard label="Objectif pages" onSet={(v) => setGoal("reading_pages_year", v)} />
+              )}
+              {goals.reading_books_year !== null ? (
+                <GoalIndicator
+                  title="Objectif livres"
+                  accent="#6f5da6"
+                  unit="livres"
+                  year={yearPeriod(totalBooks, goals.reading_books_year)}
+                  month={monthPeriod(booksThisMonth, goals.reading_books_year / 12)}
+                />
+              ) : (
+                <GoalSetupCard label="Objectif livres" onSet={(v) => setGoal("reading_books_year", v)} />
+              )}
+            </div>
+          )}
 
           {/* 6. Histogramme des notes */}
           <RatingsChart counts={ratingCounts} average={ratingAvg} total={ratedCount} />
         </>
       )}
+
+      {showPodium && <PodiumModal onClose={() => setShowPodium(false)} />}
     </div>
   );
 }

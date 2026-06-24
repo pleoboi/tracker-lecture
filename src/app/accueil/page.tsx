@@ -9,6 +9,7 @@ import { pct } from "../../lib/books";
 import { Cover, ProgressBar, Button, AvatarImg } from "../../components/ui";
 import AddBookModal from "../../components/AddBookModal";
 import LogReadingModal from "../../components/LogReadingModal";
+import PodiumModal from "../../components/PodiumModal";
 
 const today = new Intl.DateTimeFormat("fr-FR", {
   weekday: "long",
@@ -67,6 +68,7 @@ export default function AccueilPage() {
   const [activity, setActivity] = useState<ActivityLog[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const [todayChampion, setTodayChampion] = useState<Champion | null>(null);
+  const [showPodium, setShowPodium] = useState(false);
 
   // Members
   const [members, setMembers] = useState<Profile[]>([]);
@@ -369,7 +371,12 @@ export default function AccueilPage() {
 
         {/* Champion du jour */}
         {todayChampion && (
-          <ChampionBanner champion={todayChampion} isMe={todayChampion.userId === userId} />
+          <button
+            onClick={() => setShowPodium(true)}
+            className="w-full text-left"
+          >
+            <ChampionBanner champion={todayChampion} isMe={todayChampion.userId === userId} />
+          </button>
         )}
 
         {!hasFollows && !activityLoading && (
@@ -442,6 +449,7 @@ export default function AccueilPage() {
         books={books.filter((b) => b.status === "reading")}
         onSaved={(m) => { setShowLog(false); showToast(m); load(); }}
       />
+      {showPodium && <PodiumModal onClose={() => setShowPodium(false)} />}
     </div>
   );
 }

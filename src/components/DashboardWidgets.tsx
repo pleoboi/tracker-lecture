@@ -452,13 +452,40 @@ export function DailyComparisonChart({
 
 /* ---------------- Petite carte de stat ---------------- */
 
-export function StatCard({ label, value, unit, accent }: { label: string; value: string; unit?: string; accent?: string }) {
+export function StatCard({
+  label,
+  value,
+  unit,
+  accent,
+  vs,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+  accent?: string;
+  vs?: { label: string; value: string; color?: string };
+}) {
   return (
     <div className="flex flex-col gap-1.5 rounded-2xl border border-line bg-card p-4">
       <span className="text-[11px] font-medium uppercase tracking-wide text-muted">{label}</span>
       <span className="font-serif text-2xl font-black" style={{ color: accent || "var(--color-ink)" }}>
         {value} {unit && <span className="text-xs font-medium text-muted">{unit}</span>}
       </span>
+      {vs && (
+        <div className="flex items-center gap-1.5 border-t border-line pt-1.5">
+          <span
+            className="h-1.5 w-1.5 shrink-0 rounded-full"
+            style={{ backgroundColor: vs.color || "#e07246" }}
+          />
+          <span className="text-[10px] font-medium text-muted">{vs.label}</span>
+          <span
+            className="font-serif text-[13px] font-bold"
+            style={{ color: vs.color || "#e07246" }}
+          >
+            {vs.value}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
