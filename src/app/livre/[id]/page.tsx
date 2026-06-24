@@ -79,6 +79,11 @@ export default function BookDetailPage() {
   const [memberActivity, setMemberActivity] = useState<MemberEntry[]>([]);
   const [selectedMember, setSelectedMember] = useState<MemberEntry | null>(null);
 
+  // Likes de reviews
+  const [reviewLikeCount, setReviewLikeCount] = useState(0);
+  const [reviewLiked, setReviewLiked] = useState(false);
+  const [likeLoading, setLikeLoading] = useState(false);
+
   // Confetti + genre picker
   const [showConfetti, setShowConfetti] = useState(false);
   const [showGenrePicker, setShowGenrePicker] = useState(false);
@@ -174,6 +179,68 @@ export default function BookDetailPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Charge le statut de like quand un membre est sélectionné (a une review)
+  useEffect(() => {
+    if (!selectedMember?.review || !userId) {
+      setReviewLikeCount(0);
+      setReviewLiked(false);
+      return;
+    }
+    const loadLikes = async () => {
+      const [{ count }, { data: myLike }] = await Promise.all([
+        supabase
+          .from("review_likes")
+          .select("*", { count: "exact", head: true })
+          .eq("book_id", id)
+          .eq("reviewer_user_id", selectedMember.userId),
+        supabase
+          .from("review_likes")
+          .select("id")
+          .eq("book_id", id)
+          .eq("reviewer_user_id", selectedMember.userId)
+          .eq("liker_user_id", userId)
+          .maybeSingle(),
+      ]);
+      setReviewLikeCount(count ?? 0);
+      setReviewLiked(!!myLike);
+    };
+    loadLikes();
+  }, [selectedMember, userId, id]);
+
+  const toggleReviewLike = async () => {
+    if (!selectedMember?.review || !userId || likeLoading || selectedMember.userId === userId) return;
+    setLikeLoading(true);
+    if (reviewLiked) {
+      await supabase
+        .from("review_likes")
+        .delete()
+        .eq("book_id", id)
+        .eq("reviewer_user_id", selectedMember.userId)
+        .eq("liker_user_id", userId);
+      setReviewLiked(false);
+      setReviewLikeCount((c) => Math.max(0, c - 1));
+    } else {
+      await supabase.from("review_likes").insert({
+        book_id: id,
+        reviewer_user_id: selectedMember.userId,
+        liker_user_id: userId,
+      });
+      setReviewLiked(true);
+      setReviewLikeCount((c) => c + 1);
+      // Notification pour l'auteur de la review
+      if (selectedMember.userId !== userId && book) {
+        await supabase.from("notifications").insert({
+          user_id: selectedMember.userId,
+          type: "review_like",
+          from_user_id: userId,
+          book_id: id,
+          book_title: book.title,
+        });
+      }
+    }
+    setLikeLoading(false);
+  };
 
   const setRating = async (value: number) => {
     if (!book) return;
@@ -867,9 +934,26 @@ export default function BookDetailPage() {
               )}
             </div>
             {selectedMember.review ? (
-              <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
-                « {selectedMember.review} »
-              </p>
+              <>
+                <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
+                  « {selectedMember.review} »
+                </p>
+                {/* Bouton like (masqué pour sa propre review) */}
+                {selectedMember.userId !== userId && (
+                  <button
+                    onClick={toggleReviewLike}
+                    disabled={likeLoading}
+                    className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-semibold transition-colors ${
+                      reviewLiked
+                        ? "border-danger/30 bg-[#f6e7e1] text-danger"
+                        : "border-line bg-card text-muted hover:border-danger/30 hover:text-danger"
+                    }`}
+                  >
+                    <span className="text-sm">{reviewLiked ? "♥" : "♡"}</span>
+                    {reviewLikeCount > 0 ? `${reviewLikeCount} j'aime` : "J'aime"}
+                  </button>
+                )}
+              </>
             ) : (
               <p className="text-sm text-muted">Pas encore de review pour ce livre.</p>
             )}

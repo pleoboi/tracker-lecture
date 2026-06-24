@@ -92,6 +92,29 @@ body {
   animation: slideUp 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+/* ── Mode sombre ─────────────────────────────────────────────────────────── */
+html.dark {
+  --color-paper: #1a1720;
+  --color-card: #231f2e;
+  --color-cream: #f0eae0;
+  --color-ink: #e6e0d8;
+  --color-ink-2: #bfb7cc;
+  --color-muted: #8a8296;
+  --color-line: #342e40;
+  --color-violet: #9b89cf;
+  --color-violet-soft: #2c2542;
+  --color-violet-deep: #c0aff0;
+  --color-violet-light: #3d3558;
+  --color-sage: #8fa87a;
+  --color-gold: #e8b84b;
+  --color-success: #6fa872;
+  --color-danger: #e06b54;
+}
+
+html.dark body {
+  color-scheme: dark;
+}
+
 /* Scrollbar discrète */
 * {
   scrollbar-width: thin;

@@ -688,6 +688,18 @@ export default function ComptePage() {
 
   const [tab, setTab] = useState<"profil" | "biblio">("profil");
 
+  // Dark mode
+  const [darkMode, setDarkMode] = useState(false);
+  useEffect(() => {
+    setDarkMode(document.documentElement.classList.contains("dark"));
+  }, []);
+  const toggleDark = () => {
+    const next = !darkMode;
+    setDarkMode(next);
+    if (next) { document.documentElement.classList.add("dark"); localStorage.setItem("theme", "dark"); }
+    else { document.documentElement.classList.remove("dark"); localStorage.setItem("theme", "light"); }
+  };
+
   // Profile
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [editingAvatar, setEditingAvatar] = useState(false);
@@ -1257,6 +1269,27 @@ export default function ComptePage() {
               </svg>
             </Link>
           </div>
+
+          {/* Toggle mode sombre */}
+          <button
+            onClick={toggleDark}
+            className="flex w-full items-center justify-between rounded-2xl border border-line bg-card p-4 transition-colors hover:border-violet/40"
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-lg">{darkMode ? "☀️" : "🌙"}</span>
+              <div>
+                <p className="text-left font-serif text-[15px] font-medium text-ink">
+                  {darkMode ? "Mode clair" : "Mode sombre"}
+                </p>
+                <p className="text-left text-xs text-muted">
+                  {darkMode ? "Revenir au thème clair" : "Activer le thème sombre"}
+                </p>
+              </div>
+            </div>
+            <div className={`relative h-6 w-11 rounded-full transition-colors ${darkMode ? "bg-violet" : "bg-line"}`}>
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-cream shadow transition-transform ${darkMode ? "translate-x-5" : "translate-x-0.5"}`} />
+            </div>
+          </button>
 
           <Button
             variant="ghost"

@@ -342,7 +342,7 @@ export default function DecouvertePage() {
       });
   }, [allBooks, profileMap, avatarMap, query, selectedGenres]);
 
-  const showWebSection = query.trim().length >= 2 && groups.length < 3;
+  const showWebSection = query.trim().length >= 2;
 
   return (
     <div className="animate-fadeIn flex flex-col gap-5 pt-4">
