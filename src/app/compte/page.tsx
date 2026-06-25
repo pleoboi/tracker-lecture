@@ -10,7 +10,7 @@ import { pct, isCompleted } from "../../lib/books";
 import { Cover, ProgressBar, Button } from "../../components/ui";
 import { searchBooks, fetchOpenLibraryCover, isFrench } from "../../lib/googleBooks";
 
-type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes" | "recents";
+type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes" | "recents" | "envie";
 type Sort = "ajout" | "titre" | "auteur" | "note";
 
 const FILTERS: { key: Filter; label: string }[] = [
@@ -20,8 +20,9 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "termines", label: "Terminés" },
   { key: "abandonnes", label: "Abandonné" },
   { key: "notes", label: "★ Top notes" },
+  { key: "envie", label: "Envie de lire" },
 ];
-const VALID_FILTERS: Filter[] = ["tous", "encours", "termines", "abandonnes", "notes", "recents"];
+const VALID_FILTERS: Filter[] = ["tous", "encours", "termines", "abandonnes", "notes", "recents", "envie"];
 const VALID_SORTS: Sort[] = ["ajout", "titre", "auteur", "note"];
 
 // ── CSV Goodreads parser ────────────────────────────────────────────────────
@@ -919,6 +920,8 @@ export default function ComptePage() {
     if (filter === "recents") return isCompleted(b);
     if (filter === "abandonnes") return b.status === "abandoned";
     if (filter === "notes") return (b.rating || 0) > 0;
+    if (filter === "envie") return b.status === "to-read";
+    if (filter === "tous") return b.status !== "to-read";
     return true;
   });
   if (query.trim()) {
@@ -1380,6 +1383,7 @@ function GridCard({ book }: { book: Book }) {
   const p = pct(book);
   const done = isCompleted(book);
   const abandoned = book.status === "abandoned";
+  const wantToRead = book.status === "to-read";
   const rating = book.rating || 0;
   return (
     <Link
@@ -1399,19 +1403,28 @@ function GridCard({ book }: { book: Book }) {
         <p className="truncate text-[11px] text-muted">{book.author}</p>
       </div>
       <div className="flex items-center justify-between px-0.5 pb-0.5">
-        <span className="text-[11px] font-semibold text-ink-2">
-          <span className="text-gold">★</span>{" "}
-          {rating > 0 ? rating.toFixed(1).replace(".", ",") : "—"}
-        </span>
-        {done ? (
-          <span className="text-[10.5px] font-semibold text-success">Terminé</span>
-        ) : abandoned ? (
-          <span className="text-[10.5px] font-semibold text-muted">Abandonné</span>
+        {wantToRead ? (
+          <span className="flex items-center gap-1 text-[10.5px] font-semibold text-violet-deep">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+            Envie de lire
+          </span>
         ) : (
-          <span className="text-[10.5px] font-semibold text-violet-deep">{p}%</span>
+          <>
+            <span className="text-[11px] font-semibold text-ink-2">
+              <span className="text-gold">★</span>{" "}
+              {rating > 0 ? rating.toFixed(1).replace(".", ",") : "—"}
+            </span>
+            {done ? (
+              <span className="text-[10.5px] font-semibold text-success">Terminé</span>
+            ) : abandoned ? (
+              <span className="text-[10.5px] font-semibold text-muted">Abandonné</span>
+            ) : (
+              <span className="text-[10.5px] font-semibold text-violet-deep">{p}%</span>
+            )}
+          </>
         )}
       </div>
-      {!done && !abandoned && <ProgressBar value={p / 100} className="h-1" />}
+      {!done && !abandoned && !wantToRead && <ProgressBar value={p / 100} className="h-1" />}
     </Link>
   );
 }

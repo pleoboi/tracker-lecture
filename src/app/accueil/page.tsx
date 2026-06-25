@@ -610,22 +610,43 @@ function BookCard({ book }: { book: Book }) {
 
 function ChampionBanner({ champion, isMe }: { champion: Champion; isMe: boolean }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-gold/40 bg-[#fdf7e9] dark:bg-[#2a2210] p-3.5">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-xl">
-        🏆
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-semibold text-ink">
-          {isMe ? "Tu es" : <><span className="font-bold">{champion.name}</span> est</>}{" "}
-          <span className="text-[#b8890a] dark:text-gold">Champion du jour</span>
-        </p>
-        <p className="text-[11px] text-muted">
-          {champion.pages} pages lues aujourd&apos;hui
-        </p>
+    <div
+      className="relative overflow-hidden rounded-2xl p-4 shadow-md"
+      style={{ background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 55%, #4f46e5 100%)" }}
+    >
+      {/* Cercles décoratifs */}
+      <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10" />
+      <div className="pointer-events-none absolute -bottom-5 right-10 h-20 w-20 rounded-full bg-white/5" />
+
+      <div className="relative flex items-center gap-3">
+        {/* Icône trophée SVG */}
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fde68a" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+            <path d="M4 22h16" />
+            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+            <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
+          </svg>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold text-white/90">
+            {isMe
+              ? "Tu mènes le club"
+              : <><span className="font-bold text-white">{champion.name}</span> mène le club</>
+            }
+          </p>
+          <p className="text-[11px] font-medium text-white/55">
+            {champion.pages} pages lues aujourd&apos;hui
+          </p>
+        </div>
+
+        <div className="shrink-0 rounded-full bg-white/15 px-3 py-1 text-[10.5px] font-bold tracking-wide text-yellow-200">
+          Champion du jour
+        </div>
       </div>
-      <span className="shrink-0 rounded-full border border-gold/40 bg-gold/10 px-2.5 py-1 text-[10.5px] font-bold text-[#b8890a] dark:text-gold">
-        +1 🏅
-      </span>
     </div>
   );
 }
@@ -674,8 +695,15 @@ function ActivityCarouselItem({
         />
         {/* Badge champion */}
         {showBadge && (
-          <span className="absolute left-1.5 top-1.5 rounded-full bg-gold/90 px-1.5 py-0.5 text-[8px] font-bold leading-none text-ink">
-            🏆
+          <span className="absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-gradient-to-br from-[#7c3aed] to-[#4f46e5] shadow-sm">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fde68a" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+              <path d="M4 22h16" />
+              <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+              <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+              <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
+            </svg>
           </span>
         )}
       </Link>

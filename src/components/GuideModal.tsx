@@ -43,8 +43,8 @@ const SLIDES = [
   {
     label: "Installation",
     icon: "📱",
-    title: "Installe l'appli sur ton iPhone",
-    body: "Accède à Ma Bibliothèque comme une vraie app, sans passer par le navigateur.\n\n1. Ouvre le site sur Safari\n2. Appuie sur le bouton Partager ⬆\n3. Tout en bas, choisis « Sur l'écran d'accueil »\n\nL'icône apparaît comme une appli native — sans pub, sans App Store.",
+    title: "Installe l'appli sur ton téléphone",
+    body: "Accède à l'application comme une vraie app, sans passer par le navigateur.\n\n📍 Sur iPhone (Safari) :\n1. Ouvre le site dans Safari\n2. Appuie sur l'icône Partager ⬆ (barre du bas)\n3. Choisis « Sur l'écran d'accueil »\n\n📍 Sur Android (Chrome) :\n1. Appuie d'abord sur les 3 petits points ⋮ (coin supérieur droit)\n2. Appuie sur « Ajouter à l'écran d'accueil »\n\nL'icône apparaît comme une app native — sans pub, sans Store.",
   },
 ];
 

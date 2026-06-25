@@ -19,8 +19,11 @@ function shiftDate(date: string, days: number): string {
   return d.toISOString().split("T")[0];
 }
 
-const MEDALS = ["🥇", "🥈", "🥉"];
-const PODIUM_COLORS = ["bg-[#f4cf5e]", "bg-[#c5c5c5]", "bg-[#cd8b50]/80"];
+const RANK_STYLES = [
+  { bg: "bg-[#f4cf5e]", text: "text-[#7a5c00]", label: "text-[#b8890a]" },
+  { bg: "bg-[#d6d6d6]", text: "text-[#4a4a4a]", label: "text-[#606060]" },
+  { bg: "bg-[#cd8b50]/80", text: "text-[#5a3000]", label: "text-[#7a4a20]" },
+];
 const PODIUM_HEIGHTS = ["h-28", "h-20", "h-16"];
 // Visual left-to-right order: 2nd, 1st, 3rd
 const VISUAL_ORDER = [1, 0, 2];
@@ -144,10 +147,15 @@ export default function PodiumModal({ onClose }: { onClose: () => void }) {
             <div className="flex items-end justify-center gap-2 px-2 pb-1">
               {VISUAL_ORDER.map((rank) => {
                 const entry = podium[rank];
+                const rs = RANK_STYLES[rank];
                 if (!entry) return <div key={rank} className="flex-1" />;
                 return (
                   <div key={rank} className="flex flex-1 flex-col items-center gap-1">
-                    <span className="text-2xl leading-none">{MEDALS[rank]}</span>
+                    <div className={`flex h-7 w-7 items-center justify-center rounded-full ${rs.bg}`}>
+                      <span className={`font-serif text-[13px] font-black ${rs.text}`}>
+                        {rank + 1}
+                      </span>
+                    </div>
                     <p className="max-w-[72px] truncate text-center text-[11px] font-semibold text-ink">
                       {entry.name}
                     </p>
@@ -155,9 +163,10 @@ export default function PodiumModal({ onClose }: { onClose: () => void }) {
                       {entry.pages.toLocaleString("fr-FR")} p.
                     </p>
                     <div
-                      className={`flex w-full items-center justify-center rounded-t-2xl ${PODIUM_COLORS[rank]} ${PODIUM_HEIGHTS[rank]}`}
+                      className={`flex w-full items-center justify-center rounded-t-2xl ${rs.bg} ${PODIUM_HEIGHTS[rank]}`}
+                      style={rank === 0 ? { background: "linear-gradient(to top, #e8b820, #f4cf5e)" } : undefined}
                     >
-                      <span className="font-serif text-xl font-black text-white/70">
+                      <span className={`font-serif text-xl font-black ${rs.text} opacity-70`}>
                         #{rank + 1}
                       </span>
                     </div>
@@ -170,7 +179,9 @@ export default function PodiumModal({ onClose }: { onClose: () => void }) {
             <div className="mt-4 flex flex-col gap-3 border-t border-line pt-4">
               {podium.map((entry, i) => (
                 <div key={entry.userId} className="flex items-center gap-3">
-                  <span className="w-7 text-center text-lg leading-none">{MEDALS[i]}</span>
+                  <div className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${RANK_STYLES[i].bg}`}>
+                    <span className={`font-serif text-[11px] font-black ${RANK_STYLES[i].text}`}>{i + 1}</span>
+                  </div>
                   <p className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-ink">
                     {entry.name}
                   </p>

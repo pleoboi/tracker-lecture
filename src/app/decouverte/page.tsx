@@ -160,22 +160,59 @@ export default function DecouvertePage() {
   // Résultats web (fallback Google Books pour la recherche)
   const [webResults, setWebResults] = useState<BookSuggestion[]>([]);
   const [webLoading, setWebLoading] = useState(false);
+  const [webError, setWebError] = useState<string | null>(null);
   const [webTarget, setWebTarget] = useState<BookRef | null>(null);
+  const [wishlistIds, setWishlistIds] = useState<Set<string>>(new Set());
+
+  const addToWishlist = async (r: BookSuggestion) => {
+    if (!user) return;
+    const { data: existing } = await supabase
+      .from("books")
+      .select("id")
+      .eq("user_id", user.id)
+      .ilike("title", r.title)
+      .limit(1);
+    if (existing && existing.length > 0) {
+      setToast("Ce livre est déjà dans ta bibliothèque.");
+      setTimeout(() => setToast(null), 3000);
+      return;
+    }
+    const { error } = await supabase.from("books").insert({
+      title: r.title,
+      author: r.author || "Auteur inconnu",
+      pages: 0,
+      progress: 0,
+      status: "to-read",
+      cover_url: r.coverUrl ?? null,
+      genre: r.genre ?? null,
+      published_year: r.year ?? null,
+      summary: r.summary ?? null,
+      rating: 0,
+      user_id: user.id,
+    });
+    if (!error) {
+      setWishlistIds((prev) => new Set([...prev, r.googleId]));
+      setToast("« " + r.title + " » ajouté à ta liste Envie de lire.");
+      setTimeout(() => setToast(null), 3500);
+    }
+  };
 
   const loadBooks = useCallback(async () => {
-    const [{ data: books }, { data: profiles }] = await Promise.all([
-      supabase.from("books").select("*"),
-      supabase.from("user_profiles").select("id, display_name, avatar_url"),
-    ]);
-    const pmap = new Map<string, string>();
-    const amap = new Map<string, string | null>();
-    ((profiles as Profile[]) || []).forEach((p) => {
-      pmap.set(p.id, p.display_name);
-      amap.set(p.id, p.avatar_url ?? null);
-    });
-    setAllBooks((books as Book[]) || []);
-    setProfileMap(pmap);
-    setAvatarMap(amap);
+    try {
+      const [{ data: books }, { data: profiles }] = await Promise.all([
+        supabase.from("books").select("*"),
+        supabase.from("user_profiles").select("id, display_name, avatar_url"),
+      ]);
+      const pmap = new Map<string, string>();
+      const amap = new Map<string, string | null>();
+      ((profiles as Profile[]) || []).forEach((p) => {
+        pmap.set(p.id, p.display_name);
+        amap.set(p.id, p.avatar_url ?? null);
+      });
+      setAllBooks((books as Book[]) || []);
+      setProfileMap(pmap);
+      setAvatarMap(amap);
+    } catch { /* réseau défaillant — continuer sans données */ }
     setLoading(false);
   }, []);
 
@@ -262,22 +299,30 @@ export default function DecouvertePage() {
     const q = query.trim();
     if (q.length < 2) {
       setWebResults([]);
+      setWebError(null);
       setWebLoading(false);
       return;
     }
     setWebLoading(true);
+    setWebError(null);
     const timer = setTimeout(async () => {
       try {
         const results = await searchBooks(q);
         const existingKeys = new Set(allBooks.map((b) => dedupeKey(b)));
         const fresh = results.filter(
-          (r) =>
-            r.coverUrl &&
-            !existingKeys.has(dedupeKey({ title: r.title, author: r.author } as Book))
+          (r) => !existingKeys.has(dedupeKey({ title: r.title, author: r.author } as Book))
         );
-        setWebResults(fresh.slice(0, 8));
-      } catch {
+        setWebResults(fresh.slice(0, 10));
+      } catch (err: unknown) {
         setWebResults([]);
+        const msg = err instanceof Error ? err.message : "";
+        if (/quota|429/i.test(msg)) {
+          setWebError("Quota Google Books atteint — configure la clé API sur Vercel pour débloquer tous les utilisateurs.");
+        } else if (msg) {
+          setWebError("Recherche web indisponible : " + msg);
+        } else {
+          setWebError("Recherche web indisponible.");
+        }
       } finally {
         setWebLoading(false);
       }
@@ -531,7 +576,7 @@ export default function DecouvertePage() {
           ) : null}
 
           {/* Résultats web — fallback Google Books */}
-          {showWebSection && (webLoading || webResults.length > 0) && (
+          {showWebSection && (webLoading || webResults.length > 0 || webError) && (
             <section className="flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 <span className="h-px flex-1 bg-line" />
@@ -543,51 +588,76 @@ export default function DecouvertePage() {
 
               {webLoading ? (
                 <div className="py-6 text-center text-xs text-muted">Recherche en cours…</div>
+              ) : webError ? (
+                <div className="rounded-2xl border border-dashed border-orange-300 bg-orange-50 dark:border-orange-800 dark:bg-orange-950/30 p-4 text-center">
+                  <p className="text-xs font-medium text-orange-700 dark:text-orange-400">{webError}</p>
+                </div>
               ) : (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {webResults.map((r) => (
-                    <button
+                    <div
                       key={r.googleId}
-                      onClick={() =>
-                        setWebTarget({
-                          title: r.title,
-                          author: r.author,
-                          pages: 0,
-                          cover_url: r.coverUrl,
-                          genre: r.genre,
-                          published_year: r.year,
-                          summary: r.summary,
-                        })
-                      }
-                      className="flex items-start gap-3 rounded-2xl border border-dashed border-violet/30 bg-violet-soft/40 p-3 text-left transition-colors hover:border-violet/60 hover:bg-violet-soft"
+                      className="flex items-start gap-3 rounded-2xl border border-dashed border-violet/30 bg-violet-soft/40 p-3 transition-colors hover:border-violet/60 hover:bg-violet-soft"
                     >
-                      {r.coverUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={r.coverUrl}
-                          alt={r.title}
-                          className="h-[72px] w-[48px] shrink-0 rounded-md object-cover shadow-sm"
-                        />
-                      ) : (
-                        <div className="flex h-[72px] w-[48px] shrink-0 items-center justify-center rounded-md bg-violet/10 text-xl">
-                          📚
-                        </div>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="line-clamp-2 font-serif text-[13.5px] font-medium leading-snug text-ink">
-                          {r.title}
-                        </p>
-                        <p className="mt-0.5 truncate text-[11px] text-muted">{r.author}</p>
-                        {r.genre && (
-                          <span className="mt-1 inline-block rounded-md bg-violet/10 px-1.5 py-0.5 text-[9.5px] font-medium text-violet-deep">
-                            {r.genre}
-                          </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setWebTarget({
+                            title: r.title,
+                            author: r.author,
+                            pages: 0,
+                            cover_url: r.coverUrl,
+                            genre: r.genre,
+                            published_year: r.year,
+                            summary: r.summary,
+                          })
+                        }
+                        className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                      >
+                        {r.coverUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={r.coverUrl}
+                            alt={r.title}
+                            className="h-[72px] w-[48px] shrink-0 rounded-md object-cover shadow-sm"
+                          />
+                        ) : (
+                          <div className="flex h-[72px] w-[48px] shrink-0 items-center justify-center rounded-md bg-violet/10">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-violet-deep/50"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                          </div>
                         )}
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 font-serif text-[13.5px] font-medium leading-snug text-ink">
+                            {r.title}
+                          </p>
+                          <p className="mt-0.5 truncate text-[11px] text-muted">{r.author}</p>
+                          {r.genre && (
+                            <span className="mt-1 inline-block rounded-md bg-violet/10 px-1.5 py-0.5 text-[9.5px] font-medium text-violet-deep">
+                              {r.genre}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                      <div className="flex shrink-0 flex-col items-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => addToWishlist(r)}
+                          title="Envie de lire"
+                          className={`flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
+                            wishlistIds.has(r.googleId)
+                              ? "border-violet bg-violet text-cream"
+                              : "border-violet/40 bg-white/60 text-violet-deep hover:bg-violet hover:text-cream"
+                          }`}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill={wishlistIds.has(r.googleId) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
+                          </svg>
+                        </button>
+                        <span className="rounded-xl border border-violet/40 bg-violet-soft px-2 py-1 text-[10px] font-semibold text-violet-deep">
+                          Voir
+                        </span>
                       </div>
-                      <span className="shrink-0 rounded-xl border border-violet/40 bg-violet-soft px-2 py-1 text-[10px] font-semibold text-violet-deep">
-                        + Ajouter
-                      </span>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}

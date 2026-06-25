@@ -5,7 +5,7 @@ export interface Book {
   author: string;
   pages: number;
   progress: number;
-  status: "reading" | "completed" | "abandoned" | string;
+  status: "reading" | "completed" | "abandoned" | "to-read" | string;
   cover_url?: string | null;
   rating?: number | null;
   user_id?: string | null;

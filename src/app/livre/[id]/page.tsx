@@ -106,6 +106,15 @@ export default function BookDetailPage() {
   // Ajouter à ma bibliothèque (non-propriétaire)
   const [showAddModal, setShowAddModal] = useState(false);
   const [addedMsg, setAddedMsg] = useState<string | null>(null);
+  const [wishlistAdded, setWishlistAdded] = useState(false);
+
+  const quickAddWishlist = async () => {
+    if (!userId || !book) return;
+    const { data: existing } = await supabase.from("books").select("id").eq("user_id", userId).ilike("title", book.title).limit(1);
+    if (existing && existing.length > 0) { setAddedMsg("Ce livre est déjà dans ta bibliothèque."); setTimeout(() => setAddedMsg(null), 3000); return; }
+    const { error } = await supabase.from("books").insert({ title: book.title, author: book.author, pages: book.pages, progress: 0, status: "to-read", cover_url: book.cover_url ?? null, genre: book.genre ?? null, published_year: book.published_year ?? null, summary: book.summary ?? null, rating: 0, user_id: userId });
+    if (!error) { setWishlistAdded(true); setAddedMsg("Ajouté à ta liste Envie de lire."); setTimeout(() => setAddedMsg(null), 3500); }
+  };
 
   // Copie personnelle de l'utilisateur si ce n'est pas son livre
   const [myBook, setMyBook] = useState<Book | null>(null);
@@ -488,12 +497,27 @@ export default function BookDetailPage() {
               </button>
             )}
             {!isOwner && (
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-violet/40 bg-violet-soft px-3 text-xs font-semibold text-violet-deep transition-colors hover:bg-violet hover:text-cream"
-              >
-                + Ajouter
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  onClick={quickAddWishlist}
+                  title="Envie de lire"
+                  className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${
+                    wishlistAdded
+                      ? "border-violet bg-violet text-cream"
+                      : "border-violet/40 bg-violet-soft text-violet-deep hover:bg-violet hover:text-cream"
+                  }`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill={wishlistAdded ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
+                  </svg>
+                </button>
+                <button
+                  onClick={() => setShowAddModal(true)}
+                  className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-violet/40 bg-violet-soft px-3 text-xs font-semibold text-violet-deep transition-colors hover:bg-violet hover:text-cream"
+                >
+                  + Ajouter
+                </button>
+              </div>
             )}
           </div>
         </div>
