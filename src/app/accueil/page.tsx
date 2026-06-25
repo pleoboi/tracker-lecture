@@ -81,7 +81,13 @@ export default function AccueilPage() {
     member: string;
     date?: string;
     photoUrl?: string | null;
+    bookId: number;
+    reviewerUserId: string;
+    bookTitle: string;
   } | null>(null);
+  const [noteLiked, setNoteLiked] = useState(false);
+  const [noteLikeCount, setNoteLikeCount] = useState(0);
+  const [noteLikeLoading, setNoteLikeLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -301,6 +307,51 @@ export default function AccueilPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
+  // Like state — chargé à l'ouverture de la modale
+  useEffect(() => {
+    if (!noteModal || !userId) { setNoteLiked(false); setNoteLikeCount(0); return; }
+    const fetchLikes = async () => {
+      const [{ count }, { data: mine }] = await Promise.all([
+        supabase.from("review_likes").select("*", { count: "exact", head: true })
+          .eq("book_id", noteModal.bookId).eq("reviewer_user_id", noteModal.reviewerUserId),
+        supabase.from("review_likes").select("id")
+          .eq("book_id", noteModal.bookId).eq("reviewer_user_id", noteModal.reviewerUserId)
+          .eq("liker_user_id", userId).maybeSingle(),
+      ]);
+      setNoteLikeCount(count ?? 0);
+      setNoteLiked(!!mine);
+    };
+    fetchLikes();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteModal?.bookId, noteModal?.reviewerUserId, userId]);
+
+  const toggleNoteLike = async () => {
+    if (!noteModal || !userId || noteModal.reviewerUserId === userId || noteLikeLoading) return;
+    setNoteLikeLoading(true);
+    if (noteLiked) {
+      await supabase.from("review_likes").delete()
+        .eq("book_id", noteModal.bookId).eq("reviewer_user_id", noteModal.reviewerUserId)
+        .eq("liker_user_id", userId);
+      setNoteLiked(false);
+      setNoteLikeCount((n) => Math.max(0, n - 1));
+    } else {
+      await supabase.from("review_likes").upsert(
+        { book_id: noteModal.bookId, reviewer_user_id: noteModal.reviewerUserId, liker_user_id: userId },
+        { onConflict: "book_id,reviewer_user_id,liker_user_id" }
+      );
+      setNoteLiked(true);
+      setNoteLikeCount((n) => n + 1);
+      await supabase.from("notifications").insert({
+        user_id: noteModal.reviewerUserId,
+        type: "review_like",
+        from_user_id: userId,
+        book_id: noteModal.bookId,
+        book_title: noteModal.bookTitle,
+      });
+    }
+    setNoteLikeLoading(false);
+  };
+
   const reading = books.filter((b) => b.status === "reading");
   const displayedReading = showAllReading ? reading : reading.slice(0, 3);
   const hasMore = reading.length > 3;
@@ -415,8 +466,8 @@ export default function AccueilPage() {
                 key={log.id}
                 log={log}
                 isChampion={todayChampion?.userId === log.user_id}
-                onNoteClick={(type, text, photoUrl, date) =>
-                  setNoteModal({ type, text, member: log.memberName, date, photoUrl })
+                onNoteClick={(type, text, photoUrl, date, bookId, reviewerUserId, bookTitle) =>
+                  setNoteModal({ type, text, member: log.memberName, date, photoUrl, bookId, reviewerUserId, bookTitle })
                 }
               />
             ))}
@@ -499,9 +550,24 @@ export default function AccueilPage() {
                 <img src={noteModal.photoUrl} alt="" className="w-full rounded-xl object-cover max-h-48" />
               </a>
             )}
+            {/* Bouton like — masqué si c'est sa propre note */}
+            {noteModal.reviewerUserId !== userId && (
+              <button
+                onClick={toggleNoteLike}
+                disabled={noteLikeLoading}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-colors disabled:opacity-50 ${
+                  noteLiked
+                    ? "border-danger/30 bg-[#f6e7e1] dark:bg-[#2a1510] text-danger"
+                    : "border-line bg-card text-muted hover:border-danger/30 hover:text-danger"
+                }`}
+              >
+                <span className="text-sm">{noteLiked ? "♥" : "♡"}</span>
+                {noteLikeCount > 0 ? `${noteLikeCount} j'aime` : "J'aime"}
+              </button>
+            )}
             <button
               onClick={() => setNoteModal(null)}
-              className="mt-1 w-full rounded-xl border border-line bg-card py-2.5 text-[12px] font-medium text-muted hover:text-ink"
+              className="w-full rounded-xl border border-line bg-card py-2.5 text-[12px] font-medium text-muted hover:text-ink"
             >
               Fermer
             </button>
@@ -571,7 +637,7 @@ function ActivityCarouselItem({
 }: {
   log: ActivityLog;
   isChampion?: boolean;
-  onNoteClick?: (type: "review" | "session", text: string, photoUrl: string | null | undefined, date: string) => void;
+  onNoteClick?: (type: "review" | "session", text: string, photoUrl: string | null | undefined, date: string, bookId: number, reviewerUserId: string, bookTitle: string) => void;
 }) {
   const todayStr = new Date().toISOString().split("T")[0];
   const showBadge = isChampion && log.date === todayStr;
@@ -639,7 +705,7 @@ function ActivityCarouselItem({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onNoteClick?.("review", log.bookReview!, null, log.date);
+                  onNoteClick?.("review", log.bookReview!, null, log.date, log.bookId, log.user_id!, log.bookTitle);
                 }}
                 className="flex h-[18px] w-[18px] items-center justify-center rounded bg-[#e4c97e] text-[9px] font-bold text-[#7a5c00]"
                 title="Voir la review"
@@ -652,7 +718,7 @@ function ActivityCarouselItem({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onNoteClick?.("session", log.session_notes!, log.session_photo_url ?? null, log.date);
+                  onNoteClick?.("session", log.session_notes!, log.session_photo_url ?? null, log.date, log.bookId, log.user_id!, log.bookTitle);
                 }}
                 className="flex h-[18px] w-[18px] items-center justify-center rounded bg-violet-soft text-[9px] font-bold text-violet-deep"
                 title="Voir la note de session"

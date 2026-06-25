@@ -46,7 +46,12 @@ export default function MembrePage() {
     type: "review" | "session";
     text: string;
     bookTitle?: string;
+    bookId: number;
+    reviewerUserId: string;
   } | null>(null);
+  const [noteLiked, setNoteLiked] = useState(false);
+  const [noteLikeCount, setNoteLikeCount] = useState(0);
+  const [noteLikeLoading, setNoteLikeLoading] = useState(false);
 
   // Follow system
   const [followersCount, setFollowersCount] = useState(0);
@@ -143,6 +148,50 @@ export default function MembrePage() {
     };
     load();
   }, [memberId]);
+
+  useEffect(() => {
+    if (!noteModal || !user?.id) { setNoteLiked(false); setNoteLikeCount(0); return; }
+    const fetchLikes = async () => {
+      const [{ count }, { data: mine }] = await Promise.all([
+        supabase.from("review_likes").select("*", { count: "exact", head: true })
+          .eq("book_id", noteModal.bookId).eq("reviewer_user_id", noteModal.reviewerUserId),
+        supabase.from("review_likes").select("id")
+          .eq("book_id", noteModal.bookId).eq("reviewer_user_id", noteModal.reviewerUserId)
+          .eq("liker_user_id", user.id).maybeSingle(),
+      ]);
+      setNoteLikeCount(count ?? 0);
+      setNoteLiked(!!mine);
+    };
+    fetchLikes();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [noteModal?.bookId, noteModal?.reviewerUserId, user?.id]);
+
+  const toggleNoteLike = async () => {
+    if (!noteModal || !user?.id || noteModal.reviewerUserId === user.id || noteLikeLoading) return;
+    setNoteLikeLoading(true);
+    if (noteLiked) {
+      await supabase.from("review_likes").delete()
+        .eq("book_id", noteModal.bookId).eq("reviewer_user_id", noteModal.reviewerUserId)
+        .eq("liker_user_id", user.id);
+      setNoteLiked(false);
+      setNoteLikeCount((n) => Math.max(0, n - 1));
+    } else {
+      await supabase.from("review_likes").upsert(
+        { book_id: noteModal.bookId, reviewer_user_id: noteModal.reviewerUserId, liker_user_id: user.id },
+        { onConflict: "book_id,reviewer_user_id,liker_user_id" }
+      );
+      setNoteLiked(true);
+      setNoteLikeCount((n) => n + 1);
+      await supabase.from("notifications").insert({
+        user_id: noteModal.reviewerUserId,
+        type: "review_like",
+        from_user_id: user.id,
+        book_id: noteModal.bookId,
+        book_title: noteModal.bookTitle ?? "",
+      });
+    }
+    setNoteLikeLoading(false);
+  };
 
   const handleFollow = async () => {
     if (!user?.id) return;
@@ -534,7 +583,7 @@ export default function MembrePage() {
                           <div className="mt-1 flex gap-1">
                             {hasReview && (
                               <button
-                                onClick={(e) => { e.preventDefault(); setNoteModal({ type: "review", text: b.notes!, bookTitle: b.title }); }}
+                                onClick={(e) => { e.preventDefault(); setNoteModal({ type: "review", text: b.notes!, bookTitle: b.title, bookId: b.id, reviewerUserId: memberId }); }}
                                 className="flex h-[16px] w-[16px] items-center justify-center rounded bg-[#e4c97e] text-[8px] font-bold text-[#7a5c00]"
                                 title="Voir la review"
                               >
@@ -543,7 +592,7 @@ export default function MembrePage() {
                             )}
                             {hasSessionNote && (
                               <button
-                                onClick={(e) => { e.preventDefault(); setNoteModal({ type: "session", text: bookSessionNoteMap.get(b.id)!, bookTitle: b.title }); }}
+                                onClick={(e) => { e.preventDefault(); setNoteModal({ type: "session", text: bookSessionNoteMap.get(b.id)!, bookTitle: b.title, bookId: b.id, reviewerUserId: memberId }); }}
                                 className="flex h-[16px] w-[16px] items-center justify-center rounded bg-violet-soft text-[8px] font-bold text-violet-deep"
                                 title="Voir une note de session"
                               >
@@ -704,9 +753,24 @@ export default function MembrePage() {
             <p className="font-serif text-[14px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
               « {noteModal.text} »
             </p>
+            {/* Bouton like — masqué pour sa propre note */}
+            {noteModal.reviewerUserId !== user?.id && (
+              <button
+                onClick={toggleNoteLike}
+                disabled={noteLikeLoading}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-colors disabled:opacity-50 ${
+                  noteLiked
+                    ? "border-danger/30 bg-[#f6e7e1] dark:bg-[#2a1510] text-danger"
+                    : "border-line bg-card text-muted hover:border-danger/30 hover:text-danger"
+                }`}
+              >
+                <span className="text-sm">{noteLiked ? "♥" : "♡"}</span>
+                {noteLikeCount > 0 ? `${noteLikeCount} j'aime` : "J'aime"}
+              </button>
+            )}
             <button
               onClick={() => setNoteModal(null)}
-              className="mt-1 w-full rounded-xl border border-line bg-card py-2.5 text-[12px] font-medium text-muted hover:text-ink"
+              className="w-full rounded-xl border border-line bg-card py-2.5 text-[12px] font-medium text-muted hover:text-ink"
             >
               Fermer
             </button>
