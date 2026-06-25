@@ -826,7 +826,7 @@ export default function BookDetailPage() {
           <div className="flex items-center justify-between">
             <h2 className="font-serif text-[15px] font-medium text-ink">Ma review</h2>
             {!editingNotes && (
-              <button onClick={() => setEditingNotes(true)} className="text-xs font-medium text-[#b8890a]">
+              <button onClick={() => setEditingNotes(true)} className="text-xs font-medium text-[#8a6400] dark:text-[#e0b83d]">
                 {activeBook!.notes ? "Modifier" : "Ajouter"}
               </button>
             )}
@@ -857,7 +857,7 @@ export default function BookDetailPage() {
               « {activeBook!.notes} »
             </p>
           ) : (
-            <p className="text-[13px] text-muted">Aucune review pour le moment.</p>
+            <p className="text-[13px] text-ink-2">Aucune review pour le moment.</p>
           )}
         </div>}
 
@@ -889,13 +889,13 @@ export default function BookDetailPage() {
                       </p>
                       <p className="font-serif text-base font-black text-violet-deep">+{log.pages_read}</p>
                     </div>
-                    <div className="flex-1 rounded-xl bg-[#f4f0e8] dark:bg-card px-3 py-2">
-                      <p className="text-[9px] font-medium uppercase tracking-wide text-muted">Arrêté p.</p>
+                    <div className="flex-1 rounded-xl bg-[#f4f0e8] dark:bg-[#1e1b2a] px-3 py-2">
+                      <p className="text-[9px] font-medium uppercase tracking-wide text-ink-2">Arrêté p.</p>
                       <p className="font-serif text-base font-black text-ink">{log.end_page}</p>
                     </div>
                   </div>
                   {log.session_notes && (
-                    <p className="rounded-xl bg-[#f4f0e8] dark:bg-card px-3 py-2 font-serif text-[12.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
+                    <p className="rounded-xl bg-violet-soft px-3 py-2 font-serif text-[12.5px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
                       « {log.session_notes} »
                     </p>
                   )}
@@ -986,7 +986,7 @@ export default function BookDetailPage() {
 
             {/* Review globale — bloc ambre */}
             <div className="rounded-xl border border-[#e4c97e]/50 dark:border-[#5a3d0a]/50 bg-[#fdf7e9] dark:bg-[#2a2210] p-3.5">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#b8890a]">Review globale</p>
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#8a6400] dark:text-[#e0b83d]">Review globale</p>
               {selectedMember.review ? (
                 <>
                   <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
@@ -1008,7 +1008,7 @@ export default function BookDetailPage() {
                   )}
                 </>
               ) : (
-                <p className="text-[13px] italic text-muted">Pas encore de review pour ce livre.</p>
+                <p className="text-[13px] italic text-ink-2">Pas encore de review pour ce livre.</p>
               )}
             </div>
 

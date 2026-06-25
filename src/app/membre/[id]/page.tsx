@@ -42,6 +42,11 @@ export default function MembrePage() {
   const [toast, setToast] = useState<string | null>(null);
   const [championDays, setChampionDays] = useState(0);
   const [completedLimit, setCompletedLimit] = useState(1);
+  const [noteModal, setNoteModal] = useState<{
+    type: "review" | "session";
+    text: string;
+    bookTitle?: string;
+  } | null>(null);
 
   // Follow system
   const [followersCount, setFollowersCount] = useState(0);
@@ -193,6 +198,10 @@ export default function MembrePage() {
   const completed = books.filter(isCompleted);
   const reading = books.filter((b) => b.status === "reading");
   const abandoned = books.filter((b) => b.status === "abandoned");
+
+  // Map bookId → a session note (for Letterboxd-style icons)
+  const bookSessionNoteMap = new Map<number, string>();
+  logs.forEach((l) => { if (l.session_notes) bookSessionNoteMap.set(l.book_id, l.session_notes); });
 
   // Recency key : date du dernier log (activité réelle) > date_read > created_at
   // Cela évite que les imports Goodreads de 2021 remontent devant des lectures de cette semaine
@@ -500,35 +509,62 @@ export default function MembrePage() {
             {completed
               .sort((a, b) => (b.rating || 0) - (a.rating || 0))
               .slice(0, completedLimit)
-              .map((b) => (
-                <div key={b.id} className="flex flex-col gap-1.5">
-                  <Link
-                    href={`/livre/${b.id}`}
-                    className="flex h-[96px] items-center gap-2.5 overflow-hidden rounded-2xl border border-line bg-card p-2.5 transition-colors hover:border-violet/40"
-                  >
-                    <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[68px] w-[46px] shrink-0" rounded="rounded-md" />
-                    <div className="min-w-0 flex-1">
-                      <p className="line-clamp-2 font-serif text-[12px] font-medium leading-snug text-ink">{b.title}</p>
-                      <p className="truncate text-[10px] text-muted">{b.author}</p>
-                      {(b.rating || 0) > 0 ? (
-                        <p className="mt-1 text-[10.5px] font-medium text-gold">
-                          {"★".repeat(Math.round(b.rating!))} {b.rating!.toFixed(1).replace(".", ",")}
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-[9.5px] font-medium text-success">✓ Terminé</p>
-                      )}
-                    </div>
-                  </Link>
-                  {!isOwn && (
-                    <button
-                      onClick={() => setAddTarget(b)}
-                      className="flex w-full items-center justify-center gap-1 rounded-xl border border-violet/30 bg-violet-soft py-1.5 text-[10.5px] font-semibold text-violet-deep"
+              .map((b) => {
+                const hasReview = !!b.notes;
+                const hasSessionNote = bookSessionNoteMap.has(b.id);
+                return (
+                  <div key={b.id} className="flex flex-col gap-1.5">
+                    <Link
+                      href={`/livre/${b.id}`}
+                      className="flex h-[96px] items-center gap-2.5 overflow-hidden rounded-2xl border border-line bg-card p-2.5 transition-colors hover:border-violet/40"
                     >
-                      + Ajouter
-                    </button>
-                  )}
-                </div>
-              ))}
+                      <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[68px] w-[46px] shrink-0" rounded="rounded-md" />
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-2 font-serif text-[12px] font-medium leading-snug text-ink">{b.title}</p>
+                        <p className="truncate text-[10px] text-muted">{b.author}</p>
+                        {(b.rating || 0) > 0 ? (
+                          <p className="mt-1 text-[10.5px] font-medium text-gold">
+                            {"★".repeat(Math.round(b.rating!))} {b.rating!.toFixed(1).replace(".", ",")}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-[9.5px] font-medium text-success">✓ Terminé</p>
+                        )}
+                        {/* Icônes Letterboxd */}
+                        {(hasReview || hasSessionNote) && (
+                          <div className="mt-1 flex gap-1">
+                            {hasReview && (
+                              <button
+                                onClick={(e) => { e.preventDefault(); setNoteModal({ type: "review", text: b.notes!, bookTitle: b.title }); }}
+                                className="flex h-[16px] w-[16px] items-center justify-center rounded bg-[#e4c97e] text-[8px] font-bold text-[#7a5c00]"
+                                title="Voir la review"
+                              >
+                                ≡
+                              </button>
+                            )}
+                            {hasSessionNote && (
+                              <button
+                                onClick={(e) => { e.preventDefault(); setNoteModal({ type: "session", text: bookSessionNoteMap.get(b.id)!, bookTitle: b.title }); }}
+                                className="flex h-[16px] w-[16px] items-center justify-center rounded bg-violet-soft text-[8px] font-bold text-violet-deep"
+                                title="Voir une note de session"
+                              >
+                                ≡
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </Link>
+                    {!isOwn && (
+                      <button
+                        onClick={() => setAddTarget(b)}
+                        className="flex w-full items-center justify-center gap-1 rounded-xl border border-violet/30 bg-violet-soft py-1.5 text-[10.5px] font-semibold text-violet-deep"
+                      >
+                        + Ajouter
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
           </div>
           {completedLimit < completed.length && (
             <button
@@ -642,6 +678,41 @@ export default function MembrePage() {
         book={addTarget}
         onAdded={(msg) => { setToast(msg); setTimeout(() => setToast(null), 3500); }}
       />
+
+      {/* Mini-modale note / review (icônes Letterboxd) */}
+      {noteModal && (
+        <div
+          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 md:items-center"
+          onClick={() => setNoteModal(null)}
+        >
+          <div
+            className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-3 max-h-[75dvh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                noteModal.type === "review"
+                  ? "bg-[#fdf7e9] text-[#8a6400] dark:bg-[#2a2210] dark:text-[#e0b83d]"
+                  : "bg-violet-soft text-violet-deep"
+              }`}>
+                {noteModal.type === "review" ? "Review globale" : "Note de session"}
+              </span>
+              {noteModal.bookTitle && (
+                <p className="text-[11px] font-semibold text-ink truncate max-w-[55%] text-right">{noteModal.bookTitle}</p>
+              )}
+            </div>
+            <p className="font-serif text-[14px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
+              « {noteModal.text} »
+            </p>
+            <button
+              onClick={() => setNoteModal(null)}
+              className="mt-1 w-full rounded-xl border border-line bg-card py-2.5 text-[12px] font-medium text-muted hover:text-ink"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal liste abonnés / abonnements */}
       {followListType !== null && (

@@ -74,6 +74,15 @@ export default function AccueilPage() {
   const [members, setMembers] = useState<Profile[]>([]);
   const [hasFollows, setHasFollows] = useState(false);
 
+  // Mini-modal note / review
+  const [noteModal, setNoteModal] = useState<{
+    type: "review" | "session";
+    text: string;
+    member: string;
+    date?: string;
+    photoUrl?: string | null;
+  } | null>(null);
+
   const load = useCallback(async () => {
     if (!userId) return;
     const { data: booksData } = await supabase
@@ -318,7 +327,7 @@ export default function AccueilPage() {
       </header>
 
       {toast && (
-        <div className="rounded-xl border border-[#cfe0cf] bg-[#eaf1ea] px-4 py-3 text-xs font-semibold text-success">
+        <div className="rounded-xl border border-[#cfe0cf] dark:border-success/30 bg-[#eaf1ea] dark:bg-[#162516] px-4 py-3 text-xs font-semibold text-success">
           {toast}
         </div>
       )}
@@ -406,6 +415,9 @@ export default function AccueilPage() {
                 key={log.id}
                 log={log}
                 isChampion={todayChampion?.userId === log.user_id}
+                onNoteClick={(type, text, photoUrl, date) =>
+                  setNoteModal({ type, text, member: log.memberName, date, photoUrl })
+                }
               />
             ))}
           </div>
@@ -450,6 +462,52 @@ export default function AccueilPage() {
         onSaved={(m) => { setShowLog(false); showToast(m); load(); }}
       />
       {showPodium && <PodiumModal onClose={() => setShowPodium(false)} />}
+
+      {/* Mini-modale note / review (style Letterboxd) */}
+      {noteModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 md:items-center"
+          onClick={() => setNoteModal(null)}
+        >
+          <div
+            className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-3 max-h-[80dvh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
+                noteModal.type === "review"
+                  ? "bg-[#fdf7e9] text-[#8a6400] dark:bg-[#2a2210] dark:text-[#e0b83d]"
+                  : "bg-violet-soft text-violet-deep"
+              }`}>
+                {noteModal.type === "review" ? "Review globale" : "Note de session"}
+              </span>
+              <div className="text-right">
+                <p className="text-[11px] font-semibold text-ink">{noteModal.member}</p>
+                {noteModal.date && (
+                  <p className="text-[10px] text-muted">
+                    {new Date(noteModal.date).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}
+                  </p>
+                )}
+              </div>
+            </div>
+            <p className="font-serif text-[14px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
+              « {noteModal.text} »
+            </p>
+            {noteModal.photoUrl && (
+              <a href={noteModal.photoUrl} target="_blank" rel="noopener noreferrer">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={noteModal.photoUrl} alt="" className="w-full rounded-xl object-cover max-h-48" />
+              </a>
+            )}
+            <button
+              onClick={() => setNoteModal(null)}
+              className="mt-1 w-full rounded-xl border border-line bg-card py-2.5 text-[12px] font-medium text-muted hover:text-ink"
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -486,27 +544,35 @@ function BookCard({ book }: { book: Book }) {
 
 function ChampionBanner({ champion, isMe }: { champion: Champion; isMe: boolean }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-3.5">
+    <div className="flex items-center gap-3 rounded-2xl border border-gold/40 bg-[#fdf7e9] dark:bg-[#2a2210] p-3.5">
       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-xl">
         🏆
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-[13px] font-semibold text-ink">
           {isMe ? "Tu es" : <><span className="font-bold">{champion.name}</span> est</>}{" "}
-          <span className="text-[#b8890a]">Champion du jour</span>
+          <span className="text-[#b8890a] dark:text-gold">Champion du jour</span>
         </p>
         <p className="text-[11px] text-muted">
           {champion.pages} pages lues aujourd&apos;hui
         </p>
       </div>
-      <span className="shrink-0 rounded-full border border-gold/40 bg-gold/10 px-2.5 py-1 text-[10.5px] font-bold text-[#b8890a]">
+      <span className="shrink-0 rounded-full border border-gold/40 bg-gold/10 px-2.5 py-1 text-[10.5px] font-bold text-[#b8890a] dark:text-gold">
         +1 🏅
       </span>
     </div>
   );
 }
 
-function ActivityCarouselItem({ log, isChampion }: { log: ActivityLog; isChampion?: boolean }) {
+function ActivityCarouselItem({
+  log,
+  isChampion,
+  onNoteClick,
+}: {
+  log: ActivityLog;
+  isChampion?: boolean;
+  onNoteClick?: (type: "review" | "session", text: string, photoUrl: string | null | undefined, date: string) => void;
+}) {
   const todayStr = new Date().toISOString().split("T")[0];
   const showBadge = isChampion && log.date === todayStr;
 
@@ -523,6 +589,9 @@ function ActivityCarouselItem({ log, isChampion }: { log: ActivityLog; isChampio
     ? (children: React.ReactNode) => <Link href={`/membre/${log.user_id}`} className="flex items-center gap-1.5 overflow-hidden">{children}</Link>
     : (children: React.ReactNode) => <div className="flex items-center gap-1.5 overflow-hidden">{children}</div>;
 
+  const hasReview = !!log.bookReview;
+  const hasSessionNote = !!log.session_notes;
+
   return (
     <div className="flex w-[128px] shrink-0 flex-col gap-2">
       {/* Couverture cliquable */}
@@ -537,12 +606,6 @@ function ActivityCarouselItem({ log, isChampion }: { log: ActivityLog; isChampio
           className="aspect-[3/4] w-full"
           rounded="rounded-xl"
         />
-        {/* Indicateur review */}
-        {log.isCompletion && log.bookReview && (
-          <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-md bg-ink/65 text-[10px] leading-none text-cream">
-            ≡
-          </span>
-        )}
         {/* Badge champion */}
         {showBadge && (
           <span className="absolute left-1.5 top-1.5 rounded-full bg-gold/90 px-1.5 py-0.5 text-[8px] font-bold leading-none text-ink">
@@ -559,14 +622,46 @@ function ActivityCarouselItem({ log, isChampion }: { log: ActivityLog; isChampio
         <p className="truncate text-[10px] text-muted">{log.bookAuthor}</p>
       </div>
 
-      {/* Action contextuelle + date */}
-      <div className="flex flex-col gap-0.5">
-        <p className={`text-[11px] font-semibold leading-tight ${actionLabel.color}`}>
-          {actionLabel.text}
-        </p>
-        <p className="text-[9.5px] text-muted">
-          {new Date(log.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
-        </p>
+      {/* Action + icônes de notes (style Letterboxd) */}
+      <div className="flex items-center justify-between gap-1">
+        <div className="flex flex-col gap-0.5 min-w-0">
+          <p className={`text-[11px] font-semibold leading-tight ${actionLabel.color}`}>
+            {actionLabel.text}
+          </p>
+          <p className="text-[9.5px] text-muted">
+            {new Date(log.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+          </p>
+        </div>
+        {(hasReview || hasSessionNote) && (
+          <div className="flex shrink-0 flex-col gap-0.5">
+            {hasReview && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onNoteClick?.("review", log.bookReview!, null, log.date);
+                }}
+                className="flex h-[18px] w-[18px] items-center justify-center rounded bg-[#e4c97e] text-[9px] font-bold text-[#7a5c00]"
+                title="Voir la review"
+              >
+                ≡
+              </button>
+            )}
+            {hasSessionNote && (
+              <button
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  onNoteClick?.("session", log.session_notes!, log.session_photo_url ?? null, log.date);
+                }}
+                className="flex h-[18px] w-[18px] items-center justify-center rounded bg-violet-soft text-[9px] font-bold text-violet-deep"
+                title="Voir la note de session"
+              >
+                ≡
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Avatar + pseudo — clic vers profil */}
