@@ -107,70 +107,94 @@ export default function BookDetailPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addedMsg, setAddedMsg] = useState<string | null>(null);
 
+  // Copie personnelle de l'utilisateur si ce n'est pas son livre
+  const [myBook, setMyBook] = useState<Book | null>(null);
+
+  // Notes de session du membre affiché dans la modale
+  const [selectedMemberSessionNotes, setSelectedMemberSessionNotes] = useState<
+    { date: string; session_notes: string; session_photo_url: string | null }[]
+  >([]);
+
   const load = useCallback(async () => {
     if (!userId) return;
-    const [{ data: b }, { data: l }, { data: sess }] = await Promise.all([
-      supabase.from("books").select("*").eq("id", id).single(),
+
+    // Étape A : métadonnées du livre (URL)
+    const { data: b } = await supabase.from("books").select("*").eq("id", id).single();
+    setBook(b as Book | null);
+    if (!b) { setLoading(false); return; }
+
+    const urlBook = b as Book;
+    setInfoDraft({
+      title: urlBook.title,
+      author: urlBook.author,
+      year: urlBook.published_year ? String(urlBook.published_year) : "",
+      summary: urlBook.summary || "",
+      coverUrl: urlBook.cover_url || "",
+    });
+
+    // Étape B : copie de l'utilisateur connecté (peut être le même livre)
+    let ownBook: Book | null = urlBook.user_id === userId ? urlBook : null;
+    if (!ownBook) {
+      const { data: own } = await supabase
+        .from("books")
+        .select("*")
+        .ilike("title", urlBook.title.replace(/[%_]/g, "\\$&"))
+        .eq("user_id", userId)
+        .maybeSingle();
+      ownBook = (own as Book) || null;
+    }
+    setMyBook(urlBook.user_id === userId ? null : ownBook);
+    setNotesDraft(ownBook?.notes || "");
+
+    // Étape C : logs et sessions de lecture (pour la copie de l'user)
+    const ownId = ownBook?.id ?? id;
+    const [{ data: l }, { data: sess }] = await Promise.all([
       supabase
         .from("reading_logs")
         .select("*")
-        .eq("book_id", id)
+        .eq("book_id", ownId)
         .eq("user_id", userId)
         .order("date", { ascending: false })
         .order("created_at", { ascending: false }),
       supabase
         .from("book_read_sessions")
         .select("*")
-        .eq("book_id", id)
+        .eq("book_id", ownId)
         .eq("user_id", userId)
         .order("date_read", { ascending: true }),
     ]);
-    setBook(b as Book);
     setLogs((l as ReadingLog[]) || []);
     setReadSessions((sess as ReadSession[]) || []);
-    const loaded = b as Book;
-    setNotesDraft(loaded?.notes || "");
-    if (loaded) {
-      setInfoDraft({
-        title: loaded.title,
-        author: loaded.author,
-        year: loaded.published_year ? String(loaded.published_year) : "",
-        summary: loaded.summary || "",
-        coverUrl: loaded.cover_url || "",
-      });
-    }
 
-    // Fetch other members who have this book (by title match)
-    if (loaded) {
-      const { data: otherBooks } = await supabase
-        .from("books")
-        .select("user_id, rating, notes, status")
-        .ilike("title", `%${loaded.title.replace(/[%_]/g, "\\$&")}%`)
-        .neq("user_id", userId);
+    // Étape D : activité des autres membres
+    const { data: otherBooks } = await supabase
+      .from("books")
+      .select("user_id, rating, notes, status")
+      .ilike("title", `%${urlBook.title.replace(/[%_]/g, "\\$&")}%`)
+      .neq("user_id", userId);
 
-      if (otherBooks?.length) {
-        const uids = [...new Set((otherBooks as any[]).map((ob) => ob.user_id))] as string[];
-        const { data: profiles } = await supabase
-          .from("user_profiles")
-          .select("id, display_name, avatar_url")
-          .in("id", uids);
+    if (otherBooks?.length) {
+      const uids = [...new Set((otherBooks as any[]).map((ob) => ob.user_id))] as string[];
+      const { data: profiles } = await supabase
+        .from("user_profiles")
+        .select("id, display_name, avatar_url")
+        .in("id", uids);
 
-        setMemberActivity(
-          (otherBooks as any[])
-            .filter((ob) => ob.status !== "abandoned")
-            .map((ob) => {
-              const p = (profiles as any[])?.find((x) => x.id === ob.user_id);
-              return {
-                userId: ob.user_id,
-                displayName: p?.display_name || "Membre",
-                avatarUrl: p?.avatar_url || null,
-                rating: ob.rating || null,
-                review: ob.notes || null,
-                status: ob.status,
-              };
-            })
-        );
-      }
+      setMemberActivity(
+        (otherBooks as any[])
+          .filter((ob) => ob.status !== "abandoned")
+          .map((ob) => {
+            const p = (profiles as any[])?.find((x) => x.id === ob.user_id);
+            return {
+              userId: ob.user_id,
+              displayName: p?.display_name || "Membre",
+              avatarUrl: p?.avatar_url || null,
+              rating: ob.rating || null,
+              review: ob.notes || null,
+              status: ob.status,
+            };
+          })
+      );
     }
 
     setLoading(false);
@@ -208,6 +232,30 @@ export default function BookDetailPage() {
     loadLikes();
   }, [selectedMember, userId, id]);
 
+  // Charge les notes de session du membre sélectionné
+  useEffect(() => {
+    if (!selectedMember || !book) { setSelectedMemberSessionNotes([]); return; }
+    const loadSessionNotes = async () => {
+      const { data: mb } = await supabase
+        .from("books")
+        .select("id")
+        .ilike("title", book.title.replace(/[%_]/g, "\\$&"))
+        .eq("user_id", selectedMember.userId)
+        .maybeSingle();
+      if (!mb) { setSelectedMemberSessionNotes([]); return; }
+      const { data: mlogs } = await supabase
+        .from("reading_logs")
+        .select("date, session_notes, session_photo_url")
+        .eq("book_id", (mb as any).id)
+        .not("session_notes", "is", null)
+        .order("date", { ascending: true });
+      setSelectedMemberSessionNotes(
+        ((mlogs as any[]) || []).filter((l) => l.session_notes)
+      );
+    };
+    loadSessionNotes();
+  }, [selectedMember, book]);
+
   const toggleReviewLike = async () => {
     if (!selectedMember?.review || !userId || likeLoading || selectedMember.userId === userId) return;
     setLikeLoading(true);
@@ -243,30 +291,30 @@ export default function BookDetailPage() {
   };
 
   const setRating = async (value: number) => {
-    if (!book) return;
-    setBook({ ...book, rating: value });
-    await supabase.from("books").update({ rating: value }).eq("id", book.id);
+    if (!activeBook) return;
+    updateActiveBook({ ...activeBook, rating: value });
+    await supabase.from("books").update({ rating: value }).eq("id", activeBook.id);
   };
 
   const saveNotes = async () => {
-    if (!book) return;
-    await supabase.from("books").update({ notes: notesDraft }).eq("id", book.id);
-    setBook({ ...book, notes: notesDraft });
+    if (!activeBook) return;
+    await supabase.from("books").update({ notes: notesDraft }).eq("id", activeBook.id);
+    updateActiveBook({ ...activeBook, notes: notesDraft });
     setEditingNotes(false);
   };
 
   const saveInfo = async () => {
-    if (!book) return;
+    if (!activeBook) return;
     const year = infoDraft.year ? Number(infoDraft.year) : null;
     const update = {
-      title: infoDraft.title.trim() || book.title,
-      author: infoDraft.author.trim() || book.author,
+      title: infoDraft.title.trim() || activeBook.title,
+      author: infoDraft.author.trim() || activeBook.author,
       published_year: year,
       summary: infoDraft.summary.trim() || null,
       cover_url: infoDraft.coverUrl.trim() || null,
     };
-    await supabase.from("books").update(update).eq("id", book.id);
-    setBook({ ...book, ...update });
+    await supabase.from("books").update(update).eq("id", activeBook.id);
+    updateActiveBook({ ...activeBook, ...update });
     setEditingInfo(false);
   };
 
@@ -276,67 +324,66 @@ export default function BookDetailPage() {
   };
 
   const abandon = async () => {
-    if (!book) return;
-    if (!confirm(`Marquer « ${book.title} » comme abandonné ?`)) return;
-    await supabase.from("books").update({ status: "abandoned" }).eq("id", book.id);
+    if (!activeBook) return;
+    if (!confirm(`Marquer « ${book?.title} » comme abandonné ?`)) return;
+    await supabase.from("books").update({ status: "abandoned" }).eq("id", activeBook.id);
     router.push("/");
   };
 
   const remove = async () => {
-    if (!book) return;
-    if (!confirm(`Supprimer « ${book.title} » et son historique ?`)) return;
-    await supabase.from("reading_logs").delete().eq("book_id", book.id);
-    await supabase.from("books").delete().eq("id", book.id);
+    if (!activeBook) return;
+    if (!confirm(`Supprimer « ${book?.title} » et son historique ?`)) return;
+    await supabase.from("reading_logs").delete().eq("book_id", activeBook.id);
+    await supabase.from("books").delete().eq("id", activeBook.id);
     router.push("/bibliotheque");
   };
 
-  // Marquer comme lu sans date (ne comptabilise pas dans les graphiques annuels)
+  // Marquer comme lu sans date
   const markAsReadNoDate = async () => {
-    if (!book || markingRead) return;
+    if (!activeBook || markingRead) return;
     setMarkingRead(true);
     await supabase
       .from("books")
-      .update({ status: "completed", progress: book.pages, date_read: null })
-      .eq("id", book.id);
-    const updated = { ...book, status: "completed", progress: book.pages, date_read: null };
-    setBook(updated);
+      .update({ status: "completed", progress: activeBook.pages, date_read: null })
+      .eq("id", activeBook.id);
+    updateActiveBook({ ...activeBook, status: "completed", progress: activeBook.pages, date_read: null });
     setMarkingRead(false);
     setShowConfetti(true);
     setTimeout(() => setShowConfetti(false), 3800);
-    if (!book.genre) setShowGenrePicker(true);
+    if (!activeBook.genre) setShowGenrePicker(true);
   };
 
   const saveGenre = async (genre: string) => {
-    if (!book || savingGenre) return;
+    if (!activeBook || savingGenre) return;
     setSavingGenre(true);
-    await supabase.from("books").update({ genre }).eq("id", book.id);
-    setBook({ ...book, genre });
+    await supabase.from("books").update({ genre }).eq("id", activeBook.id);
+    updateActiveBook({ ...activeBook, genre });
     setSavingGenre(false);
     setShowGenrePicker(false);
   };
 
   const saveGenreMulti = async () => {
-    if (!book || savingGenreEdit) return;
+    if (!activeBook || savingGenreEdit) return;
     setSavingGenreEdit(true);
     const genre = genreSelection.length > 0 ? genreSelection.join(", ") : null;
-    await supabase.from("books").update({ genre }).eq("id", book.id);
-    setBook({ ...book, genre });
+    await supabase.from("books").update({ genre }).eq("id", activeBook.id);
+    updateActiveBook({ ...activeBook, genre });
     setSavingGenreEdit(false);
     setEditingGenre(false);
   };
 
   const addRelecture = async () => {
-    if (!book || !userId || !relectureDraft.date_read || savingRelecture) return;
+    if (!activeBook || !userId || !relectureDraft.date_read || savingRelecture) return;
     setSavingRelecture(true);
     const newSession = {
-      book_id: book.id,
+      book_id: activeBook.id,
       user_id: userId,
       date_started: relectureDraft.date_started || null,
       date_read: relectureDraft.date_read,
     };
     await supabase.from("book_read_sessions").insert(newSession);
-    await supabase.from("books").update({ date_read: relectureDraft.date_read }).eq("id", book.id);
-    setBook({ ...book, date_read: relectureDraft.date_read });
+    await supabase.from("books").update({ date_read: relectureDraft.date_read }).eq("id", activeBook.id);
+    updateActiveBook({ ...activeBook, date_read: relectureDraft.date_read });
     setSavingRelecture(false);
     setAddingRelecture(false);
     setRelectureDraft({ date_started: "", date_read: "" });
@@ -361,6 +408,15 @@ export default function BookDetailPage() {
     return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
   })();
 
+  // activeBook = copie de l'user (myBook si navigué depuis un autre profil, book sinon)
+  const activeBook = myBook ?? (book?.user_id === userId ? book : null);
+
+  // Met à jour la bonne entrée selon le contexte (own copy vs direct ownership)
+  const updateActiveBook = (updated: Book) => {
+    if (myBook) setMyBook(updated);
+    else setBook(updated);
+  };
+
   if (loading) {
     return (
       <div className="py-24 text-center text-xs font-medium uppercase tracking-wider text-muted">
@@ -379,12 +435,12 @@ export default function BookDetailPage() {
     );
   }
 
-  const isOwner = book.user_id === userId;
-  const p = pct(book);
-  const done = isCompleted(book);
-  const abandoned = isAbandoned(book);
-  const stats = readingStats(book, logs);
-  const rating = book.rating || 0;
+  const isOwner = !!activeBook;
+  const p = activeBook ? pct(activeBook) : 0;
+  const done = activeBook ? isCompleted(activeBook) : false;
+  const abandoned = activeBook ? isAbandoned(activeBook) : false;
+  const stats = activeBook ? readingStats(activeBook, logs) : { startDate: null, endDate: null, durationDays: null, pagesPerDay: null };
+  const rating = activeBook?.rating || 0;
 
   return (
     <div className="animate-fadeIn -mx-5 md:-mx-10">
@@ -406,7 +462,7 @@ export default function BookDetailPage() {
                 <button
                   onClick={markAsReadNoDate}
                   disabled={markingRead}
-                  className="flex h-9 items-center justify-center rounded-xl border border-[#cfe0cf] bg-[#eaf1ea] px-3 text-xs font-semibold text-success"
+                  className="flex h-9 items-center justify-center rounded-xl border border-[#cfe0cf] dark:border-success/30 bg-[#eaf1ea] dark:bg-[#162516] px-3 text-xs font-semibold text-success"
                 >
                   {markingRead ? "…" : "✓ Lu"}
                 </button>
@@ -419,7 +475,7 @@ export default function BookDetailPage() {
               </>
             )}
             {isOwner && abandoned && (
-              <span className="rounded-xl border border-[#e7c7bd] bg-[#f6e7e1] px-3 py-1.5 text-xs font-semibold text-danger">
+              <span className="rounded-xl border border-[#e7c7bd] dark:border-danger/30 bg-[#f6e7e1] dark:bg-[#2a1510] px-3 py-1.5 text-xs font-semibold text-danger">
                 Abandonné
               </span>
             )}
@@ -456,34 +512,34 @@ export default function BookDetailPage() {
               value={infoDraft.coverUrl}
               onChange={(e) => setInfoDraft({ ...infoDraft, coverUrl: e.target.value })}
               placeholder="URL couverture (https://…)"
-              className="w-full rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-xs text-ink outline-none focus:border-violet"
               autoFocus
             />
             <input
               value={infoDraft.title}
               onChange={(e) => setInfoDraft({ ...infoDraft, title: e.target.value })}
               placeholder="Titre"
-              className="w-full rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-xs text-ink outline-none focus:border-violet"
             />
             <input
               value={infoDraft.author}
               onChange={(e) => setInfoDraft({ ...infoDraft, author: e.target.value })}
               placeholder="Auteur"
-              className="w-full rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-xs text-ink outline-none focus:border-violet"
             />
             <input
               value={infoDraft.year}
               onChange={(e) => setInfoDraft({ ...infoDraft, year: e.target.value })}
               placeholder="Année (ex. 2021)"
               type="number"
-              className="w-full rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-xs text-ink outline-none focus:border-violet"
             />
             <textarea
               value={infoDraft.summary}
               onChange={(e) => setInfoDraft({ ...infoDraft, summary: e.target.value })}
               placeholder="Résumé…"
               rows={3}
-              className="w-full rounded-xl border border-line bg-white px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-xs text-ink outline-none focus:border-violet"
             />
             <div className="flex gap-2">
               <Button onClick={saveInfo} className="flex-1 py-2">Enregistrer</Button>
@@ -548,15 +604,17 @@ export default function BookDetailPage() {
             <Pill tone="violet">Lu en {stats.durationDays} jour{stats.durationDays > 1 ? "s" : ""}</Pill>
           )}
           {book.published_year && <Pill tone="neutral">{book.published_year}</Pill>}
-          <button
-            onClick={() => {
-              setGenreSelection(book.genre?.split(", ").filter(Boolean) || []);
-              setEditingGenre((v) => !v);
-            }}
-            className="rounded-full border border-dashed border-violet/40 px-2.5 py-0.5 text-[10.5px] font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep"
-          >
-            {editingGenre ? "✕ Fermer" : book.genre ? "Modifier le genre" : "+ Genre"}
-          </button>
+          {isOwner && (
+            <button
+              onClick={() => {
+                setGenreSelection(activeBook!.genre?.split(", ").filter(Boolean) || []);
+                setEditingGenre((v) => !v);
+              }}
+              className="rounded-full border border-dashed border-violet/40 px-2.5 py-0.5 text-[10.5px] font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep"
+            >
+              {editingGenre ? "✕ Fermer" : activeBook!.genre ? "Modifier le genre" : "+ Genre"}
+            </button>
+          )}
         </div>
 
         {/* Panneau d'édition des genres (multi-sélection) */}
@@ -580,7 +638,7 @@ export default function BookDetailPage() {
                     className={`rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
                       active
                         ? "border-violet bg-violet text-cream"
-                        : "border-line bg-white text-ink hover:border-violet/40 hover:text-violet-deep"
+                        : "border-line bg-white dark:bg-card text-ink hover:border-violet/40 hover:text-violet-deep"
                     }`}
                   >
                     {g}
@@ -619,29 +677,29 @@ export default function BookDetailPage() {
           <ProgressBar value={p / 100} color={done ? "var(--color-success)" : "var(--color-violet)"} />
           <p className={`text-[11px] font-medium ${done ? "text-success" : "text-muted"}`}>
             {done ? "Terminé · " : ""}
-            {book.progress} / {book.pages} pages
+            {activeBook!.progress} / {activeBook!.pages} pages
           </p>
 
           {/* Historique des relectures */}
-          {done && (book.date_started || book.date_read || readSessions.length > 0) && (
+          {done && (activeBook!.date_started || activeBook!.date_read || readSessions.length > 0) && (
             <div className="flex flex-col gap-2 border-t border-line pt-3">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
                 Historique des lectures
               </p>
-              {/* Session originale (book.date_started / book.date_read) */}
+              {/* Session originale */}
               <div className="flex items-center gap-2 rounded-xl bg-paper px-3 py-2.5">
                 <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet text-[9px] font-bold text-cream">1</span>
                 <div className="min-w-0 flex-1">
-                  {book.date_started && (
+                  {activeBook!.date_started && (
                     <span className="text-[11px] text-muted">
-                      {formatDate(book.date_started)} →{" "}
+                      {formatDate(activeBook!.date_started)} →{" "}
                     </span>
                   )}
                   <span className="text-[11.5px] font-medium text-ink">
-                    {book.date_read ? formatDate(book.date_read) : "Date inconnue"}
+                    {activeBook!.date_read ? formatDate(activeBook!.date_read) : "Date inconnue"}
                   </span>
-                  {book.import_source === "goodreads" && (
-                    <span className="ml-1.5 rounded-md bg-[#f4f0e8] px-1.5 py-0.5 text-[9.5px] font-medium text-muted">
+                  {activeBook!.import_source === "goodreads" && (
+                    <span className="ml-1.5 rounded-md bg-[#f4f0e8] dark:bg-card px-1.5 py-0.5 text-[9.5px] font-medium text-muted">
                       Goodreads
                     </span>
                   )}
@@ -691,7 +749,7 @@ export default function BookDetailPage() {
                         type="date"
                         value={relectureDraft.date_started}
                         onChange={(e) => setRelectureDraft({ ...relectureDraft, date_started: e.target.value })}
-                        className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+                        className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-sm text-ink outline-none focus:border-violet"
                       />
                     </div>
                     <div>
@@ -700,7 +758,7 @@ export default function BookDetailPage() {
                         type="date"
                         value={relectureDraft.date_read}
                         onChange={(e) => setRelectureDraft({ ...relectureDraft, date_read: e.target.value })}
-                        className="w-full rounded-xl border border-line bg-white px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+                        className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-sm text-ink outline-none focus:border-violet"
                       />
                     </div>
                   </div>
@@ -763,13 +821,13 @@ export default function BookDetailPage() {
           </div>
         )}
 
-        {/* Mes notes (visible uniquement par le propriétaire) */}
-        {isOwner && <div className="flex flex-col gap-2 rounded-2xl border border-[#e4daef] bg-[#f2ecf6] p-4">
+        {/* Ma review (visible uniquement par le propriétaire) */}
+        {isOwner && <div className="flex flex-col gap-2 rounded-2xl border border-[#e4c97e]/50 dark:border-[#5a3d0a]/50 bg-[#fdf7e9] dark:bg-[#2a2210] p-4">
           <div className="flex items-center justify-between">
-            <h2 className="font-serif text-[15px] font-medium text-ink">Mes notes</h2>
+            <h2 className="font-serif text-[15px] font-medium text-ink">Ma review</h2>
             {!editingNotes && (
-              <button onClick={() => setEditingNotes(true)} className="text-xs font-medium text-violet-deep">
-                {book.notes ? "Modifier" : "Ajouter"}
+              <button onClick={() => setEditingNotes(true)} className="text-xs font-medium text-[#b8890a]">
+                {activeBook!.notes ? "Modifier" : "Ajouter"}
               </button>
             )}
           </div>
@@ -779,27 +837,27 @@ export default function BookDetailPage() {
                 value={notesDraft}
                 onChange={(e) => setNotesDraft(e.target.value)}
                 rows={4}
-                placeholder="Tes impressions, citations préférées… (visible dans l'espace Découverte)"
-                className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
+                placeholder="Ta critique globale du livre, tes citations préférées… (visible par les membres du club)"
+                className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
                 autoFocus
               />
               <div className="flex gap-2">
                 <Button onClick={saveNotes} className="px-4 py-2">Enregistrer</Button>
                 <Button
                   variant="ghost"
-                  onClick={() => { setNotesDraft(book.notes || ""); setEditingNotes(false); }}
+                  onClick={() => { setNotesDraft(activeBook!.notes || ""); setEditingNotes(false); }}
                   className="px-4 py-2"
                 >
                   Annuler
                 </Button>
               </div>
             </div>
-          ) : book.notes ? (
+          ) : activeBook!.notes ? (
             <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
-              « {book.notes} »
+              « {activeBook!.notes} »
             </p>
           ) : (
-            <p className="text-[13px] text-muted">Aucune note pour le moment.</p>
+            <p className="text-[13px] text-muted">Aucune review pour le moment.</p>
           )}
         </div>}
 
@@ -831,13 +889,13 @@ export default function BookDetailPage() {
                       </p>
                       <p className="font-serif text-base font-black text-violet-deep">+{log.pages_read}</p>
                     </div>
-                    <div className="flex-1 rounded-xl bg-[#f4f0e8] px-3 py-2">
+                    <div className="flex-1 rounded-xl bg-[#f4f0e8] dark:bg-card px-3 py-2">
                       <p className="text-[9px] font-medium uppercase tracking-wide text-muted">Arrêté p.</p>
                       <p className="font-serif text-base font-black text-ink">{log.end_page}</p>
                     </div>
                   </div>
                   {log.session_notes && (
-                    <p className="rounded-xl bg-[#f4f0e8] px-3 py-2 font-serif text-[12.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
+                    <p className="rounded-xl bg-[#f4f0e8] dark:bg-card px-3 py-2 font-serif text-[12.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
                       « {log.session_notes} »
                     </p>
                   )}
@@ -904,19 +962,13 @@ export default function BookDetailPage() {
           onClick={() => setSelectedMember(null)}
         >
           <div
-            className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4"
+            className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4 max-h-[85dvh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
+            {/* En-tête membre */}
             <div className="flex items-center gap-3">
-              <Link
-                href={`/membre/${selectedMember.userId}`}
-                onClick={() => setSelectedMember(null)}
-              >
-                <AvatarImg
-                  url={selectedMember.avatarUrl}
-                  name={selectedMember.displayName}
-                  className="h-11 w-11 text-xs font-semibold"
-                />
+              <Link href={`/membre/${selectedMember.userId}`} onClick={() => setSelectedMember(null)}>
+                <AvatarImg url={selectedMember.avatarUrl} name={selectedMember.displayName} className="h-11 w-11 text-xs font-semibold" />
               </Link>
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-ink">{selectedMember.displayName}</p>
@@ -925,38 +977,64 @@ export default function BookDetailPage() {
                 </p>
               </div>
               {(selectedMember.rating ?? 0) > 0 && (
-                <div className="text-right">
+                <div className="shrink-0 text-right">
                   <p className="text-base text-gold">{"★".repeat(Math.round(selectedMember.rating!))}</p>
-                  <p className="text-xs font-semibold text-ink">
-                    {selectedMember.rating!.toFixed(1).replace(".", ",")} /5
-                  </p>
+                  <p className="text-xs font-semibold text-ink">{selectedMember.rating!.toFixed(1).replace(".", ",")} /5</p>
                 </div>
               )}
             </div>
-            {selectedMember.review ? (
-              <>
-                <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
-                  « {selectedMember.review} »
+
+            {/* Review globale — bloc ambre */}
+            <div className="rounded-xl border border-[#e4c97e]/50 dark:border-[#5a3d0a]/50 bg-[#fdf7e9] dark:bg-[#2a2210] p-3.5">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#b8890a]">Review globale</p>
+              {selectedMember.review ? (
+                <>
+                  <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
+                    « {selectedMember.review} »
+                  </p>
+                  {selectedMember.userId !== userId && (
+                    <button
+                      onClick={toggleReviewLike}
+                      disabled={likeLoading}
+                      className={`mt-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-semibold transition-colors ${
+                        reviewLiked
+                          ? "border-danger/30 bg-[#f6e7e1] dark:bg-[#2a1510] text-danger"
+                          : "border-line bg-paper text-muted hover:border-danger/30 hover:text-danger"
+                      }`}
+                    >
+                      <span className="text-sm">{reviewLiked ? "♥" : "♡"}</span>
+                      {reviewLikeCount > 0 ? `${reviewLikeCount} j'aime` : "J'aime"}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p className="text-[13px] italic text-muted">Pas encore de review pour ce livre.</p>
+              )}
+            </div>
+
+            {/* Notes de session — bloc violet */}
+            {selectedMemberSessionNotes.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                  Notes de session ({selectedMemberSessionNotes.length})
                 </p>
-                {/* Bouton like (masqué pour sa propre review) */}
-                {selectedMember.userId !== userId && (
-                  <button
-                    onClick={toggleReviewLike}
-                    disabled={likeLoading}
-                    className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-semibold transition-colors ${
-                      reviewLiked
-                        ? "border-danger/30 bg-[#f6e7e1] text-danger"
-                        : "border-line bg-card text-muted hover:border-danger/30 hover:text-danger"
-                    }`}
-                  >
-                    <span className="text-sm">{reviewLiked ? "♥" : "♡"}</span>
-                    {reviewLikeCount > 0 ? `${reviewLikeCount} j'aime` : "J'aime"}
-                  </button>
-                )}
-              </>
-            ) : (
-              <p className="text-sm text-muted">Pas encore de review pour ce livre.</p>
+                {selectedMemberSessionNotes.map((note, i) => (
+                  <div key={i} className="rounded-xl bg-violet-soft p-3">
+                    <p className="mb-1 text-[10px] font-medium text-muted">{formatDate(note.date)}</p>
+                    <p className="font-serif text-[13px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
+                      « {note.session_notes} »
+                    </p>
+                    {note.session_photo_url && (
+                      <a href={note.session_photo_url} target="_blank" rel="noopener noreferrer">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={note.session_photo_url} alt="" className="mt-2 h-32 w-full rounded-lg object-cover" />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
+
             <Button variant="ghost" onClick={() => setSelectedMember(null)} className="w-full py-2.5">
               Fermer
             </Button>
@@ -979,7 +1057,7 @@ export default function BookDetailPage() {
                   key={g}
                   onClick={() => saveGenre(g)}
                   disabled={savingGenre}
-                  className="rounded-full border border-line bg-white px-3.5 py-1.5 text-xs font-medium text-ink transition-colors hover:border-violet hover:bg-violet-soft disabled:opacity-50"
+                  className="rounded-full border border-line bg-white dark:bg-card px-3.5 py-1.5 text-xs font-medium text-ink transition-colors hover:border-violet hover:bg-violet-soft disabled:opacity-50"
                 >
                   {g}
                 </button>
