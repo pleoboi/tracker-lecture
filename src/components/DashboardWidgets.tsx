@@ -11,6 +11,7 @@ import {
   Line,
   XAxis,
   YAxis,
+  CartesianGrid,
   Tooltip,
   ReferenceLine,
   ResponsiveContainer,
@@ -38,14 +39,14 @@ function PeriodRow({ name, period, unit, accent }: { name: string; period: Perio
         <span className="text-[12.5px] font-semibold text-ink">{name}</span>
         <span
           className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-            ok ? "bg-[#eaf1ea] text-success" : "bg-[#f6e7e1] text-danger"
+            ok ? "bg-[#eaf1ea] dark:bg-[#162516] text-success" : "bg-[#f6e7e1] dark:bg-[#2a1510] text-danger"
           }`}
         >
           {ok ? "+" : "−"}
           {fmt(Math.abs(delta))} {unit}
         </span>
       </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-[#e6decc]">
+      <div className="h-2 w-full overflow-hidden rounded-full bg-[#e6decc] dark:bg-line">
         <div className="h-full rounded-full" style={{ width: `${frac * 100}%`, backgroundColor: accent }} />
       </div>
       <span className="text-[11px] font-medium text-muted">
@@ -163,7 +164,7 @@ export function ObjectiveChart({
               onChange={(e) => setDraft(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && commit()}
               autoFocus
-              className="w-20 rounded-lg border border-violet bg-white px-2 py-1 text-xs font-semibold text-ink outline-none"
+              className="w-20 rounded-lg border border-violet bg-input px-2 py-1 text-xs font-semibold text-ink outline-none"
             />
             <button onClick={commit} className="rounded-lg bg-violet px-2 py-1 text-xs font-semibold text-cream">
               OK
@@ -187,22 +188,31 @@ export function ObjectiveChart({
       ) : type === "area" ? (
         <>
           <ResponsiveContainer width="100%" height={150}>
-            <AreaChart data={mergedData} margin={{ top: 8, right: 10, left: 10, bottom: 0 }}>
+            <AreaChart data={mergedData} margin={{ top: 8, right: 10, left: -6, bottom: 0 }}>
               <defs>
                 <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor={color} stopOpacity={0.32} />
                   <stop offset="95%" stopColor={color} stopOpacity={0.02} />
                 </linearGradient>
               </defs>
+              <CartesianGrid vertical={false} stroke="var(--color-line)" strokeOpacity={0.7} />
               <XAxis
                 dataKey="name"
                 interval={0}
                 tickLine={false}
                 axisLine={false}
                 padding={{ left: 6, right: 6 }}
-                tick={{ fontSize: 9, fill: "#968da1" }}
+                tick={{ fontSize: 9, fill: "var(--color-muted)" }}
               />
-              <YAxis hide domain={[0, "dataMax"]} />
+              <YAxis
+                domain={[0, "dataMax"]}
+                tick={{ fontSize: 9, fill: "var(--color-muted)" }}
+                tickLine={false}
+                axisLine={false}
+                width={32}
+                tickCount={4}
+                tickFormatter={(v: number) => v === 0 ? "" : String(Math.round(v))}
+              />
               <Tooltip cursor={{ stroke: "#d8cfe6" }} content={(p) => <ChartTooltip {...p} unit={unit} />} />
               {objective !== null && <ReferenceLine y={objective} stroke={color} strokeDasharray="4 4" strokeOpacity={0.65} />}
               <Area
@@ -251,16 +261,25 @@ export function ObjectiveChart({
         </>
       ) : (
         <ResponsiveContainer width="100%" height={150}>
-          <BarChart data={data} margin={{ top: 8, right: 6, left: 6, bottom: 0 }}>
+          <BarChart data={data} margin={{ top: 8, right: 6, left: -6, bottom: 0 }}>
+            <CartesianGrid vertical={false} stroke="var(--color-line)" strokeOpacity={0.7} />
             <XAxis
               dataKey="name"
               interval={0}
               tickLine={false}
               axisLine={false}
               padding={{ left: 2, right: 2 }}
-              tick={{ fontSize: 9, fill: "#968da1" }}
+              tick={{ fontSize: 9, fill: "var(--color-muted)" }}
             />
-            <YAxis hide domain={[0, "dataMax"]} />
+            <YAxis
+              domain={[0, "dataMax"]}
+              tick={{ fontSize: 9, fill: "var(--color-muted)" }}
+              tickLine={false}
+              axisLine={false}
+              width={32}
+              tickCount={4}
+              tickFormatter={(v: number) => v === 0 ? "" : String(Math.round(v))}
+            />
             <Tooltip cursor={{ fill: "rgba(139,121,190,0.08)" }} content={(p) => <ChartTooltip {...p} unit={unit} />} />
             {objective !== null && <ReferenceLine y={objective} stroke={color} strokeDasharray="4 4" strokeOpacity={0.65} />}
             <Bar dataKey="value" radius={[5, 5, 0, 0]} maxBarSize={20}>

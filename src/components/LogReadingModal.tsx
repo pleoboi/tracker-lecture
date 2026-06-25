@@ -200,7 +200,7 @@ export default function LogReadingModal({
                   onChange={(e) => setSessionNotes(e.target.value)}
                   rows={3}
                   placeholder="Impressions, citations, contexte de lecture… Distinct de ta review finale."
-                  className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
+                  className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
                 />
               </div>
               <div>
@@ -222,7 +222,7 @@ export default function LogReadingModal({
                     </button>
                   </div>
                 ) : (
-                  <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-white dark:bg-card px-4 py-3 text-xs font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep">
+                  <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-input px-4 py-3 text-xs font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep">
                     {photoUploading ? (
                       <span>Upload en cours…</span>
                     ) : (

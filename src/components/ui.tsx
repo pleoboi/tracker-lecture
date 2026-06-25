@@ -162,7 +162,7 @@ export function Modal({
       onClick={onClose}
     >
       <div
-        className="animate-fadeIn w-full max-w-md rounded-t-3xl border border-line bg-paper p-6 shadow-2xl sm:rounded-3xl"
+        className="animate-fadeIn w-full max-w-md overflow-x-hidden rounded-t-3xl border border-line bg-paper p-6 shadow-2xl sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-5 flex items-center justify-between">
@@ -192,7 +192,7 @@ export function FieldLabel({ children }: { children: React.ReactNode }) {
 }
 
 export const inputClass =
-  "w-full rounded-xl border border-line bg-white px-3.5 py-3 text-sm text-ink outline-none placeholder:text-muted focus:border-violet";
+  "w-full min-w-0 rounded-xl border border-line bg-input px-3.5 py-3 text-sm text-ink outline-none placeholder:text-muted focus:border-violet";
 
 /* ---------------- Avatar membre ---------------- */
 export function AvatarImg({

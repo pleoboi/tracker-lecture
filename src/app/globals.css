@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Active le variant dark: sur la classe CSS .dark (placée sur <html>) */
+@variant dark (&:where(.dark, .dark *));
+
 /* ============================================================
    Tracker Lecture — Direction « Bibliothèque chaleureuse »
    Palette papier/crème, accent violet pâle, serif littéraire.
@@ -19,6 +22,8 @@
   --color-violet-soft: #e9e2f4; /* fond accent doux */
   --color-violet-deep: #6f5da6; /* accent foncé (texte) */
   --color-violet-light: #d8cfe6; /* barres inactives */
+
+  --color-input: #ffffff; /* fond des champs input/select */
 
   --color-sage: #6e7a5a;
   --color-gold: #d7a33f;
@@ -96,6 +101,7 @@ body {
 html.dark {
   --color-paper: #1a1720;
   --color-card: #231f2e;
+  --color-input: #2c2840; /* fond des champs input/select en mode sombre — nettement distinct du card */
   --color-cream: #f0eae0;
   --color-ink: #e6e0d8;
   --color-ink-2: #bfb7cc;

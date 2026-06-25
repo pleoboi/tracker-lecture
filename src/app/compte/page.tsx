@@ -466,7 +466,7 @@ function FavoriteBookPicker({
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Rechercher…"
-          className="mb-3 w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
+          className="mb-3 w-full rounded-xl border border-line bg-input px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
           autoFocus
         />
         <div className="flex-1 overflow-y-auto flex flex-col gap-2">
@@ -1045,7 +1045,7 @@ export default function ComptePage() {
                     </button>
                   </div>
                 ) : (
-                  <label className="mb-3 flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-violet/30 bg-white px-4 py-5 text-center transition-colors hover:border-violet hover:bg-violet-soft/60">
+                  <label className="mb-3 flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-violet/30 bg-input px-4 py-5 text-center transition-colors hover:border-violet hover:bg-violet-soft/60">
                     {avatarUploading ? (
                       <span className="text-xs font-medium text-violet-deep">Upload en cours…</span>
                     ) : (
@@ -1106,7 +1106,7 @@ export default function ComptePage() {
                   rows={3}
                   maxLength={280}
                   placeholder="Décris ton rapport aux livres, tes genres favoris…"
-                  className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
+                  className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
                   autoFocus
                 />
                 <p className="text-right text-[10px] text-muted">{bioDraft.length}/280</p>
@@ -1317,7 +1317,7 @@ export default function ComptePage() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Rechercher un titre, un auteur…"
-            className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
+            className="w-full rounded-2xl border border-line bg-input px-4 py-3 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
           />
 
           <div className="flex items-center justify-between gap-3">

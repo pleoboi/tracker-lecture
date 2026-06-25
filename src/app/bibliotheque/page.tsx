@@ -79,7 +79,7 @@ export default function BibliothequePage() {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Rechercher un titre, un auteur…"
-        className="w-full rounded-2xl border border-line bg-white px-4 py-3 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
+        className="w-full rounded-2xl border border-line bg-input px-4 py-3 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
       />
 
       <div className="flex items-center justify-between gap-3">

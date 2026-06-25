@@ -536,34 +536,34 @@ export default function BookDetailPage() {
               value={infoDraft.coverUrl}
               onChange={(e) => setInfoDraft({ ...infoDraft, coverUrl: e.target.value })}
               placeholder="URL couverture (https://…)"
-              className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
               autoFocus
             />
             <input
               value={infoDraft.title}
               onChange={(e) => setInfoDraft({ ...infoDraft, title: e.target.value })}
               placeholder="Titre"
-              className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
             />
             <input
               value={infoDraft.author}
               onChange={(e) => setInfoDraft({ ...infoDraft, author: e.target.value })}
               placeholder="Auteur"
-              className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
             />
             <input
               value={infoDraft.year}
               onChange={(e) => setInfoDraft({ ...infoDraft, year: e.target.value })}
               placeholder="Année (ex. 2021)"
               type="number"
-              className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
             />
             <textarea
               value={infoDraft.summary}
               onChange={(e) => setInfoDraft({ ...infoDraft, summary: e.target.value })}
               placeholder="Résumé…"
               rows={3}
-              className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
             />
             <div className="flex gap-2">
               <Button onClick={saveInfo} className="flex-1 py-2">Enregistrer</Button>
@@ -662,7 +662,7 @@ export default function BookDetailPage() {
                     className={`rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
                       active
                         ? "border-violet bg-violet text-cream"
-                        : "border-line bg-white dark:bg-card text-ink hover:border-violet/40 hover:text-violet-deep"
+                        : "border-line bg-input text-ink hover:border-violet/40 hover:text-violet-deep"
                     }`}
                   >
                     {g}
@@ -773,7 +773,7 @@ export default function BookDetailPage() {
                         type="date"
                         value={relectureDraft.date_started}
                         onChange={(e) => setRelectureDraft({ ...relectureDraft, date_started: e.target.value })}
-                        className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+                        className="w-full rounded-xl border border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-violet"
                       />
                     </div>
                     <div>
@@ -782,7 +782,7 @@ export default function BookDetailPage() {
                         type="date"
                         value={relectureDraft.date_read}
                         onChange={(e) => setRelectureDraft({ ...relectureDraft, date_read: e.target.value })}
-                        className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+                        className="w-full rounded-xl border border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-violet"
                       />
                     </div>
                   </div>
@@ -862,7 +862,7 @@ export default function BookDetailPage() {
                 onChange={(e) => setNotesDraft(e.target.value)}
                 rows={4}
                 placeholder="Ta critique globale du livre, tes citations préférées… (visible par les membres du club)"
-                className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
+                className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
                 autoFocus
               />
               <div className="flex gap-2">
@@ -913,7 +913,7 @@ export default function BookDetailPage() {
                       </p>
                       <p className="font-serif text-base font-black text-violet-deep">+{log.pages_read}</p>
                     </div>
-                    <div className="flex-1 rounded-xl bg-[#f4f0e8] dark:bg-[#1e1b2a] px-3 py-2">
+                    <div className="flex-1 rounded-xl bg-input px-3 py-2">
                       <p className="text-[9px] font-medium uppercase tracking-wide text-ink-2">Arrêté p.</p>
                       <p className="font-serif text-base font-black text-ink">{log.end_page}</p>
                     </div>
@@ -1081,7 +1081,7 @@ export default function BookDetailPage() {
                   key={g}
                   onClick={() => saveGenre(g)}
                   disabled={savingGenre}
-                  className="rounded-full border border-line bg-white dark:bg-card px-3.5 py-1.5 text-xs font-medium text-ink transition-colors hover:border-violet hover:bg-violet-soft disabled:opacity-50"
+                  className="rounded-full border border-line bg-input px-3.5 py-1.5 text-xs font-medium text-ink transition-colors hover:border-violet hover:bg-violet-soft disabled:opacity-50"
                 >
                   {g}
                 </button>
