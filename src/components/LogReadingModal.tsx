@@ -66,7 +66,11 @@ export default function LogReadingModal({
         .getPublicUrl(data.path);
       setSessionPhotoUrl(publicUrl);
     } else {
-      setError("Upload échoué. Vérifie que le bucket 'session-photos' existe dans Supabase Storage.");
+      setError(
+        upErr?.message?.includes("Bucket not found") || upErr?.message?.includes("bucket")
+          ? "Le bucket 'session-photos' n'existe pas encore. Exécute la migration v10 dans Supabase SQL Editor."
+          : `Upload échoué : ${upErr?.message ?? "erreur inconnue"}`
+      );
     }
     setPhotoUploading(false);
   };
@@ -196,7 +200,7 @@ export default function LogReadingModal({
                   onChange={(e) => setSessionNotes(e.target.value)}
                   rows={3}
                   placeholder="Impressions, citations, contexte de lecture… Distinct de ta review finale."
-                  className="w-full rounded-xl border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
+                  className="w-full rounded-xl border border-line bg-white dark:bg-card px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
                 />
               </div>
               <div>
@@ -218,7 +222,7 @@ export default function LogReadingModal({
                     </button>
                   </div>
                 ) : (
-                  <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-white px-4 py-3 text-xs font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep">
+                  <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-white dark:bg-card px-4 py-3 text-xs font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep">
                     {photoUploading ? (
                       <span>Upload en cours…</span>
                     ) : (

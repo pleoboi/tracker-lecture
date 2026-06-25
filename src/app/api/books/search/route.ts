@@ -8,36 +8,63 @@ export async function GET(req: Request) {
   if (!q) return NextResponse.json({ results: [] });
 
   const key = process.env.GOOGLE_BOOKS_API_KEY;
-  const params = new URLSearchParams({
-    q,
-    maxResults: "8",
-    printType: "books",
-    langRestrict: "fr",
-    hl: "fr",
-  });
-  if (key) params.set("key", key);
 
-  try {
+  const tryFetch = async (extraParams: Record<string, string>) => {
+    const params = new URLSearchParams({
+      maxResults: "12",
+      printType: "books",
+      hl: "fr",
+      ...extraParams,
+    });
+    if (key) params.set("key", key);
     const res = await fetch(
       `https://www.googleapis.com/books/v1/volumes?${params.toString()}`,
       { cache: "no-store" }
     );
     const data = await res.json();
-
     if (!res.ok) {
       const msg = data?.error?.message || "";
       if (res.status === 429 || /quota/i.test(msg)) {
-        return NextResponse.json(
-          { error: "Quota Google Books atteint. Ajoute le livre manuellement pour le moment." },
-          { status: 429 }
-        );
+        throw Object.assign(new Error("QUOTA"), { status: 429 });
       }
-      return NextResponse.json({ error: "Recherche Google Books indisponible." }, { status: 502 });
+      throw new Error("API_ERROR");
+    }
+    return (data.items || []) as any[];
+  };
+
+  const merge = (base: any[], extra: any[]) => {
+    const seen = new Set(base.map((i: any) => i.id));
+    for (const item of extra) {
+      if (!seen.has(item.id)) { seen.add(item.id); base.push(item); }
+    }
+    return base;
+  };
+
+  try {
+    // Passe 1 : éditions françaises en priorité
+    let items = await tryFetch({ q, langRestrict: "fr" });
+
+    // Passe 2 : sans restriction de langue (seuil relevé à 8 pour couvrir plus de cas)
+    if (items.length < 8) {
+      const more = await tryFetch({ q });
+      items = merge(items, more);
     }
 
-    const items: any[] = data.items || [];
-    return NextResponse.json({ results: items.map(mapVolume) });
-  } catch {
+    // Passe 3 : recherche par titre exact (intitle:) si peu de résultats pertinents
+    // Aide beaucoup quand l'utilisateur tape un titre précis (ex: "Le Chant d'Achilles")
+    if (items.length < 5) {
+      const more = await tryFetch({ q: `intitle:${q}` });
+      items = merge(items, more);
+    }
+
+    return NextResponse.json({ results: items.slice(0, 12).map(mapVolume) });
+  } catch (err: any) {
+    if (err?.status === 429 || err?.message === "QUOTA") {
+      return NextResponse.json(
+        { error: "Quota Google Books atteint. Configure GOOGLE_BOOKS_API_KEY sur Vercel pour résoudre ce problème." },
+        { status: 429 }
+      );
+    }
     return NextResponse.json({ error: "Recherche Google Books indisponible." }, { status: 502 });
   }
 }
