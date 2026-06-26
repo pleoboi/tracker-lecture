@@ -4,13 +4,13 @@ import Link from "next/link";
 function SwenaWordmark({ className = "" }: { className?: string }) {
   return (
     <svg viewBox="0 0 308 70" xmlns="http://www.w3.org/2000/svg" className={className}>
-      <g transform="translate(0,6) scale(0.71)" fill="#8b79be">
+      <g transform="translate(0,6) scale(0.71)" className="fill-[#8b79be] dark:fill-[#9b89cf]">
         <path d="M8,68 C2,68 0,64 0,60 C0,52 4,48 12,48 C10,38 16,32 26,32 C24,24 30,18 40,18 C50,18 56,24 58,32 C62,30 70,30 74,36 C82,32 92,38 90,48 C90,56 86,64 78,66 C78,68 76,68 70,68 Z" />
         <path d="M22,17 L22.6,19.4 L25,20 L22.6,20.6 L22,23 L21.4,20.6 L19,20 L21.4,19.4 Z" />
         <path d="M42,2 L42.8,5.2 L46,6 L42.8,6.8 L42,10 L41.2,6.8 L38,6 L41.2,5.2 Z" />
         <path d="M68,15 L68.6,17.4 L71,18 L68.6,18.6 L68,21 L67.4,18.6 L65,18 L67.4,17.4 Z" />
       </g>
-      <text x="87" y="50" fontFamily="Georgia, serif" fontWeight="700" fontSize="50" letterSpacing="-1.2" fill="#2b2733">SWENA</text>
+      <text x="87" y="50" fontFamily="Georgia, serif" fontWeight="700" fontSize="50" letterSpacing="-1.2" className="fill-[#2b2733] dark:fill-[#f0eade]">SWENA</text>
     </svg>
   );
 }
