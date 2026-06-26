@@ -17,7 +17,7 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit: React.FormEventHandler<HTMLFormElement> = async (e) => {
+  const handleSubmit = async (e: React.SyntheticEvent) => {
     e.preventDefault();
     setError(null);
 
@@ -29,21 +29,30 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password, displayName, inviteCode }),
-      });
-      const json = await res.json();
-
-      if (!res.ok) {
-        setError(json.error ?? "Erreur lors de la création du compte.");
+      let res: Response;
+      try {
+        res = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password, displayName, inviteCode }),
+        });
+      } catch {
+        setError("Impossible de joindre le serveur. Vérifie ta connexion internet.");
         setLoading(false);
         return;
       }
 
-      if (json.fallback) {
-        setError("La configuration du serveur est incomplète. Contacte l'administrateur du club.");
+      let json: Record<string, unknown>;
+      try {
+        json = await res.json();
+      } catch {
+        setError(`Erreur serveur (${res.status}). Réessaie dans quelques secondes.`);
+        setLoading(false);
+        return;
+      }
+
+      if (!res.ok) {
+        setError((json.error as string) ?? "Erreur lors de la création du compte.");
         setLoading(false);
         return;
       }
@@ -58,7 +67,7 @@ export default function RegisterPage() {
       router.push("/accueil");
       router.refresh();
     } catch {
-      setError("Impossible de contacter le serveur. Vérifie ta connexion et réessaie.");
+      setError("Erreur inattendue. Réessaie.");
       setLoading(false);
     }
   };
