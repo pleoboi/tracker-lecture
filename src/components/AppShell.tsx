@@ -105,6 +105,40 @@ function relativeTime(dateStr: string): string {
   return `il y a ${Math.floor(days / 30)} mois`;
 }
 
+function SwenaLogo({ size = 28 }: { size?: number }) {
+  return (
+    <span
+      className="flex shrink-0 items-center justify-center rounded-xl"
+      style={{
+        width: size,
+        height: size,
+        background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 55%, #4f46e5 100%)",
+      }}
+    >
+      <svg
+        viewBox="0 0 100 100"
+        width={size * 0.72}
+        height={size * 0.72}
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        {/* Cloud */}
+        <g fill="white" fillOpacity="0.93">
+          <rect x="18" y="58" width="64" height="20" rx="10" />
+          <circle cx="34" cy="56" r="16" />
+          <circle cx="51" cy="48" r="21" />
+          <circle cx="67" cy="54" r="14" />
+        </g>
+        {/* Gold sparkle */}
+        <path d="M58 22 L60.5 15 L63 22 L70 24.5 L63 27 L60.5 34 L58 27 L51 24.5 Z" fill="#fbbf24" />
+        {/* White sparkle left */}
+        <path d="M30 32 L32 26 L34 32 L40 34 L34 36 L32 42 L30 36 L24 34 Z" fill="white" fillOpacity="0.8" />
+        {/* White sparkle small */}
+        <path d="M72 37 L73.5 33 L75 37 L79 38.5 L75 40 L73.5 44 L72 40 L68 38.5 Z" fill="white" fillOpacity="0.65" />
+      </svg>
+    </span>
+  );
+}
+
 function BellIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-[18px] w-[18px]">
@@ -167,8 +201,9 @@ function MobileTopBar({
 }) {
   return (
     <header className="sticky top-0 z-50 flex items-center justify-between border-b border-line bg-paper/90 px-5 py-2.5 backdrop-blur-md md:hidden">
-      <Link href="/accueil" className="font-serif text-[17px] font-black tracking-tight text-ink">
-        Ma Bibliothèque
+      <Link href="/accueil" className="flex items-center gap-2">
+        <SwenaLogo size={30} />
+        <span className="font-serif text-[18px] font-black tracking-wide text-ink">Swena</span>
       </Link>
       <div className="flex items-center gap-2">
         <button
@@ -219,8 +254,9 @@ function TopBar({
   return (
     <header className="sticky top-0 z-50 hidden border-b border-line bg-paper/90 backdrop-blur-md md:block">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-10">
-        <Link href="/accueil" className="font-serif text-lg font-black text-ink">
-          Ma Bibliothèque
+        <Link href="/accueil" className="flex items-center gap-2">
+          <SwenaLogo size={32} />
+          <span className="font-serif text-[18px] font-black tracking-wide text-ink">Swena</span>
         </Link>
 
         <nav className="flex items-center gap-0.5">
@@ -604,7 +640,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     onClick={() => setShowNotif(false)}
                     className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-violet-soft"
                   >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f6e7e1] text-sm">♥</span>
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f6e7e1] dark:bg-[#2a1510] text-sm">♥</span>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[12.5px] font-semibold text-ink">
                         {n.from_name} <span className="font-normal text-muted">a aimé ta critique sur</span>

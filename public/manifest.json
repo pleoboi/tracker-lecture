@@ -1,16 +1,23 @@
 {
-  "name": "Mes Lectures",
-  "short_name": "Lectures",
-  "description": "Tracker personnel de lecture",
+  "name": "Swena",
+  "short_name": "Swena",
+  "description": "Ton club de lecture privé",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#F2F2F7",
-  "theme_color": "#F2F2F7",
+  "background_color": "#1a1720",
+  "theme_color": "#6d28d9",
   "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
     {
       "src": "/icon.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

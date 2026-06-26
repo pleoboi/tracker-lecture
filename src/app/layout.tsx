@@ -18,8 +18,12 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Ma Bibliothèque",
-  description: "Suivi de lecture",
+  title: "Swena",
+  description: "Ton club de lecture privé",
+  icons: {
+    icon: "/icon.svg",
+    apple: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
