@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-function httpsCover(url: string | undefined): string | null {
+function httpsCover(url: string | undefined, zoom = 1): string | null {
   if (!url) return null;
   return url
     .replace(/^http:/, "https:")
     .replace(/&edge=curl/, "")
-    .replace(/&zoom=\d+/, "&zoom=0");
+    .replace(/&zoom=\d+/, `&zoom=${zoom}`);
 }
 
 export async function GET(req: Request) {
@@ -23,44 +23,69 @@ export async function GET(req: Request) {
   const queries = [
     `intitle:"${title}" inauthor:"${surname}"`,
     `intitle:"${title}"`,
+    `${title} ${surname}`,
   ];
 
   const allCovers: string[] = [];
   const seen = new Set<string>();
 
+  // Google Books — zoom=1 (thumbnail fiable) ou zoom=2 (qualité)
   await Promise.allSettled(
     queries.map(async (q) => {
-      const params = new URLSearchParams({
-        q,
-        maxResults: "20",
-        printType: "books",
-      });
+      const params = new URLSearchParams({ q, maxResults: "20", printType: "books" });
       if (key) params.set("key", key);
-
       try {
         const res = await fetch(
           `https://www.googleapis.com/books/v1/volumes?${params.toString()}`,
-          { cache: "no-store" }
+          { next: { revalidate: 86400 } }
         );
         if (!res.ok) return;
         const data = await res.json();
         for (const item of (data.items || []) as any[]) {
           const links = item.volumeInfo?.imageLinks || {};
-          const raw =
-            links.extraLarge ||
-            links.large ||
-            links.medium ||
-            links.thumbnail ||
-            links.smallThumbnail;
-          const coverUrl = httpsCover(raw);
-          if (coverUrl && !seen.has(coverUrl)) {
-            seen.add(coverUrl);
-            allCovers.push(coverUrl);
-          }
+          const rawHigh = links.large || links.medium;
+          const rawLow  = links.thumbnail || links.smallThumbnail;
+          const chosen = httpsCover(rawHigh, 2) || httpsCover(rawLow, 1);
+          if (chosen && !seen.has(chosen)) { seen.add(chosen); allCovers.push(chosen); }
         }
       } catch { /* ignore */ }
     })
   );
 
-  return NextResponse.json({ covers: allCovers.slice(0, 24) });
+  // Open Library — couvertures supplémentaires si < 6 résultats
+  if (allCovers.length < 6) {
+    try {
+      const q = [title, surname].filter(Boolean).join(" ").trim();
+      const olRes = await fetch(
+        `https://openlibrary.org/search.json?q=${encodeURIComponent(q)}&limit=10&fields=cover_i`,
+        { next: { revalidate: 86400 } }
+      );
+      if (olRes.ok) {
+        const olData = await olRes.json();
+        for (const doc of ((olData.docs || []) as { cover_i?: number }[])) {
+          if (doc.cover_i) {
+            const olUrl = `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg`;
+            if (!seen.has(olUrl)) { seen.add(olUrl); allCovers.push(olUrl); }
+          }
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Filtre parallèle HEAD : exclure les images < 4 Ko (placeholders Google "not available")
+  const checked = await Promise.allSettled(
+    allCovers.map(async (coverUrl) => {
+      try {
+        const head = await fetch(coverUrl, { method: "HEAD", cache: "no-store" });
+        const len = parseInt(head.headers.get("content-length") || "0", 10);
+        return len > 4000 || len === 0 ? coverUrl : null; // 0 = pas de Content-Length, on garde
+      } catch { return coverUrl; }
+    })
+  );
+
+  const valid = checked
+    .map((r) => (r.status === "fulfilled" ? r.value : null))
+    .filter(Boolean) as string[];
+
+  return NextResponse.json({ covers: valid.slice(0, 24) });
 }

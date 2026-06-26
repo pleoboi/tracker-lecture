@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     if (key) params.set("key", key);
     const res = await fetch(
       `https://www.googleapis.com/books/v1/volumes?${params.toString()}`,
-      { cache: "no-store" }
+      { next: { revalidate: 3600 } }
     );
     const data = await res.json();
     if (!res.ok) {
@@ -60,10 +60,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ results: items.slice(0, 12).map(mapVolume) });
   } catch (err: any) {
     if (err?.status === 429 || err?.message === "QUOTA") {
-      return NextResponse.json(
-        { error: "Quota Google Books atteint. Configure GOOGLE_BOOKS_API_KEY sur Vercel pour résoudre ce problème." },
-        { status: 429 }
-      );
+      const msg = key
+        ? "Quota Google Books dépassé pour aujourd'hui. La recherche sera rétablie demain automatiquement."
+        : "Quota Google Books atteint. Configure GOOGLE_BOOKS_API_KEY sur Vercel pour débloquer tous les utilisateurs.";
+      return NextResponse.json({ error: msg }, { status: 429 });
     }
     return NextResponse.json({ error: "Recherche Google Books indisponible." }, { status: 502 });
   }
