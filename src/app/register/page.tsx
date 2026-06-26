@@ -28,48 +28,33 @@ export default function RegisterPage() {
 
     setLoading(true);
 
-    try {
-      let res: Response;
-      try {
-        res = await fetch("/api/register", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password, displayName, inviteCode }),
-        });
-      } catch {
-        setError("Impossible de joindre le serveur. Vérifie ta connexion internet.");
-        setLoading(false);
-        return;
-      }
+    const { data, error: signUpErr } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: { display_name: displayName.trim() },
+        emailRedirectTo: `${window.location.origin}/api/auth/callback?next=/accueil`,
+      },
+    });
 
-      let json: Record<string, unknown>;
-      try {
-        json = await res.json();
-      } catch {
-        setError(`Erreur serveur (${res.status}). Réessaie dans quelques secondes.`);
-        setLoading(false);
-        return;
-      }
+    if (signUpErr) {
+      const msg = signUpErr.message.includes("already registered")
+        ? "Un compte existe déjà avec cet email."
+        : signUpErr.message;
+      setError(msg);
+      setLoading(false);
+      return;
+    }
 
-      if (!res.ok) {
-        setError((json.error as string) ?? "Erreur lors de la création du compte.");
-        setLoading(false);
-        return;
-      }
-
-      // Account created without email confirmation — sign in directly
-      await new Promise((r) => setTimeout(r, 600));
-      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
-      if (signInErr) {
-        router.push(`/login?registered=1&email=${encodeURIComponent(email)}`);
-        return;
-      }
+    // Si "Confirm email" est désactivé dans Supabase, la session est disponible immédiatement
+    if (data.session) {
       router.push("/accueil");
       router.refresh();
-    } catch {
-      setError("Erreur inattendue. Réessaie.");
-      setLoading(false);
+      return;
     }
+
+    // Sinon, email de confirmation envoyé
+    router.push(`/email-sent?email=${encodeURIComponent(email)}`);
   };
 
   return (
