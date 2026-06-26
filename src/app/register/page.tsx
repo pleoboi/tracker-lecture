@@ -27,19 +27,52 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+
+    // Try server-side registration (no email confirmation, no rate limit)
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, displayName, inviteCode }),
+      });
+      const json = await res.json();
+
+      if (!res.ok) {
+        setError(json.error ?? "Erreur lors de la création du compte.");
+        setLoading(false);
+        return;
+      }
+
+      if (!json.fallback) {
+        // Account created without email confirmation — sign in directly
+        const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+        if (signInErr) {
+          setError("Compte créé mais connexion automatique échouée. Connecte-toi manuellement.");
+          setLoading(false);
+          return;
+        }
+        router.push("/accueil");
+        router.refresh();
+        return;
+      }
+    } catch {
+      // Network error — fall through to client-side signup
+    }
+
+    // Fallback: client-side signUp with email confirmation (service key absent)
+    const { error: signUpErr } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { display_name: displayName.trim() },
-      },
+      options: { data: { display_name: displayName.trim() } },
     });
 
-    if (error) {
+    if (signUpErr) {
       const msg =
-        error.message === "User already registered"
+        signUpErr.message === "User already registered"
           ? "Un compte existe déjà avec cet email."
-          : error.message;
+          : signUpErr.message.includes("rate limit")
+          ? "Trop de tentatives d'inscription en ce moment. Réessaie dans une heure."
+          : signUpErr.message;
       setError(msg);
       setLoading(false);
       return;
@@ -52,7 +85,7 @@ export default function RegisterPage() {
     <div className="flex min-h-screen items-center justify-center bg-paper px-5 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="font-serif text-4xl font-black text-ink">Ma Bibliothèque</h1>
+          <h1 className="font-serif text-4xl font-black text-ink">Swena</h1>
           <p className="mt-1.5 text-sm text-muted">Rejoins le cercle de lecture</p>
         </div>
 

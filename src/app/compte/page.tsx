@@ -716,6 +716,11 @@ export default function ComptePage() {
   const [bioDraft, setBioDraft] = useState("");
   const [savingBio, setSavingBio] = useState(false);
 
+  // Delete account
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   // Favorites
   const [favoriteIds, setFavoriteIds] = useState<number[]>([]);
   const [favoriteBooks, setFavoriteBooks] = useState<Book[]>([]);
@@ -812,6 +817,28 @@ export default function ComptePage() {
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!userId) return;
+    setDeletingAccount(true);
+    setDeleteError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const res = await fetch("/api/account/delete", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Suppression échouée");
+      await supabase.auth.signOut();
+      router.push("/login");
+      router.refresh();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Suppression échouée");
+      setDeletingAccount(false);
+    }
   };
 
   const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1316,6 +1343,61 @@ export default function ComptePage() {
           >
             Se déconnecter
           </Button>
+
+          <button
+            onClick={() => { setShowDeleteConfirm(true); setDeleteError(null); }}
+            className="w-full rounded-2xl border border-transparent py-2 text-[12px] font-medium text-muted transition-colors hover:text-danger"
+          >
+            Supprimer mon compte
+          </button>
+        </div>
+      )}
+
+      {/* ── Modale suppression compte ── */}
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm sm:items-center"
+          onClick={() => !deletingAccount && setShowDeleteConfirm(false)}
+        >
+          <div
+            className="w-full max-w-sm overflow-hidden rounded-t-3xl bg-paper p-6 sm:rounded-3xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#f6e7e1] text-danger">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                <path d="M10 11v6M14 11v6" />
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+              </svg>
+            </div>
+            <h3 className="font-serif text-lg font-bold text-ink">Supprimer mon compte</h3>
+            <p className="mt-2 text-[13px] leading-relaxed text-ink-2">
+              Cette action est <span className="font-semibold text-danger">irréversible</span>. Tous tes livres, sessions de lecture, statistiques et ton profil seront définitivement supprimés.
+            </p>
+            {deleteError && (
+              <p className="mt-3 rounded-xl border border-[#e7c7bd] bg-[#f6e7e1] px-3 py-2 text-xs font-medium text-danger">
+                {deleteError}
+              </p>
+            )}
+            <div className="mt-5 flex flex-col gap-2">
+              <button
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount}
+                className="w-full rounded-2xl bg-danger py-3 text-[14px] font-semibold text-cream transition-opacity hover:opacity-90 disabled:opacity-50"
+              >
+                {deletingAccount ? "Suppression…" : "Oui, supprimer définitivement"}
+              </button>
+              <Button
+                variant="ghost"
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deletingAccount}
+                className="w-full"
+              >
+                Annuler
+              </Button>
+            </div>
+          </div>
         </div>
       )}
 
