@@ -11,20 +11,22 @@ import { Cover, Pill } from "../../components/ui";
 const DAILY_GOAL = 69;
 const MS_DAY = 86_400_000;
 
-interface DayEntry {
-  ids: number[];
+interface SessionEntry {
+  id: number;
   date: string;
   book: Book | null;
-  totalPages: number;
-  endPage: number;
-  goalReached: boolean;
+  pages_read: number;
+  end_page: number;
+  session_notes: string | null;
+  session_photo_url: string | null;
+  goalReached: boolean; // basé sur le total des pages ce jour-là (tous logs confondus)
 }
 
 export default function JournalPage() {
   const { user } = useAuth();
   const userId = user?.id;
 
-  const [entries, setEntries] = useState<DayEntry[]>([]);
+  const [entries, setEntries] = useState<SessionEntry[]>([]);
   const [weekPages, setWeekPages] = useState(0);
   const [weekDays, setWeekDays] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -39,7 +41,7 @@ export default function JournalPage() {
         .select("*")
         .eq("user_id", userId)
         .order("date", { ascending: false })
-        .order("created_at", { ascending: true }),
+        .order("created_at", { ascending: false }),
       supabase.from("books").select("*").eq("user_id", userId),
     ]);
     if (logErr) {
@@ -50,39 +52,26 @@ export default function JournalPage() {
     const bookList = (books as Book[]) || [];
     const logList = (logs as ReadingLog[]) || [];
 
-    const map = new Map<string, DayEntry>();
-    logList.forEach((log) => {
-      const dateStr = new Date(log.date).toISOString().split("T")[0];
-      const key = `${dateStr}-${log.book_id}`;
-      const existing = map.get(key);
-      if (existing) {
-        existing.ids.push(log.id);
-        existing.totalPages += log.pages_read || 0;
-        existing.endPage = log.end_page || existing.endPage;
-      } else {
-        map.set(key, {
-          ids: [log.id],
-          date: dateStr,
-          book: bookList.find((b) => b.id === log.book_id) || null,
-          totalPages: log.pages_read || 0,
-          endPage: log.end_page || 0,
-          goalReached: false,
-        });
-      }
-    });
-
-    const merged = Array.from(map.values())
-      .map((e) => ({ ...e, goalReached: e.totalPages >= DAILY_GOAL }))
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    const daySet = new Set<string>();
+    // Total journalier pour savoir si l'objectif est atteint ce jour-là
     const dayPages = new Map<string, number>();
     logList.forEach((log) => {
-      const d = new Date(log.date).toISOString().split("T")[0];
-      daySet.add(d);
+      const d = log.date;
       dayPages.set(d, (dayPages.get(d) || 0) + (log.pages_read || 0));
     });
 
+    // Sessions individuelles (pas de regroupement)
+    const sessions: SessionEntry[] = logList.map((log) => ({
+      id: log.id,
+      date: log.date,
+      book: bookList.find((b) => b.id === log.book_id) || null,
+      pages_read: log.pages_read || 0,
+      end_page: log.end_page || 0,
+      session_notes: log.session_notes ?? null,
+      session_photo_url: log.session_photo_url ?? null,
+      goalReached: (dayPages.get(log.date) || 0) >= DAILY_GOAL,
+    }));
+
+    // Stats semaine
     const now = Date.now();
     let wp = 0;
     const wd = new Set<string>();
@@ -93,6 +82,8 @@ export default function JournalPage() {
       }
     });
 
+    // Streak
+    const daySet = new Set(logList.map((l) => l.date));
     let s = 0;
     const cur = new Date();
     cur.setHours(0, 0, 0, 0);
@@ -103,7 +94,7 @@ export default function JournalPage() {
       cur.setTime(cur.getTime() - MS_DAY);
     }
 
-    setEntries(merged);
+    setEntries(sessions);
     setWeekPages(wp);
     setWeekDays(wd.size);
     setStreak(s);
@@ -114,8 +105,8 @@ export default function JournalPage() {
     load();
   }, [load]);
 
-  const deleteEntry = async (ids: number[]) => {
-    await supabase.from("reading_logs").delete().in("id", ids);
+  const deleteEntry = async (id: number) => {
+    await supabase.from("reading_logs").delete().eq("id", id);
     load();
   };
 
@@ -157,7 +148,7 @@ export default function JournalPage() {
         <div className="flex flex-col gap-4">
           {entries.map((e) => (
             <div
-              key={e.ids.join("-")}
+              key={e.id}
               className={`flex flex-col gap-3 rounded-2xl border bg-card p-4 ${
                 e.goalReached ? "border-[#cfe0cf]" : "border-line"
               }`}
@@ -185,17 +176,18 @@ export default function JournalPage() {
                 </div>
                 {e.goalReached && <Pill tone="success">Objectif ✓</Pill>}
                 <button
-                  onClick={() => deleteEntry(e.ids)}
+                  onClick={() => deleteEntry(e.id)}
                   className="text-muted hover:text-danger"
                   aria-label="Supprimer"
                 >
                   ✕
                 </button>
               </div>
+
               <div className="flex gap-2.5">
                 <div
                   className={`flex-1 rounded-xl px-3 py-2.5 ${
-                    e.goalReached ? "bg-[#eaf1ea]" : "bg-violet-soft"
+                    e.goalReached ? "bg-[#eaf1ea] dark:bg-[#162516]" : "bg-violet-soft"
                   }`}
                 >
                   <p
@@ -210,16 +202,33 @@ export default function JournalPage() {
                       e.goalReached ? "text-success" : "text-violet-deep"
                     }`}
                   >
-                    +{e.totalPages}
+                    +{e.pages_read}
                   </p>
                 </div>
-                <div className="flex-1 rounded-xl bg-[#f4f0e8] px-3 py-2.5">
+                <div className="flex-1 rounded-xl bg-input px-3 py-2.5">
                   <p className="text-[9.5px] font-medium uppercase tracking-wide text-muted">
                     Arrêté page
                   </p>
-                  <p className="font-serif text-lg font-black text-ink">{e.endPage}</p>
+                  <p className="font-serif text-lg font-black text-ink">{e.end_page}</p>
                 </div>
               </div>
+
+              {e.session_notes && (
+                <p className="rounded-xl bg-violet-soft px-3 py-2.5 font-serif text-[12.5px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
+                  « {e.session_notes} »
+                </p>
+              )}
+
+              {e.session_photo_url && (
+                <a href={e.session_photo_url} target="_blank" rel="noopener noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={e.session_photo_url}
+                    alt="Photo de session"
+                    className="h-36 w-full rounded-xl object-cover"
+                  />
+                </a>
+              )}
             </div>
           ))}
         </div>

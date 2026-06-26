@@ -21,7 +21,6 @@ const VIOLET = "var(--color-violet)";
 const VIOLET_LT = "#d8cfe6";
 const VIOLET_DEEP = "var(--color-violet-deep)";
 const FRIEND_COLOR = "#e07246";
-const MEMBER_COLORS = ["#e07246", "#2e9e6e", "#3a7dc9", "#d4902a", "#a8558a"];
 
 function GoalSetupCard({ label, onSet }: { label: string; onSet: (v: number) => void }) {
   const [value, setValue] = useState("");
@@ -80,10 +79,6 @@ export default function DashboardPage() {
   const [showAllAuthors, setShowAllAuthors] = useState(false);
   const [showPodium, setShowPodium] = useState(false);
 
-  const [mutualPagesPerMember, setMutualPagesPerMember] = useState<FriendLine[]>([]);
-  const [mutualBooksPerMember, setMutualBooksPerMember] = useState<FriendLine[]>([]);
-  const [hasMutuals, setHasMutuals] = useState(false);
-
   const [mutualProfiles, setMutualProfiles] = useState<{ id: string; name: string }[]>([]);
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
   const [friendName, setFriendName] = useState("");
@@ -135,54 +130,6 @@ export default function DashboardPage() {
     };
     load();
   }, [userId]);
-
-  useEffect(() => {
-    if (!userId || !isYTD) {
-      setMutualPagesPerMember([]); setMutualBooksPerMember([]); setHasMutuals(false);
-      return;
-    }
-    const loadMutuals = async () => {
-      const { data: myFollowsData } = await supabase.from("user_follows").select("following_id").eq("follower_id", userId);
-      const followingIds = ((myFollowsData || []) as { following_id: string }[]).map((f) => f.following_id);
-      if (!followingIds.length) { setHasMutuals(false); return; }
-      const { data: mutualCheck } = await supabase.from("user_follows").select("follower_id").eq("following_id", userId).in("follower_id", followingIds);
-      const mutualIds = [...new Set(((mutualCheck || []) as { follower_id: string }[]).map((f) => f.follower_id))];
-      if (!mutualIds.length) { setHasMutuals(false); return; }
-      setHasMutuals(true);
-
-      const currentYear = now.getFullYear();
-      const [{ data: mLogs }, { data: mProfs }, { data: mBooks }] = await Promise.all([
-        supabase.from("reading_logs").select("user_id, pages_read, date, book_id").in("user_id", mutualIds).gte("date", `${currentYear}-01-01`).lte("date", `${currentYear}-12-31`),
-        supabase.from("user_profiles").select("id, display_name").in("id", mutualIds),
-        supabase.from("books").select("id, user_id, status, date_read").in("user_id", mutualIds).eq("status", "completed"),
-      ]);
-      type LR = { user_id: string; pages_read: number; date: string; book_id?: string | null };
-      type PR = { id: string; display_name: string };
-      type BR = { id: string; user_id: string; status: string; date_read: string | null };
-
-      const allL = (mLogs as LR[]) || [];
-      const profMap = new Map(((mProfs as PR[]) || []).map((p) => [p.id, p.display_name]));
-      const allB = (mBooks as BR[]) || [];
-      const shownIds = mutualIds.slice(0, 4);
-
-      setMutualPagesPerMember(shownIds.map((id, idx) => {
-        const mo = Array(12).fill(0);
-        allL.filter((l) => l.user_id === id).forEach((l) => { mo[new Date(l.date + "T00:00:00").getMonth()] += l.pages_read || 0; });
-        return { name: profMap.get(id) || "Membre", color: MEMBER_COLORS[idx % MEMBER_COLORS.length], data: mo.map((v, i) => ({ name: MONTHS[i], value: v })) };
-      }));
-
-      setMutualBooksPerMember(shownIds.map((id, idx) => {
-        const mo = Array(12).fill(0);
-        allB.filter((b) => b.user_id === id).forEach((book) => {
-          let cs: string | null = book.date_read;
-          if (!cs) { const last = allL.filter((l) => l.user_id === id && l.book_id === book.id).sort((a, b) => b.date.localeCompare(a.date))[0]; if (last) cs = last.date; }
-          if (cs && cs.startsWith(String(currentYear))) mo[new Date(cs + "T00:00:00").getMonth()]++;
-        });
-        return { name: profMap.get(id) || "Membre", color: MEMBER_COLORS[idx % MEMBER_COLORS.length], data: mo.map((v, i) => ({ name: MONTHS[i], value: v })) };
-      }));
-    };
-    loadMutuals();
-  }, [userId, isYTD]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!selectedFriendId) { setFriendLogs([]); setFriendBooks([]); setFriendName(""); return; }
@@ -319,22 +266,14 @@ export default function DashboardPage() {
     ? mkDailyFriend(friendDayBooks)
     : chartMonths.map(({ name, m }) => ({ name, value: friendBooksByMonth[m] }));
 
-  const mutualPagesSliced = mutualPagesPerMember.map((fl) => ({
-    ...fl,
-    data: chartMonths.map(({ m }) => fl.data[m] ?? { name: MONTHS[m], value: 0 }),
-  }));
-  const mutualBooksSliced = mutualBooksPerMember.map((fl) => ({
-    ...fl,
-    data: chartMonths.map(({ m }) => fl.data[m] ?? { name: MONTHS[m], value: 0 }),
-  }));
-
+  // Solo par défaut : lignes d'amis uniquement quand un ami est explicitement sélectionné
   const activePagesLines: FriendLine[] | undefined = selectedFriendId
     ? [{ name: friendName || "Ami", color: FRIEND_COLOR, data: friendPageLineData }]
-    : isYTD && hasMutuals && mutualPagesSliced.length > 0 ? mutualPagesSliced : undefined;
+    : undefined;
 
   const activeBooksLines: FriendLine[] | undefined = selectedFriendId
     ? [{ name: friendName || "Ami", color: FRIEND_COLOR, data: friendBooksLineData }]
-    : isYTD && hasMutuals && mutualBooksSliced.length > 0 ? mutualBooksSliced : undefined;
+    : undefined;
 
   const currentMonthIdx = isYTD ? chartMonths.findIndex(({ m }) => m === now.getMonth()) : -1;
 
@@ -398,7 +337,7 @@ export default function DashboardPage() {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatCard label={`Pages ${periodLabel}`} value={totalPages.toLocaleString("fr-FR")} accent="#2b2733"
+            <StatCard label={`Pages ${periodLabel}`} value={totalPages.toLocaleString("fr-FR")} accent="var(--color-ink)"
               vs={selectedFriendId ? { label: friendName, value: friendTotalPages.toLocaleString("fr-FR") } : undefined} />
             <StatCard label={`Livres ${periodLabel}`} value={String(totalBooks)}
               unit={isYTD && goals.reading_books_year !== null ? `/ ${goals.reading_books_year}` : undefined} accent={VIOLET_DEEP}
@@ -409,29 +348,45 @@ export default function DashboardPage() {
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <ObjectiveChart title="Pages lues" type="area" data={chartPagesData}
+            <ObjectiveChart key={`pages-${selectedFriendId ?? "solo"}`} title="Pages lues" type="area" data={chartPagesData}
               objective={isYTD && goals.reading_pages_year !== null ? Math.round(goals.reading_pages_year / 12) : null}
               unit="p." color={VIOLET} lightColor={VIOLET_LT} currentMonth={currentMonthIdx}
               onObjectiveChange={isYTD && goals.reading_pages_year !== null ? (v) => setGoal("reading_pages_year", v * 12) : undefined}
               friendLines={activePagesLines} />
-            <ObjectiveChart title="Livres lus" type="area" data={chartBooksData}
+            <ObjectiveChart key={`books-${selectedFriendId ?? "solo"}`} title="Livres lus" type="area" data={chartBooksData}
               objective={isYTD && goals.reading_books_year !== null ? Math.max(1, Math.round(goals.reading_books_year / 12)) : null}
               unit="livres" color={VIOLET_DEEP} lightColor={VIOLET_LT} currentMonth={currentMonthIdx}
               onObjectiveChange={isYTD && goals.reading_books_year !== null ? (v) => setGoal("reading_books_year", v * 12) : undefined}
               friendLines={activeBooksLines} />
           </div>
 
-          <button onClick={() => setShowPodium(true)}
-            className="flex w-full items-center gap-4 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-4 text-left transition-colors hover:border-gold/70">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-gold/15 text-2xl">🏆</span>
-            <div className="min-w-0 flex-1">
-              <p className="font-serif text-[15px] font-semibold text-ink">Trophées Champion du jour</p>
-              <p className="text-xs text-muted">Jours où tu as lu le plus de pages parmi tous les membres</p>
-            </div>
-            <div className="text-right">
-              <p className="font-serif text-3xl font-black text-[#b8890a]">{championDays}</p>
-              <p className="text-[11px] font-medium text-muted">{championDays > 1 ? "jours" : "jour"}</p>
-              <p className="mt-0.5 text-[9.5px] text-muted/70">Voir le podium →</p>
+          <button
+            onClick={() => setShowPodium(true)}
+            className="relative w-full overflow-hidden rounded-2xl p-4 text-left shadow-md transition-opacity hover:opacity-90"
+            style={{ background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 55%, #4f46e5 100%)" }}
+          >
+            <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10" />
+            <div className="pointer-events-none absolute -bottom-5 right-10 h-20 w-20 rounded-full bg-white/5" />
+            <div className="relative flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/15">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fde68a" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+                  <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+                  <path d="M4 22h16" />
+                  <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+                  <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+                  <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-serif text-[15px] font-semibold text-white/90">Trophées Champion du jour</p>
+                <p className="text-xs text-white/55">Jours où tu as lu le plus de pages parmi tous les membres</p>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="font-serif text-3xl font-black text-yellow-200">{championDays}</p>
+                <p className="text-[11px] font-medium text-white/60">{championDays > 1 ? "jours" : "jour"}</p>
+                <p className="mt-0.5 text-[9.5px] text-white/40">Voir le podium →</p>
+              </div>
             </div>
           </button>
 

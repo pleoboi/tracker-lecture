@@ -487,19 +487,35 @@ export default function MembrePage() {
 
       {/* Trophée Champion du jour */}
       {championDays > 0 && (
-        <div className="flex items-center gap-3 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-3.5">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gold/15 text-xl">
-            🏆
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold text-ink">
-              {isOwn ? "Tes trophées Champion du jour" : "Trophées Champion du jour"}
-            </p>
-            <p className="text-[11px] text-muted">Jours où {isOwn ? "tu as" : profile.display_name + " a"} lu le plus de pages</p>
-          </div>
-          <div className="text-right">
-            <p className="font-serif text-2xl font-black text-[#b8890a]">{championDays}</p>
-            <p className="text-[10.5px] font-medium text-muted">{championDays > 1 ? "jours" : "jour"}</p>
+        <div
+          className="relative overflow-hidden rounded-2xl p-4 shadow-md"
+          style={{ background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 55%, #4f46e5 100%)" }}
+        >
+          <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10" />
+          <div className="pointer-events-none absolute -bottom-5 right-10 h-20 w-20 rounded-full bg-white/5" />
+          <div className="relative flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fde68a" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+                <path d="M4 22h16" />
+                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+                <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
+              </svg>
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-semibold text-white/90">
+                {isOwn ? "Tes trophées Champion du jour" : "Trophées Champion du jour"}
+              </p>
+              <p className="text-[11px] text-white/55">
+                Jours où {isOwn ? "tu as" : profile.display_name + " a"} lu le plus de pages
+              </p>
+            </div>
+            <div className="shrink-0 text-right">
+              <p className="font-serif text-2xl font-black text-yellow-200">{championDays}</p>
+              <p className="text-[10.5px] font-medium text-white/60">{championDays > 1 ? "jours" : "jour"}</p>
+            </div>
           </div>
         </div>
       )}

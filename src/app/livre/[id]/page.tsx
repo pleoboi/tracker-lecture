@@ -399,23 +399,12 @@ export default function BookDetailPage() {
     load();
   };
 
-  // Groupement des logs par jour
-  const groupedLogs = (() => {
-    const map = new Map<string, ReadingLog>();
-    [...logs].reverse().forEach((log) => {
-      const key = log.date;
-      if (!map.has(key)) {
-        map.set(key, { ...log });
-      } else {
-        const existing = map.get(key)!;
-        existing.pages_read += log.pages_read;
-        existing.end_page = Math.max(existing.end_page, log.end_page);
-        if (!existing.session_notes && log.session_notes) existing.session_notes = log.session_notes;
-        if (!existing.session_photo_url && log.session_photo_url) existing.session_photo_url = log.session_photo_url;
-      }
-    });
-    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
-  })();
+  // Sessions individuelles triées par date desc, puis created_at desc
+  const groupedLogs = [...logs].sort((a, b) => {
+    const d = b.date.localeCompare(a.date);
+    if (d !== 0) return d;
+    return (b.created_at ?? "").localeCompare(a.created_at ?? "");
+  });
 
   // activeBook = copie de l'user (myBook si navigué depuis un autre profil, book sinon)
   const activeBook = myBook ?? (book?.user_id === userId ? book : null);
@@ -885,21 +874,18 @@ export default function BookDetailPage() {
           )}
         </div>}
 
-        {/* Sessions de lecture — groupées par jour */}
+        {/* Sessions de lecture — individuelles */}
         {groupedLogs.length > 0 && (
           <div className="flex flex-col gap-3">
             <h2 className="font-serif text-[15px] font-medium text-ink">
               Mes sessions{" "}
               <span className="font-sans text-xs font-normal text-muted">
-                ({logs.length}
-                {groupedLogs.length < logs.length
-                  ? ` · ${groupedLogs.length} jour${groupedLogs.length > 1 ? "s" : ""}`
-                  : ""})
+                ({logs.length})
               </span>
             </h2>
             {groupedLogs.map((log) => (
               <div
-                key={log.date}
+                key={log.id}
                 className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3.5"
               >
                 <div className="flex flex-1 flex-col gap-2.5">

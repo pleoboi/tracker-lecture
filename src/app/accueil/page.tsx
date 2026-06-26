@@ -169,28 +169,8 @@ export default function AccueilPage() {
     let enriched: ActivityLog[] = [];
 
     if (logs.length > 0) {
-      // ── Agrégation des logs du même jour pour le même livre (même user) ──
-      const logGroupMap = new Map<string, ReadingLog[]>();
-      logs.forEach((l) => {
-        const key = `${l.user_id}_${l.book_id}_${l.date}`;
-        if (!logGroupMap.has(key)) logGroupMap.set(key, []);
-        logGroupMap.get(key)!.push(l);
-      });
-      const aggregatedLogs: ReadingLog[] = Array.from(logGroupMap.values()).map((group) => {
-        if (group.length === 1) return group[0];
-        return {
-          ...group[0],
-          id: group[group.length - 1].id,
-          pages_read: group.reduce((s, l) => s + l.pages_read, 0),
-          end_page: Math.max(...group.map((l) => l.end_page)),
-          created_at: group.reduce(
-            (max, l) => ((l.created_at ?? "") > (max ?? "") ? l.created_at : max),
-            group[0].created_at
-          ),
-        };
-      });
-      // Tri par date réelle DESC, puis created_at DESC pour les égalités du même jour
-      aggregatedLogs.sort((a, b) => {
+      // ── Sessions individuelles — pas d'agrégation, chaque log est affiché ──
+      const aggregatedLogs: ReadingLog[] = [...logs].sort((a, b) => {
         const d = (b.date ?? "").localeCompare(a.date ?? "");
         if (d !== 0) return d;
         return (b.created_at ?? "").localeCompare(a.created_at ?? "");
