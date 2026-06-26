@@ -164,14 +164,12 @@ export default function DecouvertePage() {
   const [webTarget, setWebTarget] = useState<BookRef | null>(null);
   const [wishlistIds, setWishlistIds] = useState<Set<string>>(new Set());
 
-  const addToWishlist = async (r: BookSuggestion) => {
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+
+  const quickAddBook = async (r: BookSuggestion, status: "to-read" | "completed") => {
     if (!user) return;
     const { data: existing } = await supabase
-      .from("books")
-      .select("id")
-      .eq("user_id", user.id)
-      .ilike("title", r.title)
-      .limit(1);
+      .from("books").select("id").eq("user_id", user.id).ilike("title", r.title).limit(1);
     if (existing && existing.length > 0) {
       setToast("Ce livre est déjà dans ta bibliothèque.");
       setTimeout(() => setToast(null), 3000);
@@ -182,7 +180,7 @@ export default function DecouvertePage() {
       author: r.author || "Auteur inconnu",
       pages: 0,
       progress: 0,
-      status: "to-read",
+      status,
       cover_url: r.coverUrl ?? null,
       genre: r.genre ?? null,
       published_year: r.year ?? null,
@@ -191,11 +189,18 @@ export default function DecouvertePage() {
       user_id: user.id,
     });
     if (!error) {
-      setWishlistIds((prev) => new Set([...prev, r.googleId]));
-      setToast("« " + r.title + " » ajouté à ta liste Envie de lire.");
+      if (status === "to-read") {
+        setWishlistIds((prev) => new Set([...prev, r.googleId]));
+        setToast(`« ${r.title} » ajouté à ta liste Envie de lire.`);
+      } else {
+        setCompletedIds((prev) => new Set([...prev, r.googleId]));
+        setToast(`« ${r.title} » ajouté à tes livres terminés.`);
+      }
       setTimeout(() => setToast(null), 3500);
     }
   };
+
+  const addToWishlist = (r: BookSuggestion) => quickAddBook(r, "to-read");
 
   const loadBooks = useCallback(async () => {
     try {
@@ -641,6 +646,20 @@ export default function DecouvertePage() {
                       <div className="flex shrink-0 flex-col items-end gap-1.5">
                         <button
                           type="button"
+                          onClick={() => quickAddBook(r, "completed")}
+                          title="Marquer comme terminé"
+                          className={`flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
+                            completedIds.has(r.googleId)
+                              ? "border-success bg-success text-cream"
+                              : "border-success/40 bg-white/60 text-success hover:bg-success hover:text-cream"
+                          }`}
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
                           onClick={() => addToWishlist(r)}
                           title="Envie de lire"
                           className={`flex h-7 w-7 items-center justify-center rounded-full border transition-colors ${
@@ -649,13 +668,10 @@ export default function DecouvertePage() {
                               : "border-violet/40 bg-white/60 text-violet-deep hover:bg-violet hover:text-cream"
                           }`}
                         >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill={wishlistIds.has(r.googleId) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill={wishlistIds.has(r.googleId) ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
                           </svg>
                         </button>
-                        <span className="rounded-xl border border-violet/40 bg-violet-soft px-2 py-1 text-[10px] font-semibold text-violet-deep">
-                          Voir
-                        </span>
                       </div>
                     </div>
                   ))}
@@ -679,6 +695,10 @@ export default function DecouvertePage() {
         <RecoDetailModal
           suggestion={selectedReco}
           onClose={() => setSelectedReco(null)}
+          onQuickAdd={(status) => {
+            quickAddBook(selectedReco, status);
+            setSelectedReco(null);
+          }}
           onAddToLibrary={(ref) => {
             setAddFromReco({ ref, googleId: selectedReco.googleId });
             setSelectedReco(null);
@@ -726,10 +746,12 @@ export default function DecouvertePage() {
 function RecoDetailModal({
   suggestion: s,
   onClose,
+  onQuickAdd,
   onAddToLibrary,
 }: {
   suggestion: BookSuggestion;
   onClose: () => void;
+  onQuickAdd: (status: "to-read" | "completed") => void;
   onAddToLibrary: (ref: BookRef) => void;
 }) {
   useEffect(() => {
@@ -801,22 +823,44 @@ function RecoDetailModal({
           )}
         </div>
 
-        <button
-          onClick={() =>
-            onAddToLibrary({
-              title: s.title,
-              author: s.author,
-              pages: 0,
-              cover_url: s.coverUrl,
-              genre: s.genre,
-              published_year: s.year,
-              summary: s.summary,
-            })
-          }
-          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-violet/40 bg-violet-soft py-3 text-sm font-semibold text-violet-deep transition-colors hover:bg-violet hover:text-cream"
-        >
-          + Ajouter à mes lectures
-        </button>
+        <div className="mt-5 flex flex-col gap-2">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => onQuickAdd("completed")}
+              className="flex items-center justify-center gap-1.5 rounded-2xl bg-[#eaf1ea] py-3 text-[13px] font-semibold text-success transition-colors hover:bg-success hover:text-cream"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+              Terminé
+            </button>
+            <button
+              onClick={() => onQuickAdd("to-read")}
+              className="flex items-center justify-center gap-1.5 rounded-2xl bg-violet-soft py-3 text-[13px] font-semibold text-violet-deep transition-colors hover:bg-violet hover:text-cream"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
+              </svg>
+              Envie de lire
+            </button>
+          </div>
+          <button
+            onClick={() =>
+              onAddToLibrary({
+                title: s.title,
+                author: s.author,
+                pages: 0,
+                cover_url: s.coverUrl,
+                genre: s.genre,
+                published_year: s.year,
+                summary: s.summary,
+              })
+            }
+            className="w-full rounded-2xl border border-line py-2.5 text-[12px] font-medium text-muted transition-colors hover:border-violet/40 hover:text-ink"
+          >
+            Personnaliser l'ajout…
+          </button>
+        </div>
       </div>
     </div>
   );
