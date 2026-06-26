@@ -43,6 +43,8 @@ interface ActivityLog extends ReadingLog {
   bookRating?: number | null;
   bookReview?: string | null;
   eventType?: "start"; // undefined = session normale
+  allNotes?: string[];  // toutes les notes de session du jour pour ce livre
+  allPhotos?: string[]; // toutes les photos du jour pour ce livre
 }
 
 interface Champion {
@@ -169,8 +171,28 @@ export default function AccueilPage() {
     let enriched: ActivityLog[] = [];
 
     if (logs.length > 0) {
-      // ── Sessions individuelles — pas d'agrégation, chaque log est affiché ──
-      const aggregatedLogs: ReadingLog[] = [...logs].sort((a, b) => {
+      // ── Groupement par user+livre+jour : cumul pages, toutes notes/photos réunies ──
+      const logGroupMap = new Map<string, ReadingLog & { allNotes: string[]; allPhotos: string[] }>();
+      [...logs]
+        .sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? "")) // chrono asc pour collecter dans l'ordre
+        .forEach((l) => {
+          const key = `${l.user_id}_${l.book_id}_${l.date}`;
+          if (!logGroupMap.has(key)) {
+            logGroupMap.set(key, {
+              ...l,
+              allNotes: l.session_notes ? [l.session_notes] : [],
+              allPhotos: l.session_photo_url ? [l.session_photo_url] : [],
+            });
+          } else {
+            const e = logGroupMap.get(key)!;
+            e.pages_read += l.pages_read || 0;
+            e.end_page = Math.max(e.end_page, l.end_page);
+            e.created_at = l.created_at; // garde le plus récent
+            if (l.session_notes) e.allNotes.push(l.session_notes);
+            if (l.session_photo_url) e.allPhotos.push(l.session_photo_url);
+          }
+        });
+      const aggregatedLogs = Array.from(logGroupMap.values()).sort((a, b) => {
         const d = (b.date ?? "").localeCompare(a.date ?? "");
         if (d !== 0) return d;
         return (b.created_at ?? "").localeCompare(a.created_at ?? "");
@@ -223,6 +245,8 @@ export default function AccueilPage() {
             isCompletion,
             bookRating: isCompletion ? (bk.rating ?? null) : null,
             bookReview: isCompletion ? (bk.notes ?? null) : null,
+            allNotes: (log as any).allNotes ?? [],
+            allPhotos: (log as any).allPhotos ?? [],
           };
         })
         .filter(Boolean) as ActivityLog[];
@@ -657,7 +681,7 @@ function ActivityCarouselItem({
     : (children: React.ReactNode) => <div className="flex items-center gap-1.5 overflow-hidden">{children}</div>;
 
   const hasReview = !!log.bookReview;
-  const hasSessionNote = !!log.session_notes;
+  const hasSessionNote = (log.allNotes?.length ?? 0) > 0 || !!log.session_notes;
 
   return (
     <div className="flex w-[128px] shrink-0 flex-col gap-2">
@@ -726,7 +750,14 @@ function ActivityCarouselItem({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onNoteClick?.("session", log.session_notes!, log.session_photo_url ?? null, log.date, log.bookId, log.user_id!, log.bookTitle);
+                  onNoteClick?.(
+                    "session",
+                    (log.allNotes && log.allNotes.length > 1)
+                      ? log.allNotes.join("\n\n— \n\n")
+                      : (log.allNotes?.[0] ?? log.session_notes ?? ""),
+                    log.allPhotos?.[0] ?? log.session_photo_url ?? null,
+                    log.date, log.bookId, log.user_id!, log.bookTitle
+                  );
                 }}
                 className="flex h-[18px] w-[18px] items-center justify-center rounded bg-violet-soft text-[9px] font-bold text-violet-deep"
                 title="Voir la note de session"

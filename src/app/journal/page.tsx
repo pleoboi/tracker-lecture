@@ -11,22 +11,22 @@ import { Cover, Pill } from "../../components/ui";
 const DAILY_GOAL = 69;
 const MS_DAY = 86_400_000;
 
-interface SessionEntry {
-  id: number;
+interface DayEntry {
+  ids: number[];
   date: string;
   book: Book | null;
-  pages_read: number;
-  end_page: number;
-  session_notes: string | null;
-  session_photo_url: string | null;
-  goalReached: boolean; // basé sur le total des pages ce jour-là (tous logs confondus)
+  totalPages: number;
+  endPage: number;
+  goalReached: boolean;
+  notes: string[];   // toutes les notes de session du jour (dans l'ordre)
+  photos: string[];  // toutes les photos du jour (dans l'ordre)
 }
 
 export default function JournalPage() {
   const { user } = useAuth();
   const userId = user?.id;
 
-  const [entries, setEntries] = useState<SessionEntry[]>([]);
+  const [entries, setEntries] = useState<DayEntry[]>([]);
   const [weekPages, setWeekPages] = useState(0);
   const [weekDays, setWeekDays] = useState(0);
   const [streak, setStreak] = useState(0);
@@ -41,7 +41,7 @@ export default function JournalPage() {
         .select("*")
         .eq("user_id", userId)
         .order("date", { ascending: false })
-        .order("created_at", { ascending: false }),
+        .order("created_at", { ascending: true }), // chronologique dans la journée
       supabase.from("books").select("*").eq("user_id", userId),
     ]);
     if (logErr) {
@@ -52,26 +52,51 @@ export default function JournalPage() {
     const bookList = (books as Book[]) || [];
     const logList = (logs as ReadingLog[]) || [];
 
-    // Total journalier pour savoir si l'objectif est atteint ce jour-là
+    // Groupement par date+livre : cumul pages, toutes notes/photos conservées
+    const map = new Map<string, DayEntry>();
+    logList.forEach((log) => {
+      const dateStr = log.date;
+      const key = `${dateStr}-${log.book_id}`;
+      const existing = map.get(key);
+      if (existing) {
+        existing.ids.push(log.id);
+        existing.totalPages += log.pages_read || 0;
+        existing.endPage = log.end_page || existing.endPage;
+        if (log.session_notes) existing.notes.push(log.session_notes);
+        if (log.session_photo_url) existing.photos.push(log.session_photo_url);
+      } else {
+        map.set(key, {
+          ids: [log.id],
+          date: dateStr,
+          book: bookList.find((b) => b.id === log.book_id) || null,
+          totalPages: log.pages_read || 0,
+          endPage: log.end_page || 0,
+          goalReached: false,
+          notes: log.session_notes ? [log.session_notes] : [],
+          photos: log.session_photo_url ? [log.session_photo_url] : [],
+        });
+      }
+    });
+
+    // Total journalier (tous livres confondus) pour goalReached
+    const dayTotalPages = new Map<string, number>();
+    logList.forEach((log) => {
+      dayTotalPages.set(log.date, (dayTotalPages.get(log.date) || 0) + (log.pages_read || 0));
+    });
+
+    const merged = Array.from(map.values())
+      .map((e) => ({ ...e, goalReached: (dayTotalPages.get(e.date) || 0) >= DAILY_GOAL }))
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    // Stats semaine
+    const daySet = new Set<string>();
     const dayPages = new Map<string, number>();
     logList.forEach((log) => {
       const d = log.date;
+      daySet.add(d);
       dayPages.set(d, (dayPages.get(d) || 0) + (log.pages_read || 0));
     });
 
-    // Sessions individuelles (pas de regroupement)
-    const sessions: SessionEntry[] = logList.map((log) => ({
-      id: log.id,
-      date: log.date,
-      book: bookList.find((b) => b.id === log.book_id) || null,
-      pages_read: log.pages_read || 0,
-      end_page: log.end_page || 0,
-      session_notes: log.session_notes ?? null,
-      session_photo_url: log.session_photo_url ?? null,
-      goalReached: (dayPages.get(log.date) || 0) >= DAILY_GOAL,
-    }));
-
-    // Stats semaine
     const now = Date.now();
     let wp = 0;
     const wd = new Set<string>();
@@ -83,7 +108,6 @@ export default function JournalPage() {
     });
 
     // Streak
-    const daySet = new Set(logList.map((l) => l.date));
     let s = 0;
     const cur = new Date();
     cur.setHours(0, 0, 0, 0);
@@ -94,7 +118,7 @@ export default function JournalPage() {
       cur.setTime(cur.getTime() - MS_DAY);
     }
 
-    setEntries(sessions);
+    setEntries(merged);
     setWeekPages(wp);
     setWeekDays(wd.size);
     setStreak(s);
@@ -105,8 +129,8 @@ export default function JournalPage() {
     load();
   }, [load]);
 
-  const deleteEntry = async (id: number) => {
-    await supabase.from("reading_logs").delete().eq("id", id);
+  const deleteEntry = async (ids: number[]) => {
+    await supabase.from("reading_logs").delete().in("id", ids);
     load();
   };
 
@@ -148,7 +172,7 @@ export default function JournalPage() {
         <div className="flex flex-col gap-4">
           {entries.map((e) => (
             <div
-              key={e.id}
+              key={e.ids.join("-")}
               className={`flex flex-col gap-3 rounded-2xl border bg-card p-4 ${
                 e.goalReached ? "border-[#cfe0cf]" : "border-line"
               }`}
@@ -172,11 +196,16 @@ export default function JournalPage() {
                   </h2>
                   <p className="text-[11.5px] capitalize text-muted">
                     {formatDateLong(e.date)}
+                    {e.ids.length > 1 && (
+                      <span className="ml-1.5 rounded-full bg-violet-soft px-1.5 py-0.5 text-[9.5px] font-semibold text-violet-deep">
+                        {e.ids.length} sessions
+                      </span>
+                    )}
                   </p>
                 </div>
                 {e.goalReached && <Pill tone="success">Objectif ✓</Pill>}
                 <button
-                  onClick={() => deleteEntry(e.id)}
+                  onClick={() => deleteEntry(e.ids)}
                   className="text-muted hover:text-danger"
                   aria-label="Supprimer"
                 >
@@ -202,33 +231,44 @@ export default function JournalPage() {
                       e.goalReached ? "text-success" : "text-violet-deep"
                     }`}
                   >
-                    +{e.pages_read}
+                    +{e.totalPages}
                   </p>
                 </div>
                 <div className="flex-1 rounded-xl bg-input px-3 py-2.5">
                   <p className="text-[9.5px] font-medium uppercase tracking-wide text-muted">
                     Arrêté page
                   </p>
-                  <p className="font-serif text-lg font-black text-ink">{e.end_page}</p>
+                  <p className="font-serif text-lg font-black text-ink">{e.endPage}</p>
                 </div>
               </div>
 
-              {e.session_notes && (
-                <p className="rounded-xl bg-violet-soft px-3 py-2.5 font-serif text-[12.5px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
-                  « {e.session_notes} »
+              {/* Toutes les notes de session du jour, dans l'ordre */}
+              {e.notes.map((note, i) => (
+                <p
+                  key={i}
+                  className="rounded-xl bg-violet-soft px-3 py-2.5 font-serif text-[12.5px] italic leading-relaxed text-ink"
+                  style={{ whiteSpace: "pre-line" }}
+                >
+                  {e.notes.length > 1 && (
+                    <span className="not-italic text-[9.5px] font-semibold uppercase tracking-wide text-violet-deep block mb-1">
+                      Note {i + 1}
+                    </span>
+                  )}
+                  « {note} »
                 </p>
-              )}
+              ))}
 
-              {e.session_photo_url && (
-                <a href={e.session_photo_url} target="_blank" rel="noopener noreferrer">
+              {/* Toutes les photos du jour */}
+              {e.photos.map((url, i) => (
+                <a key={i} href={url} target="_blank" rel="noopener noreferrer">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    src={e.session_photo_url}
+                    src={url}
                     alt="Photo de session"
                     className="h-36 w-full rounded-xl object-cover"
                   />
                 </a>
-              )}
+              ))}
             </div>
           ))}
         </div>

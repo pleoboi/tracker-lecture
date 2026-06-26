@@ -399,12 +399,28 @@ export default function BookDetailPage() {
     load();
   };
 
-  // Sessions individuelles triées par date desc, puis created_at desc
-  const groupedLogs = [...logs].sort((a, b) => {
-    const d = b.date.localeCompare(a.date);
-    if (d !== 0) return d;
-    return (b.created_at ?? "").localeCompare(a.created_at ?? "");
-  });
+  // Groupement par jour : pages cumulées, toutes les notes/photos du jour conservées
+  const groupedLogs = (() => {
+    const map = new Map<string, ReadingLog & { extraNotes: string[]; extraPhotos: string[] }>();
+    [...logs]
+      .sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""))
+      .forEach((log) => {
+        if (!map.has(log.date)) {
+          map.set(log.date, {
+            ...log,
+            extraNotes: log.session_notes ? [log.session_notes] : [],
+            extraPhotos: log.session_photo_url ? [log.session_photo_url] : [],
+          });
+        } else {
+          const e = map.get(log.date)!;
+          e.pages_read += log.pages_read;
+          e.end_page = Math.max(e.end_page, log.end_page);
+          if (log.session_notes) e.extraNotes.push(log.session_notes);
+          if (log.session_photo_url) e.extraPhotos.push(log.session_photo_url);
+        }
+      });
+    return Array.from(map.values()).sort((a, b) => b.date.localeCompare(a.date));
+  })();
 
   // activeBook = copie de l'user (myBook si navigué depuis un autre profil, book sinon)
   const activeBook = myBook ?? (book?.user_id === userId ? book : null);
@@ -885,7 +901,7 @@ export default function BookDetailPage() {
             </h2>
             {groupedLogs.map((log) => (
               <div
-                key={log.id}
+                key={log.date}
                 className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3.5"
               >
                 <div className="flex flex-1 flex-col gap-2.5">
@@ -904,21 +920,17 @@ export default function BookDetailPage() {
                       <p className="font-serif text-base font-black text-ink">{log.end_page}</p>
                     </div>
                   </div>
-                  {log.session_notes && (
-                    <p className="rounded-xl bg-violet-soft px-3 py-2 font-serif text-[12.5px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
-                      « {log.session_notes} »
+                  {log.extraNotes.map((note, ni) => (
+                    <p key={ni} className="rounded-xl bg-violet-soft px-3 py-2 font-serif text-[12.5px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
+                      « {note} »
                     </p>
-                  )}
-                  {log.session_photo_url && (
-                    <a href={log.session_photo_url} target="_blank" rel="noopener noreferrer">
+                  ))}
+                  {log.extraPhotos.map((url, pi) => (
+                    <a key={pi} href={url} target="_blank" rel="noopener noreferrer">
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={log.session_photo_url}
-                        alt="Photo de session"
-                        className="h-36 w-full rounded-xl object-cover"
-                      />
+                      <img src={url} alt="Photo de session" className="h-36 w-full rounded-xl object-cover" />
                     </a>
-                  )}
+                  ))}
                 </div>
                 <button
                   onClick={() => {
