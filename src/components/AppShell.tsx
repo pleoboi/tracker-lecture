@@ -105,37 +105,31 @@ function relativeTime(dateStr: string): string {
   return `il y a ${Math.floor(days / 30)} mois`;
 }
 
-function SwenaLogo({ size = 28 }: { size?: number }) {
+function SwenaWordmark() {
   return (
-    <span
-      className="flex shrink-0 items-center justify-center rounded-xl"
-      style={{
-        width: size,
-        height: size,
-        background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 55%, #4f46e5 100%)",
-      }}
+    <svg
+      viewBox="0 0 308 70"
+      xmlns="http://www.w3.org/2000/svg"
+      className="h-[32px] w-auto"
     >
-      <svg
-        viewBox="0 0 100 100"
-        width={size * 0.72}
-        height={size * 0.72}
-        xmlns="http://www.w3.org/2000/svg"
+      <g transform="translate(0,6) scale(0.71)" className="fill-[#8b79be] dark:fill-[#9b89cf]">
+        <path d="M8,68 C2,68 0,64 0,60 C0,52 4,48 12,48 C10,38 16,32 26,32 C24,24 30,18 40,18 C50,18 56,24 58,32 C62,30 70,30 74,36 C82,32 92,38 90,48 C90,56 86,64 78,66 C78,68 76,68 70,68 Z" />
+        <path d="M22,17 L22.6,19.4 L25,20 L22.6,20.6 L22,23 L21.4,20.6 L19,20 L21.4,19.4 Z" />
+        <path d="M42,2 L42.8,5.2 L46,6 L42.8,6.8 L42,10 L41.2,6.8 L38,6 L41.2,5.2 Z" />
+        <path d="M68,15 L68.6,17.4 L71,18 L68.6,18.6 L68,21 L67.4,18.6 L65,18 L67.4,17.4 Z" />
+      </g>
+      <text
+        x="87"
+        y="50"
+        fontFamily="Fraunces, Georgia, serif"
+        fontWeight="700"
+        fontSize="50"
+        letterSpacing="-1.2"
+        className="fill-[#2b2733] dark:fill-[#f0eade]"
       >
-        {/* Cloud */}
-        <g fill="white" fillOpacity="0.93">
-          <rect x="18" y="58" width="64" height="20" rx="10" />
-          <circle cx="34" cy="56" r="16" />
-          <circle cx="51" cy="48" r="21" />
-          <circle cx="67" cy="54" r="14" />
-        </g>
-        {/* Gold sparkle */}
-        <path d="M58 22 L60.5 15 L63 22 L70 24.5 L63 27 L60.5 34 L58 27 L51 24.5 Z" fill="#fbbf24" />
-        {/* White sparkle left */}
-        <path d="M30 32 L32 26 L34 32 L40 34 L34 36 L32 42 L30 36 L24 34 Z" fill="white" fillOpacity="0.8" />
-        {/* White sparkle small */}
-        <path d="M72 37 L73.5 33 L75 37 L79 38.5 L75 40 L73.5 44 L72 40 L68 38.5 Z" fill="white" fillOpacity="0.65" />
-      </svg>
-    </span>
+        SWENA
+      </text>
+    </svg>
   );
 }
 
@@ -201,9 +195,8 @@ function MobileTopBar({
 }) {
   return (
     <header className="sticky top-0 z-50 flex items-center justify-between border-b border-line bg-paper/90 px-5 py-2.5 backdrop-blur-md md:hidden">
-      <Link href="/accueil" className="flex items-center gap-2">
-        <SwenaLogo size={30} />
-        <span className="font-serif text-[18px] font-black tracking-wide text-ink">Swena</span>
+      <Link href="/accueil">
+        <SwenaWordmark />
       </Link>
       <div className="flex items-center gap-2">
         <button
@@ -254,9 +247,8 @@ function TopBar({
   return (
     <header className="sticky top-0 z-50 hidden border-b border-line bg-paper/90 backdrop-blur-md md:block">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-10">
-        <Link href="/accueil" className="flex items-center gap-2">
-          <SwenaLogo size={32} />
-          <span className="font-serif text-[18px] font-black tracking-wide text-ink">Swena</span>
+        <Link href="/accueil">
+          <SwenaWordmark />
         </Link>
 
         <nav className="flex items-center gap-0.5">

@@ -1,32 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#7c3aed"/>
-      <stop offset="55%" stop-color="#6d28d9"/>
-      <stop offset="100%" stop-color="#4f46e5"/>
-    </linearGradient>
-  </defs>
-
-  <!-- Background -->
-  <rect width="512" height="512" rx="115" fill="url(#g)"/>
-
-  <!-- Cloud (overlapping circles + base rect) -->
-  <g fill="white" fill-opacity="0.93">
-    <rect x="112" y="308" width="288" height="88" rx="44"/>
-    <circle cx="178" cy="300" r="70"/>
-    <circle cx="258" cy="265" r="90"/>
-    <circle cx="338" cy="292" r="64"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="20" fill="#f4efe6"/>
+  <g transform="translate(0,12)" fill="#8b79be">
+    <path d="M8,68 C2,68 0,64 0,60 C0,52 4,48 12,48 C10,38 16,32 26,32 C24,24 30,18 40,18 C50,18 56,24 58,32 C62,30 70,30 74,36 C82,32 92,38 90,48 C90,56 86,64 78,66 C78,68 76,68 70,68 Z"/>
+    <path d="M22,17 L22.6,19.4 L25,20 L22.6,20.6 L22,23 L21.4,20.6 L19,20 L21.4,19.4 Z"/>
+    <path d="M42,2 L42.8,5.2 L46,6 L42.8,6.8 L42,10 L41.2,6.8 L38,6 L41.2,5.2 Z"/>
+    <path d="M68,15 L68.6,17.4 L71,18 L68.6,18.6 L68,21 L67.4,18.6 L65,18 L67.4,17.4 Z"/>
   </g>
-
-  <!-- Gold sparkle (large, right-center) -->
-  <path d="M296 148 L302 128 L308 148 L328 154 L308 160 L302 180 L296 160 L276 154 Z" fill="#fbbf24"/>
-
-  <!-- White sparkle (medium, left) -->
-  <path d="M168 188 L173 172 L178 188 L194 193 L178 198 L173 214 L168 198 L152 193 Z" fill="white" fill-opacity="0.85"/>
-
-  <!-- White sparkle (small, upper-right) -->
-  <path d="M346 198 L349 188 L352 198 L362 201 L352 204 L349 214 L346 204 L336 201 Z" fill="white" fill-opacity="0.75"/>
-
-  <!-- Tiny sparkle -->
-  <path d="M228 228 L230 221 L232 228 L239 230 L232 232 L230 239 L228 232 L221 230 Z" fill="white" fill-opacity="0.6"/>
 </svg>
