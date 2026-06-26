@@ -17,7 +17,7 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit: React.FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
     setError(null);
 
@@ -28,7 +28,6 @@ export default function RegisterPage() {
 
     setLoading(true);
 
-    // Try server-side registration (no email confirmation, no rate limit)
     try {
       const res = await fetch("/api/auth/register", {
         method: "POST",
@@ -43,49 +42,25 @@ export default function RegisterPage() {
         return;
       }
 
-      if (!json.fallback) {
-        // Account created without email confirmation — sign in directly
-        // Small delay to let Supabase propagate the new user
-        await new Promise((r) => setTimeout(r, 600));
-        const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
-        if (signInErr) {
-          // Account exists but auto-login failed — send to login page with success message
-          router.push(`/login?registered=1&email=${encodeURIComponent(email)}`);
-          return;
-        }
-        router.push("/accueil");
-        router.refresh();
+      if (json.fallback) {
+        setError("La configuration du serveur est incomplète. Contacte l'administrateur du club.");
+        setLoading(false);
         return;
       }
+
+      // Account created without email confirmation — sign in directly
+      await new Promise((r) => setTimeout(r, 600));
+      const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInErr) {
+        router.push(`/login?registered=1&email=${encodeURIComponent(email)}`);
+        return;
+      }
+      router.push("/accueil");
+      router.refresh();
     } catch {
-      // Network error — fall through to client-side signup
-    }
-
-    // Fallback: client-side signUp with email confirmation (service key absent)
-    // emailRedirectTo ensures the confirmation link uses the real URL, not localhost
-    const redirectTo = `${window.location.origin}/api/auth/callback?next=/accueil`;
-    const { error: signUpErr } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { display_name: displayName.trim() },
-        emailRedirectTo: redirectTo,
-      },
-    });
-
-    if (signUpErr) {
-      const msg =
-        signUpErr.message === "User already registered"
-          ? "Un compte existe déjà avec cet email."
-          : signUpErr.message.includes("rate limit")
-          ? "Trop de tentatives d'inscription en ce moment. Réessaie dans une heure."
-          : signUpErr.message;
-      setError(msg);
+      setError("Impossible de contacter le serveur. Vérifie ta connexion et réessaie.");
       setLoading(false);
-      return;
     }
-
-    router.push(`/email-sent?email=${encodeURIComponent(email)}`);
   };
 
   return (
