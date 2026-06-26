@@ -70,6 +70,7 @@ export default function AccueilPage() {
   const [activity, setActivity] = useState<ActivityLog[]>([]);
   const [activityLoading, setActivityLoading] = useState(true);
   const [todayChampion, setTodayChampion] = useState<Champion | null>(null);
+  const [yesterdayChampion, setYesterdayChampion] = useState<Champion | null>(null);
   const [showPodium, setShowPodium] = useState(false);
 
   // Members
@@ -107,14 +108,16 @@ export default function AccueilPage() {
     setActivityLoading(true);
 
     const todayStr = new Date().toISOString().split("T")[0];
+    const yesterdayStr = new Date(Date.now() - 86_400_000).toISOString().split("T")[0];
     const threeDaysAgoDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
       .toISOString().split("T")[0]; // YYYY-MM-DD — date effective de lecture
 
-    // Étape 1 : profils, champion du jour (non filtré), et liste des suivis
-    const [{ data: profilesData }, { data: todayAllLogs }, { data: followData }] = await Promise.all([
+    // Étape 1 : profils, champion du jour (non filtré), champion d'hier, et liste des suivis
+    const [{ data: profilesData }, { data: todayAllLogs }, { data: followData }, { data: yesterdayAllLogs }] = await Promise.all([
       supabase.from("user_profiles").select("id, display_name, avatar_url"),
       supabase.from("reading_logs").select("user_id, pages_read").eq("date", todayStr),
       supabase.from("user_follows").select("following_id").eq("follower_id", userId),
+      supabase.from("reading_logs").select("user_id, pages_read").eq("date", yesterdayStr),
     ]);
 
     const followingIds = ((followData || []) as { following_id: string }[]).map((f) => f.following_id);
@@ -152,9 +155,9 @@ export default function AccueilPage() {
       pagesByUser.set(l.user_id, (pagesByUser.get(l.user_id) || 0) + l.pages_read);
     });
     const sorted = [...pagesByUser.entries()].sort((a, b) => b[1] - a[1]);
+    const profileMap2 = new Map(profiles.map((p) => [p.id, p.display_name]));
     if (sorted.length > 0 && sorted[0][1] > 0) {
       const [champId, champPages] = sorted[0];
-      const profileMap2 = new Map(profiles.map((p) => [p.id, p.display_name]));
       setTodayChampion({
         userId: champId,
         name: profileMap2.get(champId) ?? (champId === userId ? displayName : "Membre"),
@@ -162,6 +165,23 @@ export default function AccueilPage() {
       });
     } else {
       setTodayChampion(null);
+    }
+
+    // Champion d'hier
+    const pagesByUserYesterday = new Map<string, number>();
+    ((yesterdayAllLogs as { user_id: string; pages_read: number }[]) || []).forEach((l) => {
+      pagesByUserYesterday.set(l.user_id, (pagesByUserYesterday.get(l.user_id) || 0) + l.pages_read);
+    });
+    const sortedYesterday = [...pagesByUserYesterday.entries()].sort((a, b) => b[1] - a[1]);
+    if (sortedYesterday.length > 0 && sortedYesterday[0][1] > 0) {
+      const [yId, yPages] = sortedYesterday[0];
+      setYesterdayChampion({
+        userId: yId,
+        name: profileMap2.get(yId) ?? (yId === userId ? displayName : "Membre"),
+        pages: yPages,
+      });
+    } else {
+      setYesterdayChampion(null);
     }
 
     const profileNameMap = new Map(profiles.map((p) => [p.id, p.display_name]));
@@ -439,7 +459,7 @@ export default function AccueilPage() {
             onClick={() => setShowPodium(true)}
             className="w-full text-left"
           >
-            <ChampionBanner champion={todayChampion} isMe={todayChampion.userId === userId} />
+            <ChampionBanner champion={todayChampion} yesterdayChampion={yesterdayChampion} isMe={todayChampion.userId === userId} />
           </button>
         )}
 
@@ -612,43 +632,61 @@ function BookCard({ book }: { book: Book }) {
   );
 }
 
-function ChampionBanner({ champion, isMe }: { champion: Champion; isMe: boolean }) {
+function ChampionBanner({ champion, yesterdayChampion, isMe }: {
+  champion: Champion;
+  yesterdayChampion: Champion | null;
+  isMe: boolean;
+}) {
   return (
     <div
-      className="relative overflow-hidden rounded-2xl p-4 shadow-md"
+      className="relative overflow-hidden rounded-2xl shadow-md"
       style={{ background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 55%, #4f46e5 100%)" }}
     >
       {/* Cercles décoratifs */}
       <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10" />
       <div className="pointer-events-none absolute -bottom-5 right-10 h-20 w-20 rounded-full bg-white/5" />
 
-      <div className="relative flex items-center gap-3">
-        {/* Icône trophée SVG */}
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fde68a" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-            <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-            <path d="M4 22h16" />
-            <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-            <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-            <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
-          </svg>
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-semibold text-white/90">
-            {isMe
-              ? "Tu mènes le club"
-              : <><span className="font-bold text-white">{champion.name}</span> mène le club</>
+      <div className="relative flex flex-col gap-2.5 p-4">
+        {/* Ligne haute : champion d'hier + trophée */}
+        <div className="flex items-center justify-between">
+          <p className="text-[10.5px] font-medium text-white/50">
+            {yesterdayChampion
+              ? <>Champion d&apos;hier : <span className="font-semibold text-white/75">{yesterdayChampion.name}</span></>
+              : <span className="tracking-wide uppercase text-[9.5px]">Champion du jour</span>
             }
           </p>
-          <p className="text-[11px] font-medium text-white/55">
-            {champion.pages} pages lues aujourd&apos;hui
-          </p>
+          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fde68a" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+              <path d="M4 22h16" />
+              <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+              <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+              <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
+            </svg>
+          </div>
         </div>
 
-        <div className="shrink-0 rounded-full bg-white/15 px-3 py-1 text-[10.5px] font-bold tracking-wide text-yellow-200">
-          Champion du jour
+        {/* Titre principal */}
+        <p className="font-serif text-[22px] font-black leading-tight text-white">
+          Champion<br />du jour :
+        </p>
+
+        {/* Ligne basse : pages + nom */}
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-[9.5px] font-medium uppercase tracking-wide text-white/45">
+              Pages aujourd&apos;hui
+            </p>
+            <p className="font-serif text-[34px] font-black leading-none text-yellow-200">
+              {champion.pages}
+            </p>
+          </div>
+          <div className="rounded-xl bg-white/15 px-4 py-2.5">
+            <p className="font-serif text-[20px] font-black text-yellow-200">
+              {isMe ? "Toi !" : champion.name}
+            </p>
+          </div>
         </div>
       </div>
     </div>

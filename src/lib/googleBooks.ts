@@ -50,7 +50,7 @@ function httpsCover(thumbnail: string | undefined): string | null {
   return thumbnail
     .replace(/^http:/, "https:")
     .replace(/&edge=curl/, "")
-    .replace(/&zoom=\d+/, "&zoom=0");
+    .replace(/&zoom=\d+/, "&zoom=1");
 }
 
 function stripHtml(html: string): string {

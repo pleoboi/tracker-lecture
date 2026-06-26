@@ -819,16 +819,21 @@ export default function ComptePage() {
     if (!file || !userId) return;
     setAvatarUploading(true);
     setAvatarError(null);
-    await fetch("/api/storage/setup", { method: "POST" }).catch(() => null);
-    const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
-    const { data, error: upErr } = await supabase.storage
-      .from("session-photos")
-      .upload(`avatars/${userId}_${Date.now()}.${ext}`, file, { upsert: true });
-    if (!upErr && data) {
-      const { data: { publicUrl } } = supabase.storage.from("session-photos").getPublicUrl(data.path);
-      setAvatarDraft(publicUrl);
-    } else {
-      setAvatarError("Upload échoué. Réessaie.");
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? "";
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/avatar/upload", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Upload échoué");
+      setAvatarDraft(json.url);
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : "Upload échoué. Réessaie.");
     }
     setAvatarUploading(false);
   };
@@ -1045,16 +1050,26 @@ export default function ComptePage() {
                     </button>
                   </div>
                 ) : (
-                  <label className="mb-3 flex cursor-pointer flex-col items-center gap-2 rounded-xl border border-dashed border-violet/30 bg-input px-4 py-5 text-center transition-colors hover:border-violet hover:bg-violet-soft/60">
+                  <label className="mb-3 flex cursor-pointer flex-col items-center gap-3 rounded-2xl border border-dashed border-violet/30 bg-input px-4 py-7 text-center transition-colors hover:border-violet hover:bg-violet-soft/60 active:scale-[0.98]">
                     {avatarUploading ? (
-                      <span className="text-xs font-medium text-violet-deep">Upload en cours…</span>
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="h-8 w-8 animate-spin rounded-full border-2 border-violet/20 border-t-violet" />
+                        <span className="text-[12px] font-medium text-violet-deep">Envoi en cours…</span>
+                      </div>
                     ) : (
                       <>
-                        <span className="text-2xl">📷</span>
-                        <span className="text-[12px] font-medium text-ink-2">
-                          Choisir depuis la galerie
+                        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-soft text-violet">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                            <circle cx="12" cy="13" r="4" />
+                          </svg>
                         </span>
-                        <span className="text-[11px] text-muted">JPG, PNG, WEBP — max 10 Mo</span>
+                        <div>
+                          <p className="text-[13px] font-semibold text-ink">
+                            Choisir une photo
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-muted">Galerie ou appareil photo · max 10 Mo</p>
+                        </div>
                       </>
                     )}
                     <input

@@ -13,10 +13,15 @@ interface Props {
 export default function CoverPickerModal({ title, author, currentCover, onPick, onClose }: Props) {
   const [covers, setCovers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState<Set<string>>(new Set());
+
+  const markFailed = (url: string) =>
+    setFailed((prev) => new Set([...prev, url]));
 
   useEffect(() => {
     const load = async () => {
       setLoading(true);
+      setFailed(new Set());
       try {
         const params = new URLSearchParams({ title, author });
         const res = await fetch(`/api/books/covers?${params.toString()}`);
@@ -39,6 +44,8 @@ export default function CoverPickerModal({ title, author, currentCover, onPick, 
       document.body.style.overflow = "";
     };
   }, [onClose]);
+
+  const visibleCovers = covers.filter((url) => !failed.has(url));
 
   return (
     <div
@@ -66,9 +73,10 @@ export default function CoverPickerModal({ title, author, currentCover, onPick, 
           <div className="flex h-48 items-center justify-center text-xs font-medium text-muted">
             Chargement des couvertures…
           </div>
-        ) : covers.length === 0 ? (
-          <div className="flex h-48 items-center justify-center text-xs font-medium text-muted">
-            Aucune couverture trouvée pour ce titre.
+        ) : visibleCovers.length === 0 ? (
+          <div className="flex h-48 flex-col items-center justify-center gap-2 text-center text-xs font-medium text-muted">
+            <span className="text-2xl">📚</span>
+            Aucune couverture disponible pour ce titre.
           </div>
         ) : (
           <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
@@ -77,6 +85,7 @@ export default function CoverPickerModal({ title, author, currentCover, onPick, 
                 key={i}
                 onClick={() => { onPick(url); onClose(); }}
                 className={`relative overflow-hidden rounded-xl border-2 transition-all ${
+                  failed.has(url) ? "hidden" :
                   currentCover === url
                     ? "border-violet shadow-md"
                     : "border-transparent hover:border-violet/50"
@@ -88,6 +97,11 @@ export default function CoverPickerModal({ title, author, currentCover, onPick, 
                   alt=""
                   className="aspect-[2/3] w-full object-cover"
                   loading="lazy"
+                  onError={() => markFailed(url)}
+                  onLoad={(e) => {
+                    const img = e.currentTarget;
+                    if (img.naturalWidth < 50 || img.naturalHeight < 60) markFailed(url);
+                  }}
                 />
                 {currentCover === url && (
                   <div className="absolute inset-0 flex items-center justify-center bg-violet/30">
