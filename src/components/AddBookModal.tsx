@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth-context";
 import { searchBooks, type BookSuggestion } from "../lib/googleBooks";
 import type { Book } from "../lib/types";
 import { Modal, Button, FieldLabel, inputClass, Cover } from "./ui";
+import CoverPickerModal from "./CoverPickerModal";
 
 type Draft = { title: string; author: string; pages: string; genre: string; year: string };
 const emptyDraft: Draft = { title: "", author: "", pages: "", genre: "", year: "" };
@@ -33,6 +34,8 @@ export default function AddBookModal({
   const [manual, setManual] = useState(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
   const [pages, setPages] = useState("");
+  const [localCoverUrl, setLocalCoverUrl] = useState<string | null>(null);
+  const [showCoverPicker, setShowCoverPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -48,6 +51,8 @@ export default function AddBookModal({
       setDraft(emptyDraft);
       setPages("");
       setError(null);
+      setLocalCoverUrl(null);
+      setShowCoverPicker(false);
     }
   }, [open]);
 
@@ -179,7 +184,7 @@ export default function AddBookModal({
       setError("Indique le nombre de pages de ton édition.");
       return;
     }
-    await insertBook({ ...selected, cover_url: selected.coverUrl, year: selected.year, pages: n });
+    await insertBook({ ...selected, cover_url: localCoverUrl ?? selected.coverUrl, year: selected.year, pages: n });
   };
 
   const handleAddManual = async () => {
@@ -198,11 +203,20 @@ export default function AddBookModal({
   // ---- Vue : confirmation ----
   if (selected) {
     const fromClub = selected.googleId.startsWith("club-");
+    const activeCover = localCoverUrl ?? selected.coverUrl;
     return (
+      <>
       <Modal open={open} onClose={onClose} title="Ajouter un livre">
         <div className="flex flex-col gap-4">
           <div className="flex gap-3 rounded-2xl border border-line bg-card p-3">
-            <Cover id={0} title={selected.title} coverUrl={selected.coverUrl} className="h-[84px] w-[58px]" />
+            <div className="relative shrink-0">
+              <Cover id={0} title={selected.title} coverUrl={activeCover} className="h-[84px] w-[58px]" />
+              <button
+                onClick={() => setShowCoverPicker(true)}
+                className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-violet text-[9px] text-cream shadow"
+                title="Changer la couverture"
+              >✎</button>
+            </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
                 <h3 className="font-serif text-base font-medium text-ink">{selected.title}</h3>
@@ -246,6 +260,16 @@ export default function AddBookModal({
           </div>
         </div>
       </Modal>
+      {showCoverPicker && (
+        <CoverPickerModal
+          title={selected.title}
+          author={selected.author}
+          currentCover={activeCover}
+          onPick={(url) => { setLocalCoverUrl(url); setShowCoverPicker(false); }}
+          onClose={() => setShowCoverPicker(false)}
+        />
+      )}
+      </>
     );
   }
 
@@ -411,7 +435,7 @@ export default function AddBookModal({
             <>
               {(hasClub || hasOwn) && (
                 <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  Google Books
+                  Catalogue
                 </p>
               )}
               {results.map((r) => (
