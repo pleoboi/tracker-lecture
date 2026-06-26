@@ -23,7 +23,13 @@ export async function GET(req: Request) {
     );
     const data = await res.json();
     if (!res.ok) {
+      const reason = data?.error?.errors?.[0]?.reason || "";
       const msg = data?.error?.message || "";
+      // Rate limit par seconde (userRateLimitExceeded) — temporaire, ne pas bloquer
+      if (reason === "userRateLimitExceeded") {
+        throw Object.assign(new Error("RATE_LIMIT"), { status: 429 });
+      }
+      // Quota journalier épuisé
       if (res.status === 429 || /quota/i.test(msg)) {
         throw Object.assign(new Error("QUOTA"), { status: 429 });
       }
@@ -44,21 +50,31 @@ export async function GET(req: Request) {
     // Passe 1 : éditions françaises en priorité
     let items = await tryFetch({ q, langRestrict: "fr" });
 
-    // Passe 2 : sans restriction de langue (seuil relevé à 8 pour couvrir plus de cas)
+    // Passes 2 et 3 : optionnelles — si rate limit, on retourne ce qu'on a
     if (items.length < 8) {
-      const more = await tryFetch({ q });
-      items = merge(items, more);
+      try {
+        const more = await tryFetch({ q });
+        items = merge(items, more);
+      } catch (e: any) {
+        if (e?.message !== "RATE_LIMIT") throw e;
+      }
     }
 
-    // Passe 3 : recherche par titre exact (intitle:) si peu de résultats pertinents
-    // Aide beaucoup quand l'utilisateur tape un titre précis (ex: "Le Chant d'Achilles")
     if (items.length < 5) {
-      const more = await tryFetch({ q: `intitle:${q}` });
-      items = merge(items, more);
+      try {
+        const more = await tryFetch({ q: `intitle:${q}` });
+        items = merge(items, more);
+      } catch (e: any) {
+        if (e?.message !== "RATE_LIMIT") throw e;
+      }
     }
 
     return NextResponse.json({ results: items.slice(0, 12).map(mapVolume) });
   } catch (err: any) {
+    if (err?.message === "RATE_LIMIT") {
+      // Passe 1 elle-même était rate-limitée — retourne vide sans message d'erreur
+      return NextResponse.json({ results: [] });
+    }
     if (err?.status === 429 || err?.message === "QUOTA") {
       const msg = key
         ? "Quota Google Books dépassé pour aujourd'hui. La recherche sera rétablie demain automatiquement."
