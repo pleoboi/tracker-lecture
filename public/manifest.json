@@ -4,20 +4,19 @@
   "description": "Ton club de lecture privé",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1a1720",
-  "theme_color": "#6d28d9",
+  "background_color": "#f4efe6",
+  "theme_color": "#8b79be",
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon.png",
+      "src": "/icon",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-icon",
+      "sizes": "180x180",
+      "type": "image/png"
     }
   ]
 }
