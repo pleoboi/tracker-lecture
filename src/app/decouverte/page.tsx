@@ -410,35 +410,38 @@ export default function DecouvertePage() {
             <h2 className="font-serif text-lg font-medium text-ink">Recommandé pour toi</h2>
             <p className="text-[11px] text-muted">Basé sur tes lectures préférées</p>
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
-            {recommendations.map((s) => (
-              <button
-                key={s.googleId}
-                onClick={() => setSelectedReco(s)}
-                className="flex w-36 shrink-0 flex-col gap-2 rounded-2xl border border-violet/20 bg-violet-soft p-3 text-left transition-colors hover:border-violet/50"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={s.coverUrl!}
-                  alt={s.title}
-                  className="h-[104px] w-full rounded-lg object-cover shadow-sm"
-                />
-                <div className="flex-1">
-                  <p className="line-clamp-2 text-[11.5px] font-semibold leading-tight text-ink">
-                    {s.title}
-                  </p>
-                  <p className="mt-0.5 truncate text-[10px] text-muted">{s.author}</p>
-                  {s.genre && (
-                    <span className="mt-1 inline-block rounded-md bg-violet/10 px-1.5 py-0.5 text-[9.5px] font-medium text-violet-deep">
-                      {s.genre}
-                    </span>
-                  )}
-                </div>
-                <span className="w-full rounded-xl bg-violet py-1.5 text-center text-[11px] font-semibold text-cream">
-                  Voir + Ajouter
-                </span>
-              </button>
-            ))}
+          {/* Hauteur fixe sur le conteneur = même valeur que la carte → overflow-x-auto ne clippe plus le bas */}
+          <div className="h-[252px] overflow-x-auto [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="flex h-full gap-3 pr-1">
+              {recommendations.map((s) => (
+                <button
+                  key={s.googleId}
+                  onClick={() => setSelectedReco(s)}
+                  className="flex h-full w-36 shrink-0 flex-col gap-2 rounded-2xl border border-violet/20 bg-violet-soft p-3 text-left transition-colors hover:border-violet/50"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={s.coverUrl!}
+                    alt={s.title}
+                    className="h-[104px] w-full shrink-0 rounded-lg object-cover shadow-sm"
+                  />
+                  <div className="flex min-h-0 flex-1 flex-col">
+                    <p className="line-clamp-2 text-[11.5px] font-semibold leading-tight text-ink">
+                      {s.title}
+                    </p>
+                    <p className="mt-0.5 truncate text-[10px] text-muted">{s.author}</p>
+                    {s.genre && (
+                      <span className="mt-1 inline-block rounded-md bg-violet/10 px-1.5 py-0.5 text-[9.5px] font-medium text-violet-deep">
+                        {s.genre}
+                      </span>
+                    )}
+                  </div>
+                  <span className="mt-auto w-full shrink-0 rounded-xl bg-violet py-1.5 text-center text-[11px] font-semibold text-cream">
+                    Voir + Ajouter
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>
         </section>
       )}
