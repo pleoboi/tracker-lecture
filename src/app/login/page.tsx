@@ -1,19 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { Button } from "../../components/ui";
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const params = useSearchParams();
+  const registered = params.get("registered") === "1";
+  const prefillEmail = params.get("email") ?? "";
+
+  const [email, setEmail] = useState(prefillEmail);
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    if (prefillEmail) setEmail(prefillEmail);
+  }, [prefillEmail]);
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -24,7 +32,7 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
-    router.push("/");
+    router.push("/accueil");
     router.refresh();
   };
 
@@ -32,9 +40,24 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-paper px-5 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <h1 className="font-serif text-4xl font-black text-ink">Ma Bibliothèque</h1>
-          <p className="mt-1.5 text-sm text-muted">Suivi de lecture</p>
+          <h1 className="font-serif text-4xl font-black text-ink">Swena</h1>
+          <p className="mt-1.5 text-sm text-muted">Club de lecture privé</p>
         </div>
+
+        {registered && (
+          <div className="mb-4 flex items-start gap-3 rounded-2xl border border-[#cfe0cf] bg-[#eaf1ea] px-4 py-3.5">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 h-4 w-4 shrink-0 text-success">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+              <polyline points="22 4 12 14.01 9 11.01" />
+            </svg>
+            <div>
+              <p className="text-[13px] font-semibold text-success">Compte créé avec succès !</p>
+              <p className="mt-0.5 text-[12px] text-ink-2">
+                Connecte-toi avec ton email et ton mot de passe.
+              </p>
+            </div>
+          </div>
+        )}
 
         <form
           onSubmit={handleSubmit}
@@ -94,5 +117,13 @@ export default function LoginPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

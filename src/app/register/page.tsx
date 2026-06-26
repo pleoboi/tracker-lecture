@@ -17,7 +17,7 @@ export default function RegisterPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError(null);
 
@@ -45,10 +45,12 @@ export default function RegisterPage() {
 
       if (!json.fallback) {
         // Account created without email confirmation — sign in directly
+        // Small delay to let Supabase propagate the new user
+        await new Promise((r) => setTimeout(r, 600));
         const { error: signInErr } = await supabase.auth.signInWithPassword({ email, password });
         if (signInErr) {
-          setError("Compte créé mais connexion automatique échouée. Connecte-toi manuellement.");
-          setLoading(false);
+          // Account exists but auto-login failed — send to login page with success message
+          router.push(`/login?registered=1&email=${encodeURIComponent(email)}`);
           return;
         }
         router.push("/accueil");
@@ -60,10 +62,15 @@ export default function RegisterPage() {
     }
 
     // Fallback: client-side signUp with email confirmation (service key absent)
+    // emailRedirectTo ensures the confirmation link uses the real URL, not localhost
+    const redirectTo = `${window.location.origin}/api/auth/callback?next=/accueil`;
     const { error: signUpErr } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { display_name: displayName.trim() } },
+      options: {
+        data: { display_name: displayName.trim() },
+        emailRedirectTo: redirectTo,
+      },
     });
 
     if (signUpErr) {
