@@ -363,27 +363,21 @@ export default function BadgesSection({
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const [{ data: ubData }, logsRes, booksRes, reviewsRes] = await Promise.all([
+
+      // Étape 1 : badges débloqués + sessions depuis la date butoir
+      const [{ data: ubData }, logsRes] = await Promise.all([
         supabase.from("user_badges").select("badge_id, unlocked_at").eq("user_id", memberId),
-        supabase.from("reading_logs").select("date, pages_read").eq("user_id", memberId).gte("date", CUTOFF),
-        supabase.from("books").select("genre, status, notes, created_at").eq("user_id", memberId).gte("created_at", CUTOFF),
-        supabase.from("books").select("id", { count: "exact", head: true })
-          .eq("user_id", memberId).not("notes", "is", null).neq("notes", "").gte("created_at", CUTOFF),
+        supabase.from("reading_logs").select("book_id, date, pages_read").eq("user_id", memberId).gte("date", CUTOFF),
       ]);
 
       setUnlockedBadges((ubData ?? []) as { badge_id: string; unlocked_at: string }[]);
 
-      type LogRow = { date: string; pages_read: number | null };
+      type LogRow = { book_id: string; date: string; pages_read: number | null };
       const logs = (logsRes.data ?? []) as LogRow[];
-      const books = (booksRes.data ?? []) as { genre: string | null; status: string; notes: string | null }[];
+      const activeBookIds = [...new Set(logs.map((r) => r.book_id))];
 
-      const totalPages = logs.reduce((s, r) => s + (r.pages_read ?? 0), 0);
-
-      const genreSet = new Set<string>();
-      for (const b of books) {
-        if (!b.genre || b.status !== "completed") continue;
-        b.genre.split(/[,;]+/).forEach((g) => { const t = g.trim(); if (t) genreSet.add(t); });
-      }
+      const totalPages    = logs.reduce((s, r) => s + (r.pages_read ?? 0), 0);
+      const sessionsCount = logs.length;
 
       const dateSet = [...new Set(logs.map((r) => r.date))].sort();
       let maxStreak = dateSet.length > 0 ? 1 : 0;
@@ -398,11 +392,35 @@ export default function BadgesSection({
 
       const monthlyCount = logs.filter((r) => r.date >= "2026-07-01" && r.date <= "2026-07-31").length;
 
+      // Étape 2 : données livres uniquement pour les livres actifs depuis la date butoir
+      let booksCompleted = 0;
+      let uniqueGenres   = 0;
+      let reviewsCount   = 0;
+
+      if (activeBookIds.length > 0) {
+        const [booksRes, reviewsRes] = await Promise.all([
+          supabase.from("books").select("genre, status, notes").eq("user_id", memberId).in("id", activeBookIds),
+          supabase.from("books").select("id", { count: "exact", head: true })
+            .eq("user_id", memberId).not("notes", "is", null).neq("notes", "").in("id", activeBookIds),
+        ]);
+
+        const books = (booksRes.data ?? []) as { genre: string | null; status: string; notes: string | null }[];
+        booksCompleted = books.filter((b) => b.status === "completed").length;
+        reviewsCount   = reviewsRes.count ?? 0;
+
+        const genreSet = new Set<string>();
+        for (const b of books) {
+          if (!b.genre || b.status !== "completed") continue;
+          b.genre.split(/[,;]+/).forEach((g) => { const t = g.trim(); if (t) genreSet.add(t); });
+        }
+        uniqueGenres = genreSet.size;
+      }
+
       setStats({
-        booksCompleted:      books.filter((b) => b.status === "completed").length,
-        uniqueGenres:        genreSet.size,
-        sessionsCount:       logs.length,
-        reviewsCount:        reviewsRes.count ?? 0,
+        booksCompleted,
+        uniqueGenres,
+        sessionsCount,
+        reviewsCount,
         totalPages,
         maxStreak,
         monthlySessionCount: monthlyCount,
