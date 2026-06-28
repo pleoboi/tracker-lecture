@@ -358,20 +358,21 @@ export default function BadgesSection({
   const [holders, setHolders] = useState<{ display_name: string; avatar_url: string | null }[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const CUTOFF = "2026-06-20";
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
       const [{ data: ubData }, logsRes, booksRes, reviewsRes] = await Promise.all([
         supabase.from("user_badges").select("badge_id, unlocked_at").eq("user_id", memberId),
-        supabase.from("reading_logs").select("date, pages_read").eq("user_id", memberId),
-        supabase.from("books").select("genre, status, notes").eq("user_id", memberId),
+        supabase.from("reading_logs").select("date, pages_read").eq("user_id", memberId).gte("date", CUTOFF),
+        supabase.from("books").select("genre, status, notes, created_at").eq("user_id", memberId).gte("created_at", CUTOFF),
         supabase.from("books").select("id", { count: "exact", head: true })
-          .eq("user_id", memberId).not("notes", "is", null).neq("notes", ""),
+          .eq("user_id", memberId).not("notes", "is", null).neq("notes", "").gte("created_at", CUTOFF),
       ]);
 
       setUnlockedBadges((ubData ?? []) as { badge_id: string; unlocked_at: string }[]);
 
-      // Compute stats for progress bars
       type LogRow = { date: string; pages_read: number | null };
       const logs = (logsRes.data ?? []) as LogRow[];
       const books = (booksRes.data ?? []) as { genre: string | null; status: string; notes: string | null }[];
@@ -468,6 +469,15 @@ export default function BadgesSection({
         {TAB_BTN("won",         `Remportés (${wonBadges.length})`)}
         {TAB_BTN("available",   `À débloquer (${lockedBadges.length})`)}
         {TAB_BTN("leaderboard", "Classement")}
+      </div>
+
+      {/* Bannière date de départ */}
+      <div className="flex gap-2.5 rounded-2xl border border-amber-200/60 bg-amber-50/80 px-3.5 py-3 dark:border-amber-700/30 dark:bg-amber-900/10">
+        <span className="mt-px shrink-0 text-base leading-none">⚠️</span>
+        <p className="text-[11.5px] leading-relaxed text-amber-900 dark:text-amber-300">
+          Les défis et la progression des badges ont débuté officiellement le{" "}
+          <span className="font-semibold">20 juin 2026</span>. Les lectures antérieures ou imports de bibliothèques historiques ne sont pas comptabilisés.
+        </p>
       </div>
 
       {loading ? (

@@ -6,6 +6,7 @@ export const dynamic = "force-dynamic";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const CUTOFF = "2026-06-20";
 
 export async function POST(req: NextRequest) {
   const { userId } = (await req.json()) as { userId?: string };
@@ -13,28 +14,32 @@ export async function POST(req: NextRequest) {
 
   const db = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  // ── Fetch all needed data in parallel ──────────────────────────────────────
+  // ── Fetch all needed data in parallel (only data since CUTOFF) ────────────
   const [booksRes, logsRes, reviewsRes, genresRes] = await Promise.all([
     db.from("books")
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId)
-      .eq("status", "completed"),
+      .eq("status", "completed")
+      .gte("created_at", CUTOFF),
 
     db.from("reading_logs")
       .select("date, pages_read")
-      .eq("user_id", userId),
+      .eq("user_id", userId)
+      .gte("date", CUTOFF),
 
     db.from("books")
       .select("id", { count: "exact", head: true })
       .eq("user_id", userId)
       .not("notes", "is", null)
-      .neq("notes", ""),
+      .neq("notes", "")
+      .gte("created_at", CUTOFF),
 
     db.from("books")
       .select("genre")
       .eq("user_id", userId)
       .eq("status", "completed")
-      .not("genre", "is", null),
+      .not("genre", "is", null)
+      .gte("created_at", CUTOFF),
   ]);
 
   type LogRow = { date: string; pages_read: number | null };
