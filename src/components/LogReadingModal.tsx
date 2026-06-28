@@ -99,27 +99,8 @@ export default function LogReadingModal({
   const validNumber = endPage !== "" && !isNaN(target);
   const diff = book && validNumber ? target - book.progress : 0;
 
-  // ── Chargement du quiz à l'entrée du step "complete" ──────────────────────
-  useEffect(() => {
-    if (step !== "complete" || !book || !user) return;
-    const quizKey = book.isbn13 || `book-${book.id}`;
-    setQuizPhase("loading");
-    setSelectedChoice(null);
-    fetch("/api/quiz/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quizKey, title: book.title, author: book.author, summary: book.summary ?? null, userId: user.id }),
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        if (data.unavailable || data.error) { setQuizPhase("unavailable"); return; }
-        if (data.alreadyPassed)             { setQuizPhase("passed");      return; }
-        setQuizData({ question: data.question, choices: data.choices });
-        setQuizPhase("ready");
-      })
-      .catch(() => setQuizPhase("unavailable"));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, book?.id]);
+  // ── Chargement du quiz — désactivé temporairement ────────────────────────
+  useEffect(() => { /* quiz désactivé */ }, [step, book?.id]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -322,99 +303,7 @@ export default function LogReadingModal({
             )}
           </div>
 
-          {/* ── Quiz "Le Dernier Test" ─────────────────────────────────── */}
-          {quizPhase !== "idle" && (
-            <div className="overflow-hidden rounded-2xl border border-violet/20">
-              {/* En-tête */}
-              <div className="flex items-center justify-between border-b border-violet/10 bg-violet-soft px-4 py-3">
-                <div>
-                  <p className="text-[11px] font-bold uppercase tracking-widest text-violet-deep">Le Dernier Test</p>
-                  <p className="text-[10px] text-muted">Bonne réponse = +30 pts de marque-page</p>
-                </div>
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-amber-400 to-amber-600">
-                  <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
-                    <circle cx="12" cy="12" r="9.5" stroke="white" strokeWidth="1.2" strokeDasharray="2.5 1.5"/>
-                    <circle cx="12" cy="12" r="7" fill="white" fillOpacity="0.18"/>
-                    <polyline points="8.5,12 11,14.5 15.5,9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                </div>
-              </div>
-
-              <div className="px-4 py-3">
-                {quizPhase === "loading" && (
-                  <p className="text-[12.5px] text-muted">Préparation du quiz…</p>
-                )}
-
-                {(quizPhase === "ready") && quizData && (
-                  <div className="flex flex-col gap-2.5">
-                    <p className="text-[13px] font-medium leading-snug text-ink">{quizData.question}</p>
-                    <div className="flex flex-col gap-1.5">
-                      {quizData.choices.map((choice, i) => (
-                        <button
-                          key={i}
-                          disabled={quizSubmitting}
-                          onClick={() => setSelectedChoice(i)}
-                          className={`flex items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left text-[12.5px] font-medium transition-all ${
-                            selectedChoice === i
-                              ? "border-violet bg-violet text-cream"
-                              : "border-line bg-card text-ink hover:border-violet/40"
-                          }`}
-                        >
-                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-current text-[10px] font-bold">
-                            {String.fromCharCode(65 + i)}
-                          </span>
-                          {choice}
-                        </button>
-                      ))}
-                    </div>
-                    {selectedChoice !== null && (
-                      <button
-                        onClick={submitQuiz}
-                        disabled={quizSubmitting}
-                        className="mt-1 w-full rounded-xl bg-violet py-2.5 text-sm font-bold text-cream transition-opacity disabled:opacity-60"
-                      >
-                        {quizSubmitting ? "Vérification…" : "Valider ma réponse"}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                {quizPhase === "passed" && (
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-900/30">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.5" className="h-5 w-5">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-[13px] font-bold text-emerald-700 dark:text-emerald-400">Bonne réponse !</p>
-                      <p className="text-[11px] text-muted">+30 pts crédités sur votre compte</p>
-                    </div>
-                  </div>
-                )}
-
-                {quizPhase === "wrong" && (
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-rose-100 dark:bg-rose-900/30">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="#e11d48" strokeWidth="2.5" className="h-5 w-5">
-                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </div>
-                    <div>
-                      <p className="text-[13px] font-bold text-rose-700 dark:text-rose-400">Pas tout à fait…</p>
-                      <p className="text-[11px] text-muted">Réessayez plus tard</p>
-                    </div>
-                  </div>
-                )}
-
-                {quizPhase === "unavailable" && (
-                  <p className="text-[12px] text-muted">
-                    Ce livre n&apos;a pas de quiz disponible. Votre lecture est validée par défaut.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
+          {/* ── Quiz "Le Dernier Test" — désactivé temporairement ─────── */}
 
           {/* Séparateur */}
           <div className="flex items-center gap-2">
