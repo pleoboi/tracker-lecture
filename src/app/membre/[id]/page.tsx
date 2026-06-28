@@ -247,7 +247,9 @@ export default function MembrePage() {
   const completed = books.filter(isCompleted);
   const reading = books.filter((b) => b.status === "reading");
   const abandoned = books.filter((b) => b.status === "abandoned");
-  const wantToRead = books.filter((b) => b.status === "to-read");
+  const wantToRead = books
+    .filter((b) => b.status === "to-read")
+    .sort((a, b) => (b.created_at ?? "").localeCompare(a.created_at ?? ""));
 
   // Map bookId → a session note (for Letterboxd-style icons)
   const bookSessionNoteMap = new Map<number, string>();

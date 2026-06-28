@@ -414,33 +414,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       .order("created_at", { ascending: false })
       .limit(20);
 
-    if (!followRows || followRows.length === 0) return;
-
-    const ids = (followRows as { follower_id: string; created_at: string }[]).map((r) => r.follower_id);
-    const { data: profiles } = await supabase
-      .from("user_profiles")
-      .select("id, display_name, avatar_url")
-      .in("id", ids);
-
-    const profileMap = new Map(
-      ((profiles || []) as { id: string; display_name: string; avatar_url: string | null }[]).map((p) => [p.id, p])
-    );
-
     const lastSeen = typeof window !== "undefined"
       ? (localStorage.getItem(`notif_last_seen_${uid}`) ?? "1970-01-01")
       : "1970-01-01";
 
-    const enriched = (followRows as { follower_id: string; created_at: string }[]).map((r) => ({
-      id: r.follower_id,
-      created_at: r.created_at,
-      display_name: profileMap.get(r.follower_id)?.display_name ?? "Membre",
-      avatar_url: profileMap.get(r.follower_id)?.avatar_url ?? null,
-      isNew: r.created_at > lastSeen,
-    }));
-
-    setNotifFollowers(enriched);
-
-    // Likes sur les reviews
+    // Likes sur les reviews (parallèle)
     const { data: likeRows } = await supabase
       .from("notifications")
       .select("id, from_user_id, book_id, book_title, created_at")
@@ -449,13 +427,35 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       .order("created_at", { ascending: false })
       .limit(20);
 
+    // Abonnés
+    let enriched: { id: string; created_at: string; display_name: string; avatar_url: string | null; isNew: boolean }[] = [];
+    if (followRows && followRows.length > 0) {
+      const ids = (followRows as { follower_id: string; created_at: string }[]).map((r) => r.follower_id);
+      const { data: profiles } = await supabase
+        .from("user_profiles")
+        .select("id, display_name, avatar_url")
+        .in("id", ids);
+      const profileMap = new Map(
+        ((profiles || []) as { id: string; display_name: string; avatar_url: string | null }[]).map((p) => [p.id, p])
+      );
+      enriched = (followRows as { follower_id: string; created_at: string }[]).map((r) => ({
+        id: r.follower_id,
+        created_at: r.created_at,
+        display_name: profileMap.get(r.follower_id)?.display_name ?? "Membre",
+        avatar_url: profileMap.get(r.follower_id)?.avatar_url ?? null,
+        isNew: r.created_at > lastSeen,
+      }));
+    }
+    setNotifFollowers(enriched);
+
+    // Likes
+    let enrichedLikes: { id: string; from_user_id: string; from_name: string; book_id: number; book_title: string; created_at: string; isNew: boolean }[] = [];
     if (likeRows && likeRows.length > 0) {
       type LikeRow = { id: string; from_user_id: string; book_id: number; book_title: string; created_at: string };
       const senderIds = [...new Set((likeRows as LikeRow[]).map((r) => r.from_user_id))];
       const { data: senderProfiles } = await supabase.from("user_profiles").select("id, display_name").in("id", senderIds);
       const senderMap = new Map(((senderProfiles || []) as { id: string; display_name: string }[]).map((p) => [p.id, p.display_name]));
-
-      const enrichedLikes = (likeRows as LikeRow[]).map((r) => ({
+      enrichedLikes = (likeRows as LikeRow[]).map((r) => ({
         id: r.id,
         from_user_id: r.from_user_id,
         from_name: senderMap.get(r.from_user_id) ?? "Membre",
@@ -464,11 +464,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         created_at: r.created_at,
         isNew: r.created_at > lastSeen,
       }));
-      setLikeNotifs(enrichedLikes);
-      setNewFollowersCount(enriched.filter((f) => f.isNew).length + enrichedLikes.filter((l) => l.isNew).length);
-    } else {
-      setNewFollowersCount(enriched.filter((f) => f.isNew).length);
     }
+    setLikeNotifs(enrichedLikes);
+    setNewFollowersCount(
+      enriched.filter((f) => f.isNew).length + enrichedLikes.filter((l) => l.isNew).length
+    );
   };
 
   const openNotif = () => {
@@ -624,46 +624,56 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </p>
             ) : (
               <div className="max-h-80 overflow-y-auto">
-                {/* Likes sur les reviews */}
-                {likeNotifs.map((n) => (
-                  <Link
-                    key={n.id}
-                    href={`/livre/${n.book_id}`}
-                    onClick={() => setShowNotif(false)}
-                    className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-violet-soft"
-                  >
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f6e7e1] dark:bg-[#2a1510] text-sm">♥</span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] font-semibold text-ink">
-                        {n.from_name} <span className="font-normal text-muted">a aimé ta critique sur</span>
-                      </p>
-                      <p className="truncate text-[11px] text-muted italic">{n.book_title} · {relativeTime(n.created_at)}</p>
-                    </div>
-                    {n.isNew && <span className="h-2 w-2 shrink-0 rounded-full bg-danger" />}
-                  </Link>
-                ))}
-                {/* Abonnés */}
-                {notifFollowers.map((f) => (
-                  <Link
-                    key={f.id}
-                    href={`/membre/${f.id}`}
-                    onClick={() => setShowNotif(false)}
-                    className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-violet-soft"
-                  >
-                    <AvatarRound
-                      avatarUrl={f.avatar_url}
-                      initial={f.display_name[0]?.toUpperCase() ?? "?"}
-                      size="sm"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[12.5px] font-semibold text-ink">{f.display_name}</p>
-                      <p className="text-[11px] text-muted">
-                        s&apos;est abonné · {relativeTime(f.created_at)}
-                      </p>
-                    </div>
-                    {f.isNew && <span className="h-2 w-2 shrink-0 rounded-full bg-violet" />}
-                  </Link>
-                ))}
+                {/* Toutes les notifs mélangées, triées par date décroissante */}
+                {[
+                  ...likeNotifs.map((n) => ({ ...n, _type: "like" as const })),
+                  ...notifFollowers.map((f) => ({ ...f, _type: "follow" as const })),
+                ]
+                  .sort((a, b) => b.created_at.localeCompare(a.created_at))
+                  .map((item) =>
+                    item._type === "like" ? (
+                      <Link
+                        key={`like-${item.id}`}
+                        href={`/livre/${(item as typeof likeNotifs[0] & { _type: "like" }).book_id}`}
+                        onClick={() => setShowNotif(false)}
+                        className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-violet-soft"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f6e7e1] dark:bg-[#2a1510] text-sm">♥</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[12.5px] font-semibold text-ink">
+                            {(item as typeof likeNotifs[0] & { _type: "like" }).from_name}{" "}
+                            <span className="font-normal text-muted">a aimé ta critique sur</span>
+                          </p>
+                          <p className="truncate text-[11px] text-muted italic">
+                            {(item as typeof likeNotifs[0] & { _type: "like" }).book_title} · {relativeTime(item.created_at)}
+                          </p>
+                        </div>
+                        {item.isNew && <span className="h-2 w-2 shrink-0 rounded-full bg-danger" />}
+                      </Link>
+                    ) : (
+                      <Link
+                        key={`follow-${item.id}`}
+                        href={`/membre/${item.id}`}
+                        onClick={() => setShowNotif(false)}
+                        className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-violet-soft"
+                      >
+                        <AvatarRound
+                          avatarUrl={(item as typeof notifFollowers[0] & { _type: "follow" }).avatar_url}
+                          initial={(item as typeof notifFollowers[0] & { _type: "follow" }).display_name[0]?.toUpperCase() ?? "?"}
+                          size="sm"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[12.5px] font-semibold text-ink">
+                            {(item as typeof notifFollowers[0] & { _type: "follow" }).display_name}
+                          </p>
+                          <p className="text-[11px] text-muted">
+                            s&apos;est abonné · {relativeTime(item.created_at)}
+                          </p>
+                        </div>
+                        {item.isNew && <span className="h-2 w-2 shrink-0 rounded-full bg-violet" />}
+                      </Link>
+                    )
+                  )}
               </div>
             )}
           </div>

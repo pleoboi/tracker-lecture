@@ -647,47 +647,42 @@ function ChampionBanner({ champion, yesterdayChampion, isMe }: {
       <div className="pointer-events-none absolute -bottom-5 right-10 h-20 w-20 rounded-full bg-white/5" />
 
       <div className="relative flex flex-col gap-2.5 p-4">
-        {/* Ligne haute : champion d'hier + trophée */}
-        <div className="flex items-center justify-between">
+        {/* Ligne haute : champion du jour + trophée */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/50">
+              Champion du jour
+            </p>
+            <p className="mt-0.5 font-serif text-[20px] font-black leading-tight text-yellow-200 truncate">
+              {champion.name}
+            </p>
+          </div>
+          <div className="shrink-0 flex items-center gap-2">
+            <div className="text-right">
+              <p className="text-[9px] font-medium uppercase tracking-wide text-white/45">pages</p>
+              <p className="font-serif text-[26px] font-black leading-none text-white">
+                {champion.pages}
+              </p>
+            </div>
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fde68a" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
+                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
+                <path d="M4 22h16" />
+                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
+                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
+                <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {/* Champion d'hier */}
+        {yesterdayChampion && (
           <p className="text-[10.5px] font-medium text-white/50">
-            {yesterdayChampion
-              ? <>Champion d&apos;hier : <span className="font-semibold text-white/75">{yesterdayChampion.name}</span></>
-              : <span className="tracking-wide uppercase text-[9.5px]">Champion du jour</span>
-            }
+            Champion d&apos;hier : <span className="font-semibold text-white/75">{yesterdayChampion.name}</span>
           </p>
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fde68a" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-              <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-              <path d="M4 22h16" />
-              <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-              <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-              <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
-            </svg>
-          </div>
-        </div>
-
-        {/* Titre principal */}
-        <p className="font-serif text-[22px] font-black leading-tight text-white">
-          Champion<br />du jour :
-        </p>
-
-        {/* Ligne basse : pages + nom */}
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <p className="text-[9.5px] font-medium uppercase tracking-wide text-white/45">
-              Pages aujourd&apos;hui
-            </p>
-            <p className="font-serif text-[34px] font-black leading-none text-yellow-200">
-              {champion.pages}
-            </p>
-          </div>
-          <div className="rounded-xl bg-white/15 px-4 py-2.5">
-            <p className="font-serif text-[20px] font-black text-yellow-200">
-              {isMe ? "Toi !" : champion.name}
-            </p>
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
