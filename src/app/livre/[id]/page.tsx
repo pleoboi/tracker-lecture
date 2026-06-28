@@ -492,6 +492,18 @@ export default function BookDetailPage() {
   const stats = activeBook ? readingStats(activeBook, logs) : { startDate: null, endDate: null, durationDays: null, pagesPerDay: null };
   const rating = activeBook?.rating || 0;
 
+  // Note moyenne du club (tous lecteurs ayant noté, y compris soi-même)
+  const ratedInClub = memberActivity.filter((m) => (m.rating ?? 0) > 0);
+  const allClubRatings = [
+    ...ratedInClub.map((m) => m.rating!),
+    ...(rating > 0 ? [rating] : []),
+  ];
+  const clubRaterCount = allClubRatings.length;
+  const clubAvgRating =
+    clubRaterCount > 0
+      ? allClubRatings.reduce((s, r) => s + r, 0) / clubRaterCount
+      : 0;
+
   return (
     <div className="animate-fadeIn -mx-5 md:-mx-10">
       {showConfetti && <Confetti />}
@@ -623,6 +635,18 @@ export default function BookDetailPage() {
         <div className="text-center">
           <h1 className="font-serif text-2xl font-black text-ink">{book.title}</h1>
           <p className="mt-0.5 text-sm text-ink-2">{book.author}</p>
+          {clubRaterCount > 0 && (
+            <div className="mt-2 flex items-center justify-center gap-1.5">
+              <span className="text-gold text-base leading-none">★</span>
+              <span className="font-serif text-[15px] font-bold text-ink">
+                {clubAvgRating.toFixed(1).replace(".", ",")}
+              </span>
+              <span className="text-xs text-muted">/ 5</span>
+              <span className="text-[11px] text-muted">
+                ({clubRaterCount} lecteur{clubRaterCount > 1 ? "s" : ""})
+              </span>
+            </div>
+          )}
         </div>
 
         {isOwner && (
