@@ -9,10 +9,17 @@ import type { Book } from "../lib/types";
 import { Modal, Button, FieldLabel, inputClass, Cover } from "./ui";
 import CoverPickerModal from "./CoverPickerModal";
 
+type Status = "to-read" | "reading" | "completed";
+
+const STATUS_OPTIONS: { value: Status; label: string }[] = [
+  { value: "to-read", label: "Envie de lire" },
+  { value: "reading", label: "En cours" },
+  { value: "completed", label: "Terminé ✓" },
+];
+
 type Draft = { title: string; author: string; pages: string; genre: string; year: string };
 const emptyDraft: Draft = { title: "", author: "", pages: "", genre: "", year: "" };
 
-// Club books carry extra fields not in BookSuggestion
 type ClubSuggestion = BookSuggestion & { pages?: number; memberCount?: number };
 
 export default function AddBookModal({
@@ -33,7 +40,14 @@ export default function AddBookModal({
   const [selected, setSelected] = useState<ClubSuggestion | null>(null);
   const [manual, setManual] = useState(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
+
+  // Champs communs
+  const [status, setStatus] = useState<Status>("reading");
   const [pages, setPages] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [rating, setRating] = useState(0);
+
   const [localCoverUrl, setLocalCoverUrl] = useState<string | null>(null);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -49,7 +63,11 @@ export default function AddBookModal({
       setSelected(null);
       setManual(false);
       setDraft(emptyDraft);
+      setStatus("reading");
       setPages("");
+      setStartDate("");
+      setEndDate("");
+      setRating(0);
       setError(null);
       setLocalCoverUrl(null);
       setShowCoverPicker(false);
@@ -78,14 +96,12 @@ export default function AddBookModal({
             }
             return [];
           }),
-          // Livres d'autres membres
           supabase
             .from("books")
             .select("*")
             .ilike("title", `%${q}%`)
             .neq("user_id", user?.id ?? "")
             .limit(8),
-          // Livres déjà dans la bibliothèque de l'utilisateur
           supabase
             .from("books")
             .select("id, title, author, cover_url, status")
@@ -94,12 +110,10 @@ export default function AddBookModal({
             .limit(3),
         ]);
 
-        // Propres livres de l'utilisateur
         setOwnResults(
           ((ownData as Pick<Book, "id" | "title" | "author">[]) || []).slice(0, 3)
         );
 
-        // Déduplique les livres du club par titre+auteur (prend le plus complet)
         const seen = new Map<string, Book>();
         ((clubData as Book[]) || []).forEach((b) => {
           const key = `${b.title.toLowerCase().trim()}__${(b.author || "").toLowerCase().trim()}`;
@@ -109,7 +123,6 @@ export default function AddBookModal({
           }
         });
 
-        // Compte le nombre de membres ayant chaque livre
         const titleCount = new Map<string, number>();
         ((clubData as Book[]) || []).forEach((b) => {
           const key = `${b.title.toLowerCase().trim()}__${(b.author || "").toLowerCase().trim()}`;
@@ -154,43 +167,94 @@ export default function AddBookModal({
     if (!user) return false;
     setSaving(true);
     setError(null);
-    const { error: dbError } = await supabase.from("books").insert({
+
+    const { data: existing } = await supabase
+      .from("books")
+      .select("id")
+      .eq("user_id", user.id)
+      .ilike("title", b.title)
+      .limit(1);
+
+    if (existing && existing.length > 0) {
+      setError("Ce livre est déjà dans ta bibliothèque.");
+      setSaving(false);
+      return false;
+    }
+
+    const bookData: Record<string, unknown> = {
       title: b.title,
       author: b.author || "Auteur inconnu",
       pages: b.pages,
-      progress: 0,
-      status: "reading",
+      progress: status === "completed" ? b.pages : 0,
+      status,
       cover_url: b.cover_url ?? null,
-      rating: 0,
+      rating: rating || 0,
       genre: b.genre ?? null,
       published_year: b.year ?? null,
       summary: b.summary ?? null,
       user_id: user.id,
-    });
-    setSaving(false);
-    if (dbError) {
-      setError(dbError.message);
+    };
+
+    if (status === "reading" && startDate) bookData.date_started = startDate;
+    if (status === "completed") {
+      if (startDate) bookData.date_started = startDate;
+      if (endDate) bookData.date_read = endDate;
+    }
+
+    const { data: inserted, error: dbError } = await supabase
+      .from("books")
+      .insert(bookData)
+      .select("id")
+      .single();
+
+    if (dbError || !inserted) {
+      setError(dbError?.message ?? "Erreur lors de l'ajout.");
+      setSaving(false);
       return false;
     }
-    onAdded(`« ${b.title} » ajouté à ta bibliothèque.`);
+
+    if (status === "completed" && endDate && b.pages > 0) {
+      if (startDate && startDate !== endDate && b.pages > 1) {
+        await supabase.from("reading_logs").insert([
+          { book_id: inserted.id, date: startDate, pages_read: 1, end_page: 1, user_id: user.id },
+          { book_id: inserted.id, date: endDate, pages_read: b.pages - 1, end_page: b.pages, user_id: user.id },
+        ]);
+      } else {
+        await supabase.from("reading_logs").insert({
+          book_id: inserted.id,
+          date: endDate,
+          pages_read: b.pages,
+          end_page: b.pages,
+          user_id: user.id,
+        });
+      }
+    }
+
+    setSaving(false);
+    const msgs: Record<Status, string> = {
+      "to-read": `« ${b.title} » ajouté à ta liste Envie de lire.`,
+      "reading": `« ${b.title} » ajouté à tes lectures en cours.`,
+      "completed": `« ${b.title} » marqué comme terminé.`,
+    };
+    onAdded(msgs[status]);
     onClose();
     return true;
   };
 
   const handleAddSelected = async () => {
     if (!selected) return;
-    const n = Number(pages);
-    if (!pages || isNaN(n) || n <= 0) {
-      setError("Indique le nombre de pages de ton édition.");
-      return;
-    }
-    await insertBook({ ...selected, cover_url: localCoverUrl ?? selected.coverUrl, year: selected.year, pages: n });
+    const n = pages ? Number(pages) : (selected.pages ?? 0);
+    await insertBook({
+      ...selected,
+      cover_url: localCoverUrl ?? selected.coverUrl,
+      year: selected.year,
+      pages: n,
+    });
   };
 
   const handleAddManual = async () => {
-    const n = Number(draft.pages);
+    const n = draft.pages ? Number(draft.pages) : 0;
     if (!draft.title.trim()) return setError("Le titre est obligatoire.");
-    if (!draft.pages || isNaN(n) || n <= 0) return setError("Indique le nombre de pages.");
     await insertBook({
       title: draft.title.trim(),
       author: draft.author.trim(),
@@ -200,81 +264,176 @@ export default function AddBookModal({
     });
   };
 
-  // ---- Vue : confirmation ----
+  // Champs conditionnels partagés entre "selected" et "manual"
+  const renderStatusFields = (autoFocusPages = false) => (
+    <>
+      {/* Statut */}
+      <div>
+        <FieldLabel>Où en es-tu ?</FieldLabel>
+        <div className="flex gap-2">
+          {STATUS_OPTIONS.map((s) => (
+            <button
+              key={s.value}
+              type="button"
+              onClick={() => setStatus(s.value)}
+              className={`flex-1 rounded-xl border py-2.5 text-xs font-semibold transition-colors ${
+                status === s.value
+                  ? "border-violet bg-violet-soft text-violet-deep"
+                  : "border-line bg-card text-muted hover:border-violet/40"
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Note — Terminé seulement */}
+      {status === "completed" && (
+        <div>
+          <FieldLabel>Note (optionnel)</FieldLabel>
+          <div className="flex items-center gap-0.5">
+            {[1, 2, 3, 4, 5].map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setRating(rating === s ? 0 : s)}
+                className="p-1 text-2xl leading-none"
+              >
+                <span style={{ color: s <= rating ? "#c9a227" : "#dad2c2" }}>★</span>
+              </button>
+            ))}
+            {rating > 0 && <span className="ml-1 text-xs text-muted">{rating}/5</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Pages — En cours et Terminé */}
+      {status !== "to-read" && (
+        <div>
+          <FieldLabel>Nombre de pages (optionnel)</FieldLabel>
+          <input
+            type="number"
+            min={1}
+            value={pages}
+            onChange={(e) => setPages(e.target.value)}
+            placeholder="ex. 384"
+            className={inputClass}
+            autoFocus={autoFocusPages}
+          />
+        </div>
+      )}
+
+      {/* Date de début — En cours et Terminé */}
+      {(status === "reading" || status === "completed") && (
+        <div>
+          <FieldLabel>Date de début (optionnel)</FieldLabel>
+          <input
+            type="date"
+            value={startDate}
+            max={endDate || undefined}
+            onChange={(e) => setStartDate(e.target.value)}
+            className={inputClass}
+          />
+        </div>
+      )}
+
+      {/* Date de fin — Terminé seulement */}
+      {status === "completed" && (
+        <div>
+          <FieldLabel>Date de fin (optionnel)</FieldLabel>
+          <input
+            type="date"
+            value={endDate}
+            min={startDate || undefined}
+            onChange={(e) => setEndDate(e.target.value)}
+            className={inputClass}
+          />
+        </div>
+      )}
+    </>
+  );
+
+  // ---- Vue : confirmation après sélection d'un livre ----
   if (selected) {
     const fromClub = selected.googleId.startsWith("club-");
     const activeCover = localCoverUrl ?? selected.coverUrl;
+    const btnLabel = saving
+      ? "Ajout…"
+      : status === "to-read"
+        ? "Ajouter à ma liste"
+        : status === "reading"
+          ? "Commencer la lecture"
+          : "Marquer comme terminé";
+
     return (
       <>
-      <Modal open={open} onClose={onClose} title="Ajouter un livre">
-        <div className="flex flex-col gap-4">
-          <div className="flex gap-3 rounded-2xl border border-line bg-card p-3">
-            <div className="relative shrink-0">
-              <Cover id={0} title={selected.title} coverUrl={activeCover} className="h-[84px] w-[58px]" />
-              <button
-                onClick={() => setShowCoverPicker(true)}
-                className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-violet text-[9px] text-cream shadow"
-                title="Changer la couverture"
-              >✎</button>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <h3 className="font-serif text-base font-medium text-ink">{selected.title}</h3>
-                {fromClub && (
-                  <span className="shrink-0 rounded-md bg-violet-soft px-1.5 py-0.5 text-[10px] font-semibold text-violet-deep">
-                    Club
-                  </span>
-                )}
+        <Modal open={open} onClose={onClose} title="Ajouter un livre">
+          <div className="flex flex-col gap-4">
+            {/* Aperçu du livre */}
+            <div className="flex gap-3 rounded-2xl border border-line bg-card p-3">
+              <div className="relative shrink-0">
+                <Cover id={0} title={selected.title} coverUrl={activeCover} className="h-[84px] w-[58px]" />
+                <button
+                  onClick={() => setShowCoverPicker(true)}
+                  className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-violet text-[9px] text-cream shadow"
+                  title="Changer la couverture"
+                >✎</button>
               </div>
-              <p className="text-xs text-muted">{selected.author}</p>
-              <p className="mt-1 text-[11px] font-medium text-muted">
-                {[selected.genre, selected.year].filter(Boolean).join(" · ") || "Genre non renseigné"}
-              </p>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <h3 className="font-serif text-base font-medium text-ink">{selected.title}</h3>
+                  {fromClub && (
+                    <span className="shrink-0 rounded-md bg-violet-soft px-1.5 py-0.5 text-[10px] font-semibold text-violet-deep">
+                      Club
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-muted">{selected.author}</p>
+                <p className="mt-1 text-[11px] font-medium text-muted">
+                  {[selected.genre, selected.year].filter(Boolean).join(" · ") || "Genre non renseigné"}
+                </p>
+              </div>
+            </div>
+
+            {renderStatusFields(status !== "to-read")}
+
+            {error && <p className="text-xs font-medium text-danger">{error}</p>}
+
+            <div className="flex gap-3">
+              <Button variant="ghost" onClick={() => setSelected(null)} className="flex-1">
+                ‹ Retour
+              </Button>
+              <Button onClick={handleAddSelected} disabled={saving} className="flex-1">
+                {btnLabel}
+              </Button>
             </div>
           </div>
-          <div>
-            <FieldLabel>Nombre de pages de ton édition</FieldLabel>
-            <input
-              type="number"
-              min={1}
-              value={pages}
-              onChange={(e) => setPages(e.target.value)}
-              placeholder="ex. 384"
-              className={inputClass + " text-base font-semibold"}
-              autoFocus
-            />
-            <p className="mt-1.5 text-[11px] leading-4 text-muted">
-              {fromClub
-                ? "Métadonnées pré-remplies depuis le club. Ajuste le nombre de pages si ton édition diffère."
-                : "La couverture, le genre et le résumé sont remplis automatiquement."}
-            </p>
-          </div>
-          {error && <p className="text-xs font-medium text-danger">{error}</p>}
-          <div className="flex gap-3">
-            <Button variant="ghost" onClick={() => setSelected(null)} className="flex-1">
-              ‹ Retour
-            </Button>
-            <Button onClick={handleAddSelected} disabled={saving} className="flex-1">
-              {saving ? "Ajout…" : "Ajouter le livre"}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-      {showCoverPicker && (
-        <CoverPickerModal
-          title={selected.title}
-          author={selected.author}
-          currentCover={activeCover}
-          onPick={(url) => { setLocalCoverUrl(url); setShowCoverPicker(false); }}
-          onClose={() => setShowCoverPicker(false)}
-        />
-      )}
+        </Modal>
+
+        {showCoverPicker && (
+          <CoverPickerModal
+            title={selected.title}
+            author={selected.author}
+            currentCover={activeCover}
+            onPick={(url) => { setLocalCoverUrl(url); setShowCoverPicker(false); }}
+            onClose={() => setShowCoverPicker(false)}
+          />
+        )}
       </>
     );
   }
 
   // ---- Vue : saisie manuelle ----
   if (manual) {
+    const btnLabel = saving
+      ? "Ajout…"
+      : status === "to-read"
+        ? "Ajouter à ma liste"
+        : status === "reading"
+          ? "Commencer la lecture"
+          : "Marquer comme terminé";
+
     return (
       <Modal open={open} onClose={onClose} title="Ajouter un livre">
         <div className="flex flex-col gap-3">
@@ -297,16 +456,6 @@ export default function AddBookModal({
           </div>
           <div className="flex gap-3">
             <div className="flex-1">
-              <FieldLabel>Pages *</FieldLabel>
-              <input
-                type="number"
-                min={1}
-                value={draft.pages}
-                onChange={(e) => setDraft({ ...draft, pages: e.target.value })}
-                className={inputClass}
-              />
-            </div>
-            <div className="flex-1">
               <FieldLabel>Année</FieldLabel>
               <input
                 type="number"
@@ -315,23 +464,26 @@ export default function AddBookModal({
                 className={inputClass}
               />
             </div>
+            <div className="flex-1">
+              <FieldLabel>Genre</FieldLabel>
+              <input
+                value={draft.genre}
+                onChange={(e) => setDraft({ ...draft, genre: e.target.value })}
+                placeholder="Roman, Fantasy…"
+                className={inputClass}
+              />
+            </div>
           </div>
-          <div>
-            <FieldLabel>Genre</FieldLabel>
-            <input
-              value={draft.genre}
-              onChange={(e) => setDraft({ ...draft, genre: e.target.value })}
-              placeholder="Roman, Fantasy…"
-              className={inputClass}
-            />
-          </div>
+
+          {renderStatusFields()}
+
           {error && <p className="text-xs font-medium text-danger">{error}</p>}
           <div className="flex gap-3">
             <Button variant="ghost" onClick={() => setManual(false)} className="flex-1">
               ‹ Recherche
             </Button>
             <Button onClick={handleAddManual} disabled={saving} className="flex-1">
-              {saving ? "Ajout…" : "Ajouter le livre"}
+              {btnLabel}
             </Button>
           </div>
         </div>
@@ -398,6 +550,10 @@ export default function AddBookModal({
                     setSelected(r);
                     setError(null);
                     setPages(r.pages ? String(r.pages) : "");
+                    setStatus("reading");
+                    setStartDate("");
+                    setEndDate("");
+                    setRating(0);
                   }}
                   className="flex items-center gap-3 rounded-2xl border border-violet/30 bg-violet-soft p-3 text-left transition-colors hover:border-violet"
                 >
@@ -441,7 +597,15 @@ export default function AddBookModal({
               {results.map((r) => (
                 <button
                   key={r.googleId}
-                  onClick={() => { setSelected(r); setError(null); setPages(""); }}
+                  onClick={() => {
+                    setSelected(r);
+                    setError(null);
+                    setPages("");
+                    setStatus("reading");
+                    setStartDate("");
+                    setEndDate("");
+                    setRating(0);
+                  }}
                   className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3 text-left transition-colors hover:border-violet"
                 >
                   <Cover id={0} title={r.title} coverUrl={r.coverUrl} className="h-[66px] w-[46px]" />
@@ -462,7 +626,16 @@ export default function AddBookModal({
         </div>
 
         <button
-          onClick={() => { setManual(true); setError(null); setDraft({ ...emptyDraft, title: query.trim() }); }}
+          onClick={() => {
+            setManual(true);
+            setError(null);
+            setDraft({ ...emptyDraft, title: query.trim() });
+            setStatus("reading");
+            setPages("");
+            setStartDate("");
+            setEndDate("");
+            setRating(0);
+          }}
           className="mt-1 text-center text-xs font-medium text-violet-deep underline decoration-violet/40 underline-offset-2"
         >
           Saisir le livre manuellement
