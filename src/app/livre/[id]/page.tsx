@@ -10,6 +10,7 @@ import { pct, isCompleted, isAbandoned, readingStats, formatDate, formatDateLong
 import { Cover, ProgressBar, Pill, Button, AvatarImg } from "../../../components/ui";
 import LogReadingModal from "../../../components/LogReadingModal";
 import AddToLibraryModal from "../../../components/AddToLibraryModal";
+import CoverPickerModal from "../../../components/CoverPickerModal";
 
 const GENRES = [
   "Roman", "Fiction", "Non-Fiction", "Classique", "Nouvelle",
@@ -64,6 +65,7 @@ export default function BookDetailPage() {
   const router = useRouter();
   const { user } = useAuth();
   const userId = user?.id;
+  const isAdmin = user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL;
   const id = Number(params.id);
 
   const [book, setBook] = useState<Book | null>(null);
@@ -83,6 +85,9 @@ export default function BookDetailPage() {
   const [reviewLikeCount, setReviewLikeCount] = useState(0);
   const [reviewLiked, setReviewLiked] = useState(false);
   const [likeLoading, setLikeLoading] = useState(false);
+
+  // Cover picker dans le formulaire d'édition admin
+  const [showCoverPickerEdit, setShowCoverPickerEdit] = useState(false);
 
   // Confetti + genre picker
   const [showConfetti, setShowConfetti] = useState(false);
@@ -318,17 +323,25 @@ export default function BookDetailPage() {
   };
 
   const saveInfo = async () => {
-    if (!activeBook) return;
+    if (!book) return;
     const year = infoDraft.year ? Number(infoDraft.year) : null;
     const update = {
-      title: infoDraft.title.trim() || activeBook.title,
-      author: infoDraft.author.trim() || activeBook.author,
+      title: infoDraft.title.trim() || book.title,
+      author: infoDraft.author.trim() || book.author,
       published_year: year,
       summary: infoDraft.summary.trim() || null,
       cover_url: infoDraft.coverUrl.trim() || null,
     };
-    await supabase.from("books").update(update).eq("id", activeBook.id);
-    updateActiveBook({ ...activeBook, ...update });
+    const escapedTitle = book.title.replace(/[%_]/g, "\\$&");
+    // Admin : propage à toutes les copies du livre (tous utilisateurs)
+    // Propriétaire simple : ne met à jour que sa copie
+    if (isAdmin) {
+      await supabase.from("books").update(update).ilike("title", escapedTitle);
+    } else if (activeBook) {
+      await supabase.from("books").update(update).eq("id", activeBook.id);
+    }
+    setBook({ ...book, ...update });
+    if (activeBook) updateActiveBook({ ...activeBook, ...update });
     setEditingInfo(false);
   };
 
@@ -486,6 +499,7 @@ export default function BookDetailPage() {
   }
 
   const isOwner = !!activeBook;
+  const canEdit = isOwner || isAdmin;
   const p = activeBook ? pct(activeBook) : 0;
   const done = activeBook ? isCompleted(activeBook) : false;
   const abandoned = activeBook ? isAbandoned(activeBook) : false;
@@ -583,20 +597,45 @@ export default function BookDetailPage() {
           rounded="rounded-lg"
         />
 
-        {isOwner && editingInfo ? (
+        {canEdit && editingInfo ? (
           <div className="flex w-full max-w-sm flex-col gap-2">
-            <input
-              value={infoDraft.coverUrl}
-              onChange={(e) => setInfoDraft({ ...infoDraft, coverUrl: e.target.value })}
-              placeholder="URL couverture (https://…)"
-              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
-              autoFocus
-            />
+            {/* Couverture : aperçu + bouton picker */}
+            <div className="flex items-center gap-3">
+              <div className="relative shrink-0">
+                <Cover
+                  id={0}
+                  title={infoDraft.title || book.title}
+                  coverUrl={infoDraft.coverUrl || null}
+                  className="h-[80px] w-[55px]"
+                  rounded="rounded-lg"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCoverPickerEdit(true)}
+                  className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-violet text-[11px] text-cream shadow-md"
+                  title="Choisir une couverture"
+                >
+                  ✎
+                </button>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="mb-1 text-[10.5px] font-medium text-muted">
+                  URL couverture (ou utilise ✎)
+                </p>
+                <input
+                  value={infoDraft.coverUrl}
+                  onChange={(e) => setInfoDraft({ ...infoDraft, coverUrl: e.target.value })}
+                  placeholder="https://…"
+                  className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+                />
+              </div>
+            </div>
             <input
               value={infoDraft.title}
               onChange={(e) => setInfoDraft({ ...infoDraft, title: e.target.value })}
               placeholder="Titre"
               className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              autoFocus
             />
             <input
               value={infoDraft.author}
@@ -618,12 +657,17 @@ export default function BookDetailPage() {
               rows={3}
               className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
             />
+            {isAdmin && !isOwner && (
+              <p className="rounded-xl bg-violet-soft px-3 py-2 text-[10.5px] font-medium text-violet-deep">
+                ⚡ Mode admin — les modifications s&apos;appliquent à toutes les copies
+              </p>
+            )}
             <div className="flex gap-2">
               <Button onClick={saveInfo} className="flex-1 py-2">Enregistrer</Button>
               <Button variant="ghost" onClick={() => setEditingInfo(false)} className="flex-1 py-2">Annuler</Button>
             </div>
           </div>
-        ) : isOwner ? (
+        ) : canEdit ? (
           <button
             onClick={() => setEditingInfo(true)}
             className="text-xs font-medium text-violet-deep underline decoration-violet/40 underline-offset-2"
@@ -1079,6 +1123,19 @@ export default function BookDetailPage() {
         <div className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-cream shadow-xl">
           {addedMsg}
         </div>
+      )}
+
+      {showCoverPickerEdit && (
+        <CoverPickerModal
+          title={infoDraft.title || book.title}
+          author={infoDraft.author || book.author}
+          currentCover={infoDraft.coverUrl || null}
+          onPick={(url) => {
+            setInfoDraft((d) => ({ ...d, coverUrl: url }));
+            setShowCoverPickerEdit(false);
+          }}
+          onClose={() => setShowCoverPickerEdit(false)}
+        />
       )}
 
       {/* Modale review d'un membre */}
