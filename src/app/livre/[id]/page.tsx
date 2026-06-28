@@ -332,11 +332,17 @@ export default function BookDetailPage() {
       summary: infoDraft.summary.trim() || null,
       cover_url: infoDraft.coverUrl.trim() || null,
     };
-    const escapedTitle = book.title.replace(/[%_]/g, "\\$&");
-    // Admin : propage à toutes les copies du livre (tous utilisateurs)
-    // Propriétaire simple : ne met à jour que sa copie
     if (isAdmin) {
-      await supabase.from("books").update(update).ilike("title", escapedTitle);
+      // Passe par l'API route (service role) pour bypasser RLS et mettre à jour toutes les copies
+      const { data: { session } } = await supabase.auth.getSession();
+      await fetch("/api/books/update-metadata", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+        },
+        body: JSON.stringify({ title: book.title, update }),
+      });
     } else if (activeBook) {
       await supabase.from("books").update(update).eq("id", activeBook.id);
     }
