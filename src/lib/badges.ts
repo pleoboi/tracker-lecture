@@ -1,11 +1,11 @@
 export type BadgeTier = 1 | 2 | 3 | 4;
 export type BadgeType =
   | "volume" | "genre" | "sessions" | "pages" | "review" | "streak" | "monthly"
-  | "event" | "time_of_day" | "performance" | "social";
+  | "event" | "time_of_day" | "performance" | "social" | "quiz";
 
 export type IconKey =
   | "books" | "compass" | "lightning" | "quill" | "pages" | "flame" | "calendar"
-  | "moon" | "sunrise" | "heart" | "camera" | "chart" | "crown";
+  | "moon" | "sunrise" | "heart" | "camera" | "chart" | "crown" | "seal";
 
 export interface BadgeDef {
   id: string;
@@ -98,6 +98,10 @@ export const BADGE_DEFS: BadgeDef[] = [
   { id:"social-id",      name:"Identité",    description:"Ajouter une photo de profil",                       type:"social", tier:1, targetValue:1,  points:10, iconKey:"camera", isSpecial:true },
   { id:"social-photo",   name:"Illustrateur",description:"Ajouter une photo à une session de lecture",        type:"social", tier:1, targetValue:1,  points:15, iconKey:"camera", isSpecial:true },
   { id:"social-archive", name:"Archiviste",  description:"Ajouter manuellement un livre dans la base",        type:"social", tier:2, targetValue:1,  points:25, iconKey:"books",  isSpecial:true },
+
+  // ── Validation de lecture (cumulatif : +30 pts par livre validé) ─────────
+  { id:"sans-faute", name:"Sans Faute", description:"Valider le QCM de fin de lecture avec la bonne réponse",
+    type:"quiz", tier:3, targetValue:1, points:0, iconKey:"seal", isSpecial:true },
 ];
 
 export const BADGE_CUTOFF_DATE = "2026-06-20";
@@ -116,6 +120,8 @@ export function getStatValue(def: BadgeDef, stats: UserBadgeStats): number {
     case "time_of_day":
     case "performance":
     case "social":
+    case "quiz":
+    default:
       return -1; // logique spéciale dans l'API
   }
 }

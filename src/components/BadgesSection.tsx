@@ -21,6 +21,7 @@ const TYPE_GRADIENT: Record<BadgeType, [string, string][]> = {
   time_of_day: [["#bae6fd","#0369a1"],["#7dd3fc","#075985"],["#38bdf8","#0c4a6e"],["#0ea5e9","#082f49"]],
   performance: [["#fdba74","#c2410c"],["#fb923c","#9a3412"],["#f97316","#7c2d12"],["#ea580c","#431407"]],
   social:      [["#5eead4","#0f766e"],["#2dd4bf","#0d6b63"],["#14b8a6","#0b5e57"],["#0d9488","#042f2e"]],
+  quiz:        [["#fde68a","#d97706"],["#fcd34d","#b45309"],["#f59e0b","#92400e"],["#d97706","#451a03"]],
 };
 
 // ── Stats helper ──────────────────────────────────────────────────────────────
@@ -180,6 +181,17 @@ function BadgeIcon({ iconKey, size = 22 }: { iconKey: IconKey; size?: number }) 
         <circle cx="12" cy="3"  r="1.2" fill="white" />
         <circle cx="2"  cy="8"  r="1.2" fill="white" />
         <circle cx="22" cy="8"  r="1.2" fill="white" />
+      </svg>
+    ),
+    seal: (
+      <svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9.5" stroke="white" strokeWidth="1.2" strokeDasharray="2.5 1.5" />
+        <circle cx="12" cy="12" r="7"   fill="white" fillOpacity="0.18" />
+        <circle cx="12" cy="4.5"  r="0.9" fill="white" opacity="0.7" />
+        <circle cx="19.5" cy="12" r="0.9" fill="white" opacity="0.7" />
+        <circle cx="12" cy="19.5" r="0.9" fill="white" opacity="0.7" />
+        <circle cx="4.5"  cy="12" r="0.9" fill="white" opacity="0.7" />
+        <polyline points="8.5,12 11,14.5 15.5,9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
   };
@@ -456,19 +468,22 @@ const TYPE_LABEL: Record<BadgeType, string> = {
   volume:"Bâtisseur", genre:"Explorateur", sessions:"Marathonien", review:"Critique",
   pages:"Vorace", streak:"Régulier", monthly:"Défis mensuels",
   event:"Événements", time_of_day:"Horaires", performance:"Performance", social:"Social & Profil",
+  quiz:"Validation de lecture",
 };
 
 // ── Badges Hub (full-screen, style Garmin) ────────────────────────────────────
 function BadgesHub({ memberId, currentUserId, onClose }: {
   memberId: string; currentUserId?: string; onClose: () => void;
 }) {
-  const [tab,       setTab]       = useState<"won" | "available" | "leaderboard">("won");
-  const [loading,   setLoading]   = useState(true);
-  const [profile,   setProfile]   = useState<{ display_name: string; avatar_url: string | null } | null>(null);
-  const [unlocked,  setUnlocked]  = useState<{ badge_id: string; unlocked_at: string }[]>([]);
-  const [stats,     setStats]     = useState<UserBadgeStats | null>(null);
-  const [selected,  setSelected]  = useState<BadgeDef | null>(null);
-  const [awardQueue, setAwardQueue] = useState<BadgeDef[]>([]);
+  const [tab,           setTab]           = useState<"won" | "available" | "leaderboard">("won");
+  const [loading,       setLoading]       = useState(true);
+  const [profile,       setProfile]       = useState<{ display_name: string; avatar_url: string | null } | null>(null);
+  const [unlocked,      setUnlocked]      = useState<{ badge_id: string; unlocked_at: string }[]>([]);
+  const [stats,         setStats]         = useState<UserBadgeStats | null>(null);
+  const [selected,      setSelected]      = useState<BadgeDef | null>(null);
+  const [awardQueue,    setAwardQueue]    = useState<BadgeDef[]>([]);
+  const [quizPassCount, setQuizPassCount] = useState(0);
+  const [quizBonus,     setQuizBonus]     = useState(0);
 
   useEffect(() => { document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = ""; }; }, []);
 
@@ -491,13 +506,16 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
       }
 
       const [profileRes, ubRes, computedStats] = await Promise.all([
-        supabase.from("user_profiles").select("display_name, avatar_url").eq("id", memberId).single(),
+        supabase.from("user_profiles").select("display_name, avatar_url, quiz_pass_count, quiz_bonus_points").eq("id", memberId).single(),
         supabase.from("user_badges").select("badge_id, unlocked_at").eq("user_id", memberId)
           .order("unlocked_at", { ascending: false }),
         fetchBadgeStats(memberId),
       ]);
 
-      setProfile(profileRes.data as { display_name: string; avatar_url: string | null } | null);
+      const prof = profileRes.data as { display_name: string; avatar_url: string | null; quiz_pass_count?: number; quiz_bonus_points?: number } | null;
+      setProfile(prof);
+      setQuizPassCount(prof?.quiz_pass_count ?? 0);
+      setQuizBonus(prof?.quiz_bonus_points ?? 0);
       setUnlocked((ubRes.data ?? []) as { badge_id: string; unlocked_at: string }[]);
       setStats(computedStats);
       setAwardQueue(newlyAwarded);
@@ -507,7 +525,7 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
   }, [memberId, currentUserId]);
 
   const unlockedSet  = new Set(unlocked.map((u) => u.badge_id));
-  const totalPoints  = getTotalPoints(unlockedSet);
+  const totalPoints  = getTotalPoints(unlockedSet) + quizBonus;
   const lvl          = getLevelProgress(totalPoints);
   const wonBadges    = BADGE_DEFS.filter((d) => unlockedSet.has(d.id));
   const lockedBadges = BADGE_DEFS.filter((d) => !unlockedSet.has(d.id));
@@ -606,13 +624,22 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
                 <div className="grid grid-cols-3 gap-4">
                   {wonBadges.map((def) => {
                     const ub = unlocked.find((u) => u.badge_id === def.id);
+                    const isSansFaute = def.id === "sans-faute";
                     return (
                       <button key={def.id} onClick={() => setSelected(def)}
                         className="group flex flex-col items-center gap-1.5 focus:outline-none">
-                        <div className="transition-transform group-hover:scale-105">
+                        <div className="relative transition-transform group-hover:scale-105">
                           <BookmarkBadge def={def} unlocked unlockedAt={ub?.unlocked_at} size={76} />
+                          {isSansFaute && quizPassCount > 1 && (
+                            <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center
+                              rounded-full bg-amber-500 font-mono text-[9px] font-black text-white ring-2 ring-paper">
+                              {quizPassCount}
+                            </span>
+                          )}
                         </div>
-                        <p className="text-center text-[10.5px] font-semibold leading-tight text-ink">{def.name}</p>
+                        <p className="text-center text-[10.5px] font-semibold leading-tight text-ink">
+                          {def.name}{isSansFaute && quizPassCount > 1 ? ` × ${quizPassCount}` : ""}
+                        </p>
                         <p className={`text-[9.5px] font-bold ${TIER_META[def.tier as BadgeTier].textClass}`}>
                           {TIER_META[def.tier as BadgeTier].label}
                         </p>
