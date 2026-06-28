@@ -103,6 +103,11 @@ export default function BookDetailPage() {
   // Mark as read (no date)
   const [markingRead, setMarkingRead] = useState(false);
 
+  // Correction inline de la progression
+  const [editingProgress, setEditingProgress] = useState(false);
+  const [progressDraft, setProgressDraft] = useState("");
+  const [savingProgress, setSavingProgress] = useState(false);
+
   // Ajouter à ma bibliothèque (non-propriétaire)
   const [showAddModal, setShowAddModal] = useState(false);
   const [addedMsg, setAddedMsg] = useState<string | null>(null);
@@ -360,6 +365,37 @@ export default function BookDetailPage() {
     setShowConfetti(true);
     setTimeout(() => setShowConfetti(false), 3800);
     if (!activeBook.genre) setShowGenrePicker(true);
+  };
+
+  const saveProgress = async () => {
+    if (!activeBook || !userId) return;
+    const newPage = parseInt(progressDraft, 10);
+    if (isNaN(newPage) || newPage < 0 || newPage > activeBook.pages) return;
+    setSavingProgress(true);
+
+    await supabase.from("books").update({ progress: newPage }).eq("id", activeBook.id);
+
+    // Met aussi à jour le dernier log pour rester cohérent avec le journal
+    const { data: latestLog } = await supabase
+      .from("reading_logs")
+      .select("id, end_page, pages_read")
+      .eq("user_id", userId)
+      .eq("book_id", activeBook.id)
+      .order("date", { ascending: false })
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (latestLog?.[0]) {
+      const delta = newPage - latestLog[0].end_page;
+      await supabase.from("reading_logs").update({
+        end_page: newPage,
+        pages_read: Math.max(0, latestLog[0].pages_read + delta),
+      }).eq("id", latestLog[0].id);
+    }
+
+    updateActiveBook({ ...activeBook, progress: newPage });
+    setSavingProgress(false);
+    setEditingProgress(false);
   };
 
   const saveGenre = async (genre: string) => {
@@ -704,10 +740,54 @@ export default function BookDetailPage() {
             <Stat label="Rythme" value={stats.pagesPerDay ? `${stats.pagesPerDay} p./j` : "—"} accent="text-sage" />
           </div>
           <ProgressBar value={p / 100} color={done ? "var(--color-success)" : "var(--color-violet)"} />
-          <p className={`text-[11px] font-medium ${done ? "text-success" : "text-muted"}`}>
-            {done ? "Terminé · " : ""}
-            {activeBook!.progress} / {activeBook!.pages} pages
-          </p>
+
+          {editingProgress ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={activeBook!.pages}
+                value={progressDraft}
+                onChange={(e) => setProgressDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") saveProgress(); if (e.key === "Escape") setEditingProgress(false); }}
+                autoFocus
+                className="w-20 rounded-lg border border-violet bg-input px-2 py-1 text-center text-sm font-bold text-ink outline-none"
+              />
+              <span className="text-[11px] text-muted">/ {activeBook!.pages} pages</span>
+              <button
+                onClick={saveProgress}
+                disabled={savingProgress}
+                className="flex h-6 w-6 items-center justify-center rounded-full bg-violet text-[11px] font-bold text-cream disabled:opacity-60"
+              >
+                ✓
+              </button>
+              <button
+                onClick={() => setEditingProgress(false)}
+                className="flex h-6 w-6 items-center justify-center rounded-full border border-line text-[11px] text-muted"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <p className={`text-[11px] font-medium ${done ? "text-success" : "text-muted"}`}>
+                {done ? "Terminé · " : ""}
+                {activeBook!.progress} / {activeBook!.pages} pages
+              </p>
+              {!done && (
+                <button
+                  onClick={() => { setProgressDraft(String(activeBook!.progress)); setEditingProgress(true); }}
+                  title="Corriger la page"
+                  className="flex h-5 w-5 items-center justify-center rounded-full text-muted transition-colors hover:bg-violet-soft hover:text-violet-deep"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Historique des relectures */}
           {done && (activeBook!.date_started || activeBook!.date_read || readSessions.length > 0) && (
