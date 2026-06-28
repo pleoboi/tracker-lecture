@@ -115,6 +115,8 @@ export const BADGE_DEFS: BadgeDef[] = [
   },
 ];
 
+export const BADGE_CUTOFF_DATE = "2026-06-20";
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 export function getStatValue(def: BadgeDef, stats: UserBadgeStats): number {
   switch (def.type) {
@@ -138,4 +140,22 @@ export function getLevel(points: number): { level: number; title: string } {
   if (points >= 150)  return { level: 3, title: "Confirmé" };
   if (points >= 50)   return { level: 2, title: "Apprenti" };
   return { level: 1, title: "Débutant" };
+}
+
+const LEVEL_THRESHOLDS = [0, 50, 150, 400, 1000] as const;
+const LEVEL_TITLES     = ["", "Débutant", "Apprenti", "Confirmé", "Expert", "Légende"] as const;
+
+export function getLevelProgress(points: number): {
+  level: number; title: string; pct: number; toNext: number; nextTitle: string;
+} {
+  const { level, title } = getLevel(points);
+  if (level === 5) return { level, title, pct: 100, toNext: 0, nextTitle: "" };
+  const from = LEVEL_THRESHOLDS[level - 1];
+  const to   = LEVEL_THRESHOLDS[level];
+  return {
+    level, title,
+    pct:      Math.min(100, ((points - from) / (to - from)) * 100),
+    toNext:   to - points,
+    nextTitle: LEVEL_TITLES[level + 1] ?? "",
+  };
 }

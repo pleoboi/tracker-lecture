@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { BADGE_DEFS, getStatValue, type UserBadgeStats } from "../../../../lib/badges";
+import { BADGE_DEFS, BADGE_CUTOFF_DATE, getStatValue, type UserBadgeStats } from "../../../../lib/badges";
 
 export const dynamic = "force-dynamic";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const CUTOFF = "2026-06-20";
+const CUTOFF = BADGE_CUTOFF_DATE;
 
 export async function POST(req: NextRequest) {
   const { userId } = (await req.json()) as { userId?: string };
