@@ -364,6 +364,15 @@ export default function BadgesSection({
     const load = async () => {
       setLoading(true);
 
+      // Vérifie et attribue les badges avant de les charger (profil propre uniquement)
+      if (currentUserId === memberId) {
+        await fetch("/api/badges/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: memberId }),
+        }).catch(() => {});
+      }
+
       // Étape 1 : badges débloqués + sessions depuis la date butoir
       const [{ data: ubData }, logsRes] = await Promise.all([
         supabase.from("user_badges").select("badge_id, unlocked_at").eq("user_id", memberId),
@@ -429,7 +438,7 @@ export default function BadgesSection({
       setLoading(false);
     };
     load();
-  }, [memberId]);
+  }, [memberId, currentUserId]);
 
   const unlockedSet = new Set(unlockedBadges.map((u) => u.badge_id));
   const totalPoints = getTotalPoints(unlockedSet);
