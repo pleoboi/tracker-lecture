@@ -10,6 +10,7 @@ import { pct, isCompleted } from "../../../lib/books";
 import { Cover, ProgressBar, AvatarImg } from "../../../components/ui";
 import { ObjectiveChart, RatingsChart } from "../../../components/DashboardWidgets";
 import AddToLibraryModal from "../../../components/AddToLibraryModal";
+import BadgesSection from "../../../components/BadgesSection";
 
 const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 const VIOLET = "var(--color-violet)";
@@ -816,6 +817,9 @@ export default function MembrePage() {
           </div>
         </section>
       )}
+
+      {/* Badges & classement */}
+      <BadgesSection memberId={memberId} currentUserId={user?.id} />
 
       {/* Histogramme des notes */}
       {ratedCount > 0 && (

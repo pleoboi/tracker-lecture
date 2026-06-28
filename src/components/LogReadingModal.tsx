@@ -179,6 +179,14 @@ export default function LogReadingModal({
     onClose();
   };
 
+  const triggerBadgeCheck = (userId: string) => {
+    fetch("/api/badges/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    }).catch(() => {});
+  };
+
   const submitReview = async () => {
     if (!book || !user) return;
     setSaving(true);
@@ -189,11 +197,13 @@ export default function LogReadingModal({
       await supabase.from("books").update(upd).eq("id", book.id);
     }
     setSaving(false);
-    onSaved(`« ${book.title} » terminé — bravo ! 🎉`);
+    triggerBadgeCheck(user.id);
+    onSaved(`« ${book.title} » terminé — bravo !`);
     onClose();
   };
 
   const skipReview = () => {
+    if (user) triggerBadgeCheck(user.id);
     onSaved(`« ${book?.title} » terminé, bravo !`);
     onClose();
   };
