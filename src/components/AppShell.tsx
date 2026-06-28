@@ -181,18 +181,22 @@ function AvatarRound({
 function MobileTopBar({
   avatarUrl,
   initial,
-  isAccountActive,
+  userId,
+  pathname,
   onGuide,
   newFollowersCount,
   onNotifClick,
 }: {
   avatarUrl: string | null;
   initial: string;
-  isAccountActive: boolean;
+  userId: string | undefined;
+  pathname: string;
   onGuide: () => void;
   newFollowersCount: number;
   onNotifClick: () => void;
 }) {
+  const profileHref = userId ? `/membre/${userId}` : "/compte";
+  const isProfileActive = userId ? pathname === `/membre/${userId}` : pathname === "/compte";
   return (
     <header className="sticky top-0 z-50 flex items-center justify-between border-b border-line bg-paper/90 px-5 py-2.5 backdrop-blur-md md:hidden">
       <Link href="/accueil">
@@ -220,8 +224,8 @@ function MobileTopBar({
             </span>
           )}
         </div>
-        <Link href="/compte" aria-label="Mon compte">
-          <AvatarRound avatarUrl={avatarUrl} initial={initial} active={isAccountActive} />
+        <Link href={profileHref} aria-label="Mon profil">
+          <AvatarRound avatarUrl={avatarUrl} initial={initial} active={isProfileActive} />
         </Link>
       </div>
     </header>
@@ -233,6 +237,7 @@ function TopBar({
   pathname,
   avatarUrl,
   initial,
+  userId,
   onGuide,
   newFollowersCount,
   onNotifClick,
@@ -240,6 +245,7 @@ function TopBar({
   pathname: string;
   avatarUrl: string | null;
   initial: string;
+  userId: string | undefined;
   onGuide: () => void;
   newFollowersCount: number;
   onNotifClick: () => void;
@@ -293,11 +299,11 @@ function TopBar({
               </span>
             )}
           </div>
-          <Link href="/compte" aria-label="Mon compte">
+          <Link href={userId ? `/membre/${userId}` : "/compte"} aria-label="Mon profil">
             <AvatarRound
               avatarUrl={avatarUrl}
               initial={initial}
-              active={isActive(pathname, "/compte")}
+              active={userId ? pathname === `/membre/${userId}` : isActive(pathname, "/compte")}
             />
           </Link>
         </div>
@@ -541,6 +547,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         pathname={pathname}
         avatarUrl={avatarUrl}
         initial={initial}
+        userId={user?.id}
         onGuide={() => setShowGuide(true)}
         newFollowersCount={newFollowersCount}
         onNotifClick={openNotif}
@@ -548,7 +555,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <MobileTopBar
         avatarUrl={avatarUrl}
         initial={initial}
-        isAccountActive={isActive(pathname, "/compte")}
+        userId={user?.id}
+        pathname={pathname}
         onGuide={() => setShowGuide(true)}
         newFollowersCount={newFollowersCount}
         onNotifClick={openNotif}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
@@ -40,6 +40,29 @@ export default function MembrePage() {
   const [loading, setLoading] = useState(true);
   const [addTarget, setAddTarget] = useState<Book | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const settingsMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showSettingsMenu) return;
+    const handle = (e: MouseEvent) => {
+      if (settingsMenuRef.current && !settingsMenuRef.current.contains(e.target as Node)) {
+        setShowSettingsMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [showSettingsMenu]);
+
+  const toggleDark = () => {
+    const isDark = document.documentElement.classList.toggle("dark");
+    localStorage.setItem("theme", isDark ? "dark" : "light");
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.push("/login");
+  };
   const [championDays, setChampionDays] = useState(0);
   const [completedLimit, setCompletedLimit] = useState(1);
   const [noteModal, setNoteModal] = useState<{
@@ -314,13 +337,65 @@ export default function MembrePage() {
 
   return (
     <div className="animate-fadeIn flex flex-col gap-6 pt-4">
-      {/* Retour */}
-      <button
-        onClick={() => router.back()}
-        className="flex w-fit items-center gap-1 text-xs font-medium text-muted"
-      >
-        ← Membres
-      </button>
+      {/* Retour + menu ⋯ */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-1 text-xs font-medium text-muted"
+        >
+          ← Membres
+        </button>
+
+        {isOwn && (
+          <div className="relative" ref={settingsMenuRef}>
+            <button
+              onClick={() => setShowSettingsMenu((v) => !v)}
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-card text-muted transition-colors hover:border-violet/40 hover:text-ink"
+              aria-label="Options"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                <circle cx="5" cy="12" r="1.5" />
+                <circle cx="12" cy="12" r="1.5" />
+                <circle cx="19" cy="12" r="1.5" />
+              </svg>
+            </button>
+
+            {showSettingsMenu && (
+              <div className="absolute right-0 top-10 z-[60] w-52 overflow-hidden rounded-2xl border border-line bg-paper shadow-2xl">
+                <Link
+                  href="/compte"
+                  onClick={() => setShowSettingsMenu(false)}
+                  className="flex items-center gap-3 px-4 py-3 text-sm text-ink transition-colors hover:bg-violet-soft"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 text-muted">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm-7 8a7 7 0 0 1 14 0" />
+                  </svg>
+                  Paramètres du compte
+                </Link>
+                <button
+                  onClick={() => { toggleDark(); setShowSettingsMenu(false); }}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-sm text-ink transition-colors hover:bg-violet-soft"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 text-muted">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+                  </svg>
+                  Basculer le mode sombre
+                </button>
+                <div className="mx-3 h-px bg-line" />
+                <button
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-sm text-danger transition-colors hover:bg-[#f6e7e1] dark:hover:bg-[#2a1510]"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
+                  </svg>
+                  Déconnexion
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* En-tête profil */}
       <div className="flex items-center gap-4 rounded-2xl bg-violet-soft px-5 py-6">

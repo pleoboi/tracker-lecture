@@ -5,7 +5,34 @@ import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import type { Book } from "../lib/types";
 import { todayISO } from "../lib/books";
-import { Modal, Button, FieldLabel, inputClass } from "./ui";
+import { Modal, Button, FieldLabel, inputClass, Cover } from "./ui";
+
+function fmtDate(d: string) {
+  return new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+}
+
+// Étoiles avec remplissage continu (overlay clip)
+function StarFill({ value }: { value: number }) {
+  const pct = Math.min(100, Math.max(0, (value / 5) * 100));
+  return (
+    <div className="relative inline-flex text-[28px] leading-none tracking-[2px]">
+      <span className="text-line dark:text-line">★★★★★</span>
+      <span
+        className="absolute inset-0 overflow-hidden text-gold"
+        style={{ width: `${pct}%` }}
+      >
+        ★★★★★
+      </span>
+    </div>
+  );
+}
+
+interface CompletionStats {
+  startDate: string | null;
+  endDate: string;
+  durationDays: number;
+  pagesPerDay: number | null;
+}
 
 export default function LogReadingModal({
   open,
@@ -21,6 +48,9 @@ export default function LogReadingModal({
   onSaved: (message: string) => void;
 }) {
   const { user } = useAuth();
+
+  // ── Step "log" ──
+  const [step, setStep] = useState<"log" | "complete">("log");
   const [bookId, setBookId] = useState<string>("");
   const [date, setDate] = useState(todayISO());
   const [endPage, setEndPage] = useState("");
@@ -31,8 +61,14 @@ export default function LogReadingModal({
   const [error, setError] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
 
+  // ── Step "complete" ──
+  const [completionStats, setCompletionStats] = useState<CompletionStats | null>(null);
+  const [reviewText, setReviewText] = useState("");
+  const [reviewRating, setReviewRating] = useState(0);
+
   useEffect(() => {
     if (open) {
+      setStep("log");
       setBookId(String(defaultBookId ?? books[0]?.id ?? ""));
       setDate(todayISO());
       setEndPage("");
@@ -41,6 +77,9 @@ export default function LogReadingModal({
       setShowExtras(false);
       setError(null);
       setPhotoUploading(false);
+      setCompletionStats(null);
+      setReviewText("");
+      setReviewRating(0);
     }
   }, [open, defaultBookId, books]);
 
@@ -53,7 +92,6 @@ export default function LogReadingModal({
     const file = e.target.files?.[0];
     if (!file || !user) return;
     setPhotoUploading(true);
-    // Crée le bucket session-photos si absent (idempotent)
     await fetch("/api/storage/setup", { method: "POST" }).catch(() => null);
     const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
     const path = `${user.id}/${Date.now()}.${ext}`;
@@ -67,8 +105,8 @@ export default function LogReadingModal({
       setSessionPhotoUrl(publicUrl);
     } else {
       setError(
-        upErr?.message?.includes("Bucket not found") || upErr?.message?.includes("bucket")
-          ? "Le bucket 'session-photos' n'existe pas encore. Exécute la migration v10 dans Supabase SQL Editor."
+        upErr?.message?.includes("bucket")
+          ? "Le bucket 'session-photos' n'existe pas encore."
           : `Upload échoué : ${upErr?.message ?? "erreur inconnue"}`
       );
     }
@@ -105,17 +143,180 @@ export default function LogReadingModal({
       })
       .eq("id", book.id);
 
+    if (completed) {
+      // Récupère la date du premier log pour calculer les KPIs
+      const { data: firstLog } = await supabase
+        .from("reading_logs")
+        .select("date")
+        .eq("book_id", book.id)
+        .eq("user_id", user.id)
+        .order("date", { ascending: true })
+        .limit(1);
+
+      const startDate = firstLog?.[0]?.date ?? null;
+      const endDate = date;
+      let durationDays = 1;
+      if (startDate) {
+        const ms = new Date(endDate).getTime() - new Date(startDate).getTime();
+        durationDays = Math.max(1, Math.round(ms / 86400000) + 1);
+      }
+      const pagesPerDay = book.pages && durationDays ? Math.round(book.pages / durationDays) : null;
+
+      setCompletionStats({ startDate, endDate, durationDays, pagesPerDay });
+      setReviewRating(0);
+      setReviewText("");
+      setSaving(false);
+      setStep("complete");
+      return;
+    }
+
     setSaving(false);
     onSaved(
-      completed
-        ? `« ${book.title} » terminé, bravo !`
-        : diff < 0
-          ? `Correction : retour page ${target}.`
-          : `Session enregistrée : +${diff} pages.`
+      diff < 0
+        ? `Correction : retour page ${target}.`
+        : `Session enregistrée : +${diff} pages.`
     );
     onClose();
   };
 
+  const submitReview = async () => {
+    if (!book || !user) return;
+    setSaving(true);
+    const upd: Record<string, unknown> = {};
+    if (reviewRating > 0) upd.rating = reviewRating;
+    if (reviewText.trim()) upd.notes = reviewText.trim();
+    if (Object.keys(upd).length > 0) {
+      await supabase.from("books").update(upd).eq("id", book.id);
+    }
+    setSaving(false);
+    onSaved(`« ${book.title} » terminé — bravo ! 🎉`);
+    onClose();
+  };
+
+  const skipReview = () => {
+    onSaved(`« ${book?.title} » terminé, bravo !`);
+    onClose();
+  };
+
+  // ── Render : étape "complete" ───────────────────────────────────────────
+  if (step === "complete" && book && completionStats) {
+    return (
+      <Modal open={open} onClose={skipReview} title="">
+        <div className="flex flex-col gap-5">
+          {/* Header célébration */}
+          <div className="-mx-5 -mt-2 flex flex-col items-center gap-3 rounded-t-2xl bg-gradient-to-br from-violet/90 to-violet-deep px-5 py-6 text-center">
+            <div className="flex gap-2">
+              {book.cover_url ? (
+                <Cover
+                  id={book.id}
+                  title={book.title}
+                  coverUrl={book.cover_url}
+                  className="h-[80px] w-[55px] shadow-xl"
+                  rounded="rounded-lg"
+                />
+              ) : (
+                <div className="text-4xl">📚</div>
+              )}
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-widest text-white/60">Lecture terminée !</p>
+              <p className="mt-0.5 font-serif text-lg font-black leading-tight text-cream">{book.title}</p>
+              <p className="text-xs text-white/60">{book.author}</p>
+            </div>
+          </div>
+
+          {/* KPIs */}
+          <div className="grid grid-cols-2 gap-2">
+            {completionStats.startDate && (
+              <div className="rounded-2xl bg-violet-soft px-4 py-3">
+                <p className="text-[9.5px] font-semibold uppercase tracking-wide text-muted">Commencé le</p>
+                <p className="mt-0.5 font-serif text-[13px] font-bold text-ink">
+                  {fmtDate(completionStats.startDate)}
+                </p>
+              </div>
+            )}
+            <div className="rounded-2xl bg-violet-soft px-4 py-3">
+              <p className="text-[9.5px] font-semibold uppercase tracking-wide text-muted">Terminé le</p>
+              <p className="mt-0.5 font-serif text-[13px] font-bold text-ink">
+                {fmtDate(completionStats.endDate)}
+              </p>
+            </div>
+            <div className="rounded-2xl bg-violet-soft px-4 py-3">
+              <p className="text-[9.5px] font-semibold uppercase tracking-wide text-muted">Durée totale</p>
+              <p className="mt-0.5 font-serif text-[22px] font-black leading-none text-violet-deep">
+                {completionStats.durationDays}
+                <span className="ml-1 font-sans text-[13px] font-semibold text-muted">
+                  jour{completionStats.durationDays > 1 ? "s" : ""}
+                </span>
+              </p>
+            </div>
+            {completionStats.pagesPerDay != null && (
+              <div className="rounded-2xl bg-violet-soft px-4 py-3">
+                <p className="text-[9.5px] font-semibold uppercase tracking-wide text-muted">Rythme moyen</p>
+                <p className="mt-0.5 font-serif text-[22px] font-black leading-none text-violet-deep">
+                  {completionStats.pagesPerDay}
+                  <span className="ml-1 font-sans text-[13px] font-semibold text-muted">p./j</span>
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Séparateur */}
+          <div className="flex items-center gap-2">
+            <div className="h-px flex-1 bg-line" />
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">Ta critique</span>
+            <div className="h-px flex-1 bg-line" />
+          </div>
+
+          {/* Review */}
+          <textarea
+            value={reviewText}
+            onChange={(e) => setReviewText(e.target.value)}
+            rows={3}
+            placeholder="Qu'as-tu pensé de ce livre ? (optionnel)"
+            className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-violet dark:bg-input dark:text-ink"
+          />
+
+          {/* Note avec slider décimal */}
+          <div className="flex flex-col items-center gap-2.5">
+            <div className="flex items-center gap-3">
+              <StarFill value={reviewRating} />
+              <span className="font-serif text-[22px] font-black text-ink">
+                {reviewRating > 0
+                  ? reviewRating.toFixed(1).replace(".", ",")
+                  : "—"}
+                <span className="ml-1 font-sans text-xs font-normal text-muted">/ 5</span>
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={50}
+              step={1}
+              value={Math.round(reviewRating * 10)}
+              onChange={(e) => setReviewRating(Number(e.target.value) / 10)}
+              className="h-1.5 w-full cursor-pointer appearance-none rounded-full bg-line accent-violet"
+            />
+            <p className="text-[10.5px] text-muted">
+              {reviewRating === 0 ? "Glisse pour noter (optionnel)" : `Note : ${reviewRating.toFixed(1).replace(".", ",")} / 5`}
+            </p>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={skipReview} className="flex-1 py-3">
+              Passer
+            </Button>
+            <Button onClick={submitReview} disabled={saving} className="flex-1 py-3">
+              {saving ? "Enregistrement…" : "Enregistrer"}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  // ── Render : étape "log" ────────────────────────────────────────────────
   return (
     <Modal open={open} onClose={onClose} title="Noter ma lecture">
       {books.length === 0 ? (
@@ -164,12 +365,18 @@ export default function LogReadingModal({
                 / {book?.pages ?? "—"}
               </span>
             </div>
+            {/* Badge "Livre terminé" quand la page = total */}
+            {book && validNumber && target === book.pages && (
+              <p className="mt-1.5 text-[11.5px] font-semibold text-violet-deep">
+                ✓ Lecture terminée !
+              </p>
+            )}
           </div>
 
           {validNumber && diff !== 0 && (
             <div
               className={`flex items-center justify-between rounded-xl px-3.5 py-3 ${
-                diff > 0 ? "bg-violet-soft" : "bg-[#f6e7e1]"
+                diff > 0 ? "bg-violet-soft" : "bg-[#f6e7e1] dark:bg-[#2a1510]"
               }`}
             >
               <span className={`text-xs font-medium ${diff > 0 ? "text-violet-deep" : "text-danger"}`}>
@@ -181,7 +388,6 @@ export default function LogReadingModal({
             </div>
           )}
 
-          {/* Extras Strava */}
           <button
             type="button"
             onClick={() => setShowExtras((v) => !v)}
@@ -199,7 +405,7 @@ export default function LogReadingModal({
                   value={sessionNotes}
                   onChange={(e) => setSessionNotes(e.target.value)}
                   rows={3}
-                  placeholder="Impressions, citations, contexte de lecture… Distinct de ta review finale."
+                  placeholder="Impressions, citations, contexte de lecture…"
                   className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
                 />
               </div>
@@ -247,7 +453,11 @@ export default function LogReadingModal({
           {error && <p className="text-xs font-medium text-danger">{error}</p>}
 
           <Button onClick={handleSave} disabled={saving || !validNumber} className="w-full">
-            {saving ? "Enregistrement…" : "Enregistrer la session"}
+            {saving
+              ? "Enregistrement…"
+              : book && validNumber && target === book.pages
+                ? "Terminer le livre ✓"
+                : "Enregistrer la session"}
           </Button>
           <p className="text-[11px] leading-4 text-muted">
             La progression et la durée de lecture se mettent à jour automatiquement.
