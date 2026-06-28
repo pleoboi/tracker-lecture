@@ -18,8 +18,8 @@ interface DayEntry {
   totalPages: number;
   endPage: number;
   goalReached: boolean;
-  notes: string[];   // toutes les notes de session du jour (dans l'ordre)
-  photos: string[];  // toutes les photos du jour (dans l'ordre)
+  notes: string[];
+  photos: string[];
 }
 
 export default function JournalPage() {
@@ -33,6 +33,12 @@ export default function JournalPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // État pour la modale d'édition
+  const [editEntry, setEditEntry] = useState<DayEntry | null>(null);
+  const [editPage, setEditPage] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     if (!userId) return;
     const [{ data: logs, error: logErr }, { data: books }] = await Promise.all([
@@ -41,7 +47,7 @@ export default function JournalPage() {
         .select("*")
         .eq("user_id", userId)
         .order("date", { ascending: false })
-        .order("created_at", { ascending: true }), // chronologique dans la journée
+        .order("created_at", { ascending: true }),
       supabase.from("books").select("*").eq("user_id", userId),
     ]);
     if (logErr) {
@@ -52,11 +58,9 @@ export default function JournalPage() {
     const bookList = (books as Book[]) || [];
     const logList = (logs as ReadingLog[]) || [];
 
-    // Groupement par date+livre : cumul pages, toutes notes/photos conservées
     const map = new Map<string, DayEntry>();
     logList.forEach((log) => {
-      const dateStr = log.date;
-      const key = `${dateStr}-${log.book_id}`;
+      const key = `${log.date}-${log.book_id}`;
       const existing = map.get(key);
       if (existing) {
         existing.ids.push(log.id);
@@ -67,7 +71,7 @@ export default function JournalPage() {
       } else {
         map.set(key, {
           ids: [log.id],
-          date: dateStr,
+          date: log.date,
           book: bookList.find((b) => b.id === log.book_id) || null,
           totalPages: log.pages_read || 0,
           endPage: log.end_page || 0,
@@ -78,7 +82,6 @@ export default function JournalPage() {
       }
     });
 
-    // Total journalier (tous livres confondus) pour goalReached
     const dayTotalPages = new Map<string, number>();
     logList.forEach((log) => {
       dayTotalPages.set(log.date, (dayTotalPages.get(log.date) || 0) + (log.pages_read || 0));
@@ -88,13 +91,11 @@ export default function JournalPage() {
       .map((e) => ({ ...e, goalReached: (dayTotalPages.get(e.date) || 0) >= DAILY_GOAL }))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    // Stats semaine
     const daySet = new Set<string>();
     const dayPages = new Map<string, number>();
     logList.forEach((log) => {
-      const d = log.date;
-      daySet.add(d);
-      dayPages.set(d, (dayPages.get(d) || 0) + (log.pages_read || 0));
+      daySet.add(log.date);
+      dayPages.set(log.date, (dayPages.get(log.date) || 0) + (log.pages_read || 0));
     });
 
     const now = Date.now();
@@ -107,7 +108,6 @@ export default function JournalPage() {
       }
     });
 
-    // Streak
     let s = 0;
     const cur = new Date();
     cur.setHours(0, 0, 0, 0);
@@ -129,8 +129,61 @@ export default function JournalPage() {
     load();
   }, [load]);
 
-  const deleteEntry = async (ids: number[]) => {
-    await supabase.from("reading_logs").delete().in("id", ids);
+  // Suppression : remet le progress du livre à la page du log précédent
+  const deleteEntry = async (e: DayEntry) => {
+    await supabase.from("reading_logs").delete().in("id", e.ids);
+
+    if (e.book) {
+      const { data: prev } = await supabase
+        .from("reading_logs")
+        .select("end_page")
+        .eq("user_id", userId!)
+        .eq("book_id", e.book.id)
+        .order("date", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      const prevPage = prev?.[0]?.end_page ?? 0;
+      await supabase.from("books").update({ progress: prevPage }).eq("id", e.book.id);
+    }
+
+    load();
+  };
+
+  // Ouverture de la modale d'édition
+  const openEdit = (e: DayEntry) => {
+    setEditEntry(e);
+    setEditPage(String(e.endPage));
+    setEditError(null);
+  };
+
+  // Sauvegarde de la correction
+  const saveEdit = async () => {
+    if (!editEntry?.book) return;
+    const newPage = parseInt(editPage, 10);
+    if (isNaN(newPage) || newPage < 0) {
+      setEditError("Numéro de page invalide.");
+      return;
+    }
+
+    setEditSaving(true);
+    setEditError(null);
+
+    // Ajuste pages_read du dernier log : oldPages + (newEndPage - oldEndPage)
+    const lastId = editEntry.ids[editEntry.ids.length - 1];
+    const pagesReadDelta = newPage - editEntry.endPage;
+    const correctedPagesRead = Math.max(0, editEntry.totalPages + pagesReadDelta);
+
+    await supabase.from("reading_logs").update({
+      end_page: newPage,
+      pages_read: correctedPagesRead,
+    }).eq("id", lastId);
+
+    // Met à jour le progress du livre
+    await supabase.from("books").update({ progress: newPage }).eq("id", editEntry.book.id);
+
+    setEditSaving(false);
+    setEditEntry(null);
     load();
   };
 
@@ -204,12 +257,33 @@ export default function JournalPage() {
                   </p>
                 </div>
                 {e.goalReached && <Pill tone="success">Objectif ✓</Pill>}
+
+                {/* Bouton Modifier */}
                 <button
-                  onClick={() => deleteEntry(e.ids)}
-                  className="text-muted hover:text-danger"
-                  aria-label="Supprimer"
+                  onClick={() => openEdit(e)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-muted transition-colors hover:bg-violet-soft hover:text-violet-deep"
+                  aria-label="Modifier"
+                  title="Corriger la page"
                 >
-                  ✕
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+
+                {/* Bouton Supprimer */}
+                <button
+                  onClick={() => deleteEntry(e)}
+                  className="flex h-7 w-7 items-center justify-center rounded-full text-muted transition-colors hover:bg-[#f6e7e1] hover:text-danger"
+                  aria-label="Supprimer"
+                  title="Supprimer ce log"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                    <path d="M10 11v6M14 11v6"/>
+                    <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                  </svg>
                 </button>
               </div>
 
@@ -242,7 +316,6 @@ export default function JournalPage() {
                 </div>
               </div>
 
-              {/* Toutes les notes de session du jour, dans l'ordre */}
               {e.notes.map((note, i) => (
                 <p
                   key={i}
@@ -258,7 +331,6 @@ export default function JournalPage() {
                 </p>
               ))}
 
-              {/* Toutes les photos du jour */}
               {e.photos.map((url, i) => (
                 <a key={i} href={url} target="_blank" rel="noopener noreferrer">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -271,6 +343,63 @@ export default function JournalPage() {
               ))}
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modale de correction de page */}
+      {editEntry && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 px-5 backdrop-blur-sm"
+          onClick={() => setEditEntry(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-3xl bg-paper p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="font-serif text-lg font-bold text-ink">Corriger la progression</h2>
+            {editEntry.book && (
+              <p className="mt-0.5 truncate text-sm text-muted">{editEntry.book.title}</p>
+            )}
+
+            <div className="mt-5 flex flex-col gap-1.5">
+              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                Page réelle où tu t&apos;es arrêté(e)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={editPage}
+                onChange={(e) => setEditPage(e.target.value)}
+                autoFocus
+                className="rounded-xl border border-line bg-input px-4 py-3 text-center font-serif text-2xl font-black text-ink outline-none focus:border-violet"
+              />
+              <p className="text-[11px] text-muted">
+                Log actuel : page {editEntry.endPage}
+              </p>
+            </div>
+
+            {editError && (
+              <p className="mt-2 rounded-xl border border-[#e7c7bd] bg-[#f6e7e1] px-3 py-2 text-xs text-danger">
+                {editError}
+              </p>
+            )}
+
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => setEditEntry(null)}
+                className="flex-1 rounded-2xl border border-line py-3 text-sm font-semibold text-muted transition-colors hover:border-violet/40 hover:text-ink"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={saveEdit}
+                disabled={editSaving}
+                className="flex-1 rounded-2xl bg-violet py-3 text-sm font-semibold text-cream transition-opacity disabled:opacity-60"
+              >
+                {editSaving ? "Enregistrement…" : "Enregistrer"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
