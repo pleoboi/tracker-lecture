@@ -477,18 +477,17 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
       setLoading(true);
       // Attribution automatique + capture des nouveaux badges
       let newlyAwarded: BadgeDef[] = [];
-      if (currentUserId === memberId) {
-        const res = await fetch("/api/badges/check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: memberId }),
-        }).catch(() => null);
-        if (res?.ok) {
-          const data = await res.json();
-          newlyAwarded = ((data.awarded ?? []) as { id: string }[])
-            .map((a) => BADGE_DEFS.find((d) => d.id === a.id))
-            .filter((d): d is BadgeDef => d !== undefined);
-        }
+      // Toujours checker pour tout membre — awards silencieux si ce n'est pas son propre profil
+      const res = await fetch("/api/badges/check", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: memberId }),
+      }).catch(() => null);
+      if (res?.ok && currentUserId === memberId) {
+        const data = await res.json();
+        newlyAwarded = ((data.awarded ?? []) as { id: string }[])
+          .map((a) => BADGE_DEFS.find((d) => d.id === a.id))
+          .filter((d): d is BadgeDef => d !== undefined);
       }
 
       const [profileRes, ubRes, computedStats] = await Promise.all([
