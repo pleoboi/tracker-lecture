@@ -666,12 +666,10 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
               <div className="flex flex-col gap-5">
                 {(Object.keys(TYPE_LABEL) as BadgeType[]).map((type) => {
                   const todayStr = new Date().toISOString().slice(0, 10);
-                  // Badge mensuel visible à partir de 10 jours avant son startDate, jusqu'à endDate
+                  // Badge mensuel visible uniquement pendant sa période (startDate → endDate)
                   const isMonthlyVisible = (d: BadgeDef) => {
                     if (!d.startDate || !d.endDate) return false;
-                    const tenBefore = new Date(new Date(d.startDate).getTime() - 10 * 86400000)
-                      .toISOString().slice(0, 10);
-                    return todayStr >= tenBefore && todayStr <= d.endDate;
+                    return todayStr >= d.startDate && todayStr <= d.endDate;
                   };
                   const group = lockedBadges.filter((d) => {
                     if (d.type !== type) return false;
