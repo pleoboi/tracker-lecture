@@ -3,6 +3,7 @@ import { Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import AppShell from "../components/AppShell";
 import { AuthProvider } from "../lib/auth-context";
+import GlobalBadgeChecker from "../components/GlobalBadgeChecker";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -36,6 +37,7 @@ export default function RootLayout({
       <body className="bg-paper text-ink">
         <AuthProvider>
           <AppShell>{children}</AppShell>
+          <GlobalBadgeChecker />
         </AuthProvider>
       </body>
     </html>

@@ -39,15 +39,18 @@ export async function POST(req: NextRequest) {
     else if (d > 1) streak = 1;
   }
 
-  const monthlySessionCount = recentLogs.filter(
-    (r) => r.date >= "2026-07-01" && r.date <= "2026-07-31"
-  ).length;
-
   // ── 2. Livres actifs depuis la date butoir ────────────────────────────────
   let booksCompleted = 0, uniqueGenres = 0, reviewsCount = 0, monthlyBooksCount = 0;
 
   const today = new Date();
-  const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+  const thisYear  = today.getFullYear();
+  const thisMonth = String(today.getMonth() + 1).padStart(2, "0");
+  const firstOfMonth = `${thisYear}-${thisMonth}-01`;
+  const lastOfMonth  = `${thisYear}-${thisMonth}-31`;
+
+  const monthlySessionCount = recentLogs.filter(
+    (r) => r.date >= firstOfMonth && r.date <= lastOfMonth
+  ).length;
 
   if (activeBookIds.length > 0) {
     const [booksRes, reviewsRes, monthlyBooksRes] = await Promise.all([
@@ -209,10 +212,19 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Défi mensuel livres : 3 livres dans le mois en cours ─────────────────
-  const currentMonthBadgeId = `defi-books-${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-  if (can(currentMonthBadgeId) && monthlyBooksCount >= 3) {
-    const def = BADGE_DEFS.find((b) => b.id === currentMonthBadgeId);
+  const currentMonthBooksId = `defi-books-${thisYear}-${thisMonth}`;
+  if (can(currentMonthBooksId) && monthlyBooksCount >= 3) {
+    const def = BADGE_DEFS.find((b) => b.id === currentMonthBooksId);
     if (def) toAward.push(def);
+  }
+
+  // ── Défi mensuel sessions : 15 sessions dans le mois en cours ────────────
+  const currentMonthSessionsId = `defi-sessions-${thisYear}-${thisMonth}`;
+  if (can(currentMonthSessionsId)) {
+    const def = BADGE_DEFS.find((b) => b.id === currentMonthSessionsId);
+    if (def && monthlySessionCount >= def.targetValue) {
+      toAward.push(def);
+    }
   }
 
   // ── 6. Dédoublonner (un badge ne peut être attribué qu'une fois) ──────────

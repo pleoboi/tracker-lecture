@@ -207,7 +207,7 @@ function BadgeIcon({ iconKey, size = 22 }: { iconKey: IconKey; size?: number }) 
 }
 
 // ── BookmarkBadge ─────────────────────────────────────────────────────────────
-function BookmarkBadge({ def, unlocked, unlockedAt, size = 56 }: {
+export function BookmarkBadge({ def, unlocked, unlockedAt, size = 56 }: {
   def: BadgeDef; unlocked: boolean; unlockedAt?: string; size?: number;
 }) {
   const w      = size;
@@ -273,7 +273,7 @@ function BookmarkBadge({ def, unlocked, unlockedAt, size = 56 }: {
 }
 
 // ── VictoryModal ──────────────────────────────────────────────────────────────
-function VictoryModal({ def, onClose }: { def: BadgeDef; onClose: () => void }) {
+export function VictoryModal({ def, onClose }: { def: BadgeDef; onClose: () => void }) {
   const [visible, setVisible] = useState(false);
   useEffect(() => { const t = setTimeout(() => setVisible(true), 20); return () => clearTimeout(t); }, []);
   const meta = TIER_META[def.tier as BadgeTier];
@@ -665,10 +665,17 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
             ) : tab === "available" ? (
               <div className="flex flex-col gap-5">
                 {(Object.keys(TYPE_LABEL) as BadgeType[]).map((type) => {
-                  const currentMonthBadgeId = `defi-books-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+                  const todayStr = new Date().toISOString().slice(0, 10);
+                  // Badge mensuel visible à partir de 10 jours avant son startDate, jusqu'à endDate
+                  const isMonthlyVisible = (d: BadgeDef) => {
+                    if (!d.startDate || !d.endDate) return false;
+                    const tenBefore = new Date(new Date(d.startDate).getTime() - 10 * 86400000)
+                      .toISOString().slice(0, 10);
+                    return todayStr >= tenBefore && todayStr <= d.endDate;
+                  };
                   const group = lockedBadges.filter((d) => {
                     if (d.type !== type) return false;
-                    if (d.type === "monthly_books") return d.id === currentMonthBadgeId;
+                    if (d.type === "monthly_books" || d.type === "monthly") return isMonthlyVisible(d);
                     return true;
                   });
                   if (!group.length) return null;
