@@ -254,8 +254,11 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
           try {
             const authorSurname = (row.author || "").toLowerCase().split(/\s+/).pop() ?? "";
 
+            // Données déjà complètes depuis le serveur (import auto RSS) : on se
+            // contente d'améliorer la couverture via la base existante si besoin.
+            const alreadyEnriched = !!(row.cover_url && row.summary && row.genre);
+
             // 1. Couverture depuis la base (ISBN exact, ou titre+auteur similaires)
-            //    → on ne prend QUE la couverture, jamais le titre (évite les mauvaises attributions)
             const isbnHit = row.isbn13 ? globalByIsbn.get(row.isbn13) : undefined;
             const titleHit = isbnHit
               ? undefined
@@ -267,8 +270,16 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
                 });
             const dbCover = (isbnHit ?? titleHit)?.cover_url ?? null;
 
+            if (alreadyEnriched) {
+              // Données serveur déjà là : on n'écrase que si la base locale a mieux
+              enriched[i + j] = {
+                ...row,
+                cover_url: dbCover ?? row.cover_url,
+              };
+              return;
+            }
+
             // 2. Google Books (langRestrict: fr) — titre FR + métadonnées
-            //    Exige que l'auteur corresponde pour éviter d'attribuer le mauvais livre
             const q = [row.title, row.author].filter(Boolean).join(" ").trim();
             const results = await searchBooks(q);
             const withCover = results.filter((r) => r.coverUrl);
@@ -284,14 +295,13 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
 
             enriched[i + j] = {
               ...row,
-              // Titre FR seulement si Google Books confirme un résultat français
               title: (best?.title && isFrench(best.title)) ? best.title : row.title,
               cover_url: coverUrl,
               summary: best?.summary ?? null,
               published_year: best?.year ?? null,
               genre: best?.genre ?? null,
             };
-          } catch { /* fallback : données brutes du CSV */ }
+          } catch { /* fallback : données brutes */ }
         })
       );
       setProgress({ done: Math.min(i + ENRICH_CONCURRENCY, enriched.length), total: enriched.length });
@@ -1355,6 +1365,20 @@ export default function ComptePage() {
 
           {/* Liens rapides */}
           <div className="flex flex-col gap-2">
+            {user?.email === process.env.NEXT_PUBLIC_ADMIN_EMAIL && (
+              <Link
+                href="/admin"
+                className="flex items-center justify-between rounded-2xl border border-violet/30 bg-violet-soft p-4 transition-colors hover:border-violet/60"
+              >
+                <div>
+                  <p className="font-serif text-[15px] font-medium text-violet-deep">Administration</p>
+                  <p className="mt-0.5 text-xs text-muted">Fusion de livres, outils admin</p>
+                </div>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4 shrink-0 text-violet-deep">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
+            )}
             {user?.id && (
               <Link
                 href={`/membre/${user.id}`}
