@@ -12,24 +12,35 @@ type QuizRow = { question: string; choices: string[]; correct_index: number };
 async function callGemini(title: string, author: string, summary: string | null): Promise<QuizRow | null> {
   if (!GEMINI_KEY) return null;
 
-  const ctx = summary ? `\n\nRésumé : "${summary.slice(0, 600)}"` : "";
-  const prompt =
-    `Génère une question de quiz pour valider la lecture du livre "${title}" de ${author}.${ctx}\n\n` +
-    `RÈGLES :\n` +
-    `- Porte sur un événement précis, un personnage secondaire ou un détail du début/milieu du livre\n` +
-    `- Ne révèle pas la fin ni la résolution principale\n` +
-    `- Impossible à répondre sans avoir vraiment lu le livre\n` +
-    `- 4 choix, un seul correct, les autres plausibles\n` +
-    `- Langue : français\n\n` +
-    `Réponds UNIQUEMENT avec ce JSON, sans markdown ni explication :\n` +
-    `{"question":"...","choices":["A","B","C","D"],"correct_index":0}`;
+  // Instruction système : contrainte absolue anti-spoil 80%
+  const systemInstruction =
+    `Tu es un assistant spécialisé dans la création de questions de quiz littéraires. ` +
+    `Génère une question de niveau moyen avec 4 options (A, B, C, D) et la bonne réponse ` +
+    `pour le livre "${title}" de ${author}. ` +
+    `CONTRAINTE ABSOLUE : La question doit porter exclusivement sur des événements, ` +
+    `personnages ou intrigues situés dans les premiers 80% du livre. ` +
+    `Il est strictement interdit de faire référence aux 20 derniers % du livre ` +
+    `ou à sa conclusion afin de ne jamais divulgâcher (spoiler) la fin à un utilisateur. ` +
+    `La question doit être impossible à répondre sans avoir vraiment lu le livre. ` +
+    `Langue : français uniquement.`;
+
+  const ctx = summary ? `\n\nContexte du livre (résumé partiel) : "${summary.slice(0, 600)}"` : "";
+  const userPrompt =
+    `Génère la question de quiz pour "${title}" de ${author}.${ctx}\n\n` +
+    `Réponds UNIQUEMENT avec ce JSON exact, sans markdown ni explication :\n` +
+    `{"question":"...","choices":["réponse A","réponse B","réponse C","réponse D"],"correct_index":0}`;
 
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      body: JSON.stringify({
+        system_instruction: { parts: [{ text: systemInstruction }] },
+        contents: [{ parts: [{ text: userPrompt }] }],
+        generationConfig: { temperature: 0.4, topP: 0.9 },
+      }),
+      signal: AbortSignal.timeout(8000),
     }
   );
 
@@ -83,12 +94,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ question: cached.question, choices: cached.choices, alreadyPassed });
   }
 
-  // ── Générer via Gemini ───────────────────────────────────────────────────
-  const generated = await callGemini(title, author ?? "auteur inconnu", summary ?? null);
+  // ── Générer via Gemini (anti-spoil 80%) ─────────────────────────────────
+  const generated = await callGemini(title, author ?? "auteur inconnu", summary ?? null).catch(() => null);
   if (!generated) {
     return NextResponse.json({ unavailable: true, alreadyPassed });
   }
 
+  // Stocker en cache (correct_index côté serveur uniquement)
   await db.from("book_quizzes").upsert(
     { quiz_key: quizKey, title, question: generated.question, choices: generated.choices, correct_index: generated.correct_index },
     { onConflict: "quiz_key" }

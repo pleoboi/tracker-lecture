@@ -192,14 +192,21 @@ function BadgeIcon({ iconKey, size = 22 }: { iconKey: IconKey; size?: number }) 
       </svg>
     ),
     seal: (
+      // Poinçon linéaire 8 branches — badge "Sans Faute"
       <svg width={s} height={s} viewBox="0 0 24 24" fill="none">
-        <circle cx="12" cy="12" r="9.5" stroke="white" strokeWidth="1.2" strokeDasharray="2.5 1.5" />
-        <circle cx="12" cy="12" r="7"   fill="white" fillOpacity="0.18" />
-        <circle cx="12" cy="4.5"  r="0.9" fill="white" opacity="0.7" />
-        <circle cx="19.5" cy="12" r="0.9" fill="white" opacity="0.7" />
-        <circle cx="12" cy="19.5" r="0.9" fill="white" opacity="0.7" />
-        <circle cx="4.5"  cy="12" r="0.9" fill="white" opacity="0.7" />
-        <polyline points="8.5,12 11,14.5 15.5,9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Rayons du poinçon (8 branches) */}
+        <line x1="12" y1="2"    x2="12" y2="5"    stroke="white" strokeWidth="1.3" strokeLinecap="round" />
+        <line x1="12" y1="19"   x2="12" y2="22"   stroke="white" strokeWidth="1.3" strokeLinecap="round" />
+        <line x1="2"  y1="12"   x2="5"  y2="12"   stroke="white" strokeWidth="1.3" strokeLinecap="round" />
+        <line x1="19" y1="12"   x2="22" y2="12"   stroke="white" strokeWidth="1.3" strokeLinecap="round" />
+        <line x1="4.93" y1="4.93"   x2="7.05" y2="7.05"   stroke="white" strokeWidth="1.1" strokeLinecap="round" />
+        <line x1="16.95" y1="16.95" x2="19.07" y2="19.07" stroke="white" strokeWidth="1.1" strokeLinecap="round" />
+        <line x1="19.07" y1="4.93"  x2="16.95" y2="7.05"  stroke="white" strokeWidth="1.1" strokeLinecap="round" />
+        <line x1="7.05"  y1="16.95" x2="4.93"  y2="19.07" stroke="white" strokeWidth="1.1" strokeLinecap="round" />
+        {/* Cercle central */}
+        <circle cx="12" cy="12" r="5.5" fill="white" fillOpacity="0.2" stroke="white" strokeWidth="1.2" />
+        {/* Coche de validation */}
+        <polyline points="9,12 11.2,14.2 15.5,9.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     ),
   };

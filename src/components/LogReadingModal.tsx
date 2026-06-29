@@ -99,8 +99,36 @@ export default function LogReadingModal({
   const validNumber = endPage !== "" && !isNaN(target);
   const diff = book && validNumber ? target - book.progress : 0;
 
-  // ── Chargement du quiz — désactivé temporairement ────────────────────────
-  useEffect(() => { /* quiz désactivé */ }, [step, book?.id]);
+  // ── Chargement du quiz quand le livre est terminé ───────────────────────
+  useEffect(() => {
+    if (step !== "complete" || !book) return;
+    setQuizPhase("loading");
+    setQuizData(null);
+    setSelectedChoice(null);
+    const quizKey = book.isbn13 || `book-${book.id}`;
+    fetch("/api/quiz/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        quizKey, title: book.title, author: book.author,
+        summary: book.summary ?? null,
+        userId: user?.id,
+      }),
+    })
+      .then((r) => r.json())
+      .then((data: { unavailable?: boolean; alreadyPassed?: boolean; question?: string; choices?: string[] }) => {
+        if (data.unavailable) { setQuizPhase("unavailable"); return; }
+        if (data.alreadyPassed) { setQuizPhase("passed"); return; }
+        if (data.question && data.choices) {
+          setQuizData({ question: data.question, choices: data.choices });
+          setQuizPhase("ready");
+        } else {
+          setQuizPhase("unavailable");
+        }
+      })
+      .catch(() => setQuizPhase("unavailable"));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, book?.id]);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -226,15 +254,15 @@ export default function LogReadingModal({
     if (selectedChoice === null || !user || !book) return;
     setQuizSubmitting(true);
     const quizKey = book.isbn13 || `book-${book.id}`;
-    const res = await fetch("/api/quiz/submit", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: user.id, quizKey, answerIndex: selectedChoice }),
-    }).catch(() => null);
-    if (res?.ok) {
-      const data = await res.json();
+    try {
+      const res = await fetch("/api/quiz/submit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, quizKey, answerIndex: selectedChoice }),
+      });
+      const data = await res.json() as { passed?: boolean; sandboxed?: boolean };
       setQuizPhase(data.passed ? "passed" : "wrong");
-    } else {
+    } catch {
       setQuizPhase("wrong");
     }
     setQuizSubmitting(false);
@@ -303,7 +331,86 @@ export default function LogReadingModal({
             )}
           </div>
 
-          {/* ── Quiz "Le Dernier Test" — désactivé temporairement ─────── */}
+          {/* ── Quiz "Le Dernier Test" ────────────────────────────────── */}
+          {quizPhase === "loading" && (
+            <div className="flex items-center justify-center gap-2 rounded-2xl border border-line bg-card px-4 py-5">
+              <svg className="h-4 w-4 animate-spin text-violet" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.3" />
+                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+              </svg>
+              <span className="text-[12.5px] text-muted">Génération de ta question…</span>
+            </div>
+          )}
+
+          {quizPhase === "ready" && quizData && (
+            <div className="rounded-2xl border border-violet/25 bg-violet-soft px-4 py-4">
+              <p className="mb-0.5 text-[9.5px] font-semibold uppercase tracking-widest text-violet-deep">
+                Le Dernier Test
+              </p>
+              <p className="mb-3 text-[13.5px] font-semibold text-ink leading-snug">{quizData.question}</p>
+              <div className="flex flex-col gap-2">
+                {quizData.choices.map((choice, i) => {
+                  const label = ["A", "B", "C", "D"][i];
+                  const active = selectedChoice === i;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => setSelectedChoice(i)}
+                      className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-[12.5px] transition-colors ${
+                        active
+                          ? "border-violet bg-violet text-cream font-medium"
+                          : "border-line bg-paper text-ink hover:border-violet/50"
+                      }`}
+                    >
+                      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
+                        active ? "bg-white/20 text-cream" : "bg-line text-muted"
+                      }`}>
+                        {label}
+                      </span>
+                      {choice}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={submitQuiz}
+                disabled={selectedChoice === null || quizSubmitting}
+                className="mt-3 w-full rounded-xl bg-violet py-2.5 text-[13px] font-semibold text-cream transition-opacity disabled:opacity-40"
+              >
+                {quizSubmitting ? "Vérification…" : "Valider ma réponse"}
+              </button>
+            </div>
+          )}
+
+          {quizPhase === "passed" && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-center dark:border-emerald-900 dark:bg-emerald-950/40">
+              <div className="mb-1 flex items-center justify-center gap-1.5">
+                <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 text-emerald-600" stroke="currentColor" strokeWidth="2.2">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
+                </svg>
+                <p className="text-[12.5px] font-semibold text-emerald-700 dark:text-emerald-400">
+                  Bonne réponse — Sans Faute !
+                </p>
+              </div>
+              <p className="text-[11px] text-emerald-600 dark:text-emerald-500">
+                +30 pts ajoutés à ton score
+              </p>
+            </div>
+          )}
+
+          {quizPhase === "wrong" && (
+            <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-center dark:border-orange-900 dark:bg-orange-950/30">
+              <p className="text-[12.5px] font-semibold text-orange-700 dark:text-orange-400">
+                Mauvaise réponse — mais la lecture compte !
+              </p>
+            </div>
+          )}
+
+          {quizPhase === "unavailable" && (
+            <p className="text-center text-[11px] text-muted">
+              Le livre n&apos;a pas de quiz disponible pour le moment, votre lecture est validée par défaut.
+            </p>
+          )}
 
           {/* Séparateur */}
           <div className="flex items-center gap-2">

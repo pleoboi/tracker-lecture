@@ -3,8 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const SUPABASE_URL  = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SERVICE_KEY   = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Email réservé aux tests — ses actions ne doivent jamais polluer la base
+const SANDBOX_EMAIL = "leonba1bulls@gmail.com";
 
 export async function POST(req: NextRequest) {
   const { userId, quizKey, answerIndex } =
@@ -16,7 +18,13 @@ export async function POST(req: NextRequest) {
 
   const db = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  // ── Obtenir la bonne réponse ─────────────────────────────────────────────
+  // ── Sandbox : compte de test → simuler succès sans écrire en base ────────
+  const { data: authUser } = await db.auth.admin.getUserById(userId);
+  if (authUser?.user?.email === SANDBOX_EMAIL) {
+    return NextResponse.json({ passed: true, sandboxed: true, passCount: 0 });
+  }
+
+  // ── Obtenir la bonne réponse (depuis le serveur uniquement) ──────────────
   const { data: quiz } = await db
     .from("book_quizzes")
     .select("correct_index")
@@ -31,23 +39,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ passed: false });
   }
 
-  // ── Bonne réponse : crédit atomique (UNIQUE contrainte = protection) ─────
+  // ── Bonne réponse : crédit atomique (contrainte UNIQUE = protection double) ─
   const { error: insertErr } = await db
     .from("quiz_attempts")
     .insert({ user_id: userId, quiz_key: quizKey });
 
   if (insertErr) {
-    // Déjà crédité (double-clic ou tentative en double)
+    // Déjà crédité (double-clic ou tentative concurrente)
     const { data: prof } = await db
       .from("user_profiles").select("quiz_pass_count").eq("id", userId).single();
-    return NextResponse.json({ passed: true, alreadyAttempted: true, passCount: (prof as { quiz_pass_count: number } | null)?.quiz_pass_count ?? 1 });
+    return NextResponse.json({
+      passed: true,
+      alreadyAttempted: true,
+      passCount: (prof as { quiz_pass_count: number } | null)?.quiz_pass_count ?? 1,
+    });
   }
 
-  // ── Incrémenter les stats (RPC atomique) ─────────────────────────────────
+  // ── Incrémenter compteur + points bonus (+30 pts par quiz réussi) ────────
   const { data: updated } = await db.rpc("increment_quiz_stats", { uid: userId, bonus: 30 });
   const passCount = (updated as { pass_count: number }[] | null)?.[0]?.pass_count ?? 1;
 
-  // ── Attribuer le badge "Sans Faute" (première fois uniquement) ───────────
+  // ── Badge "Sans Faute" — première fois uniquement (cumulatif ensuite) ────
   await db.from("user_badges").upsert(
     { user_id: userId, badge_id: "sans-faute" },
     { onConflict: "user_id,badge_id", ignoreDuplicates: true }
