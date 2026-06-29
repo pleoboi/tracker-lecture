@@ -2,6 +2,19 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 export async function proxy(request: NextRequest) {
+  const reqPath = request.nextUrl.pathname;
+
+  // PWA / Safari — ces routes doivent être accessibles sans session
+  if (
+    reqPath === "/icon" ||
+    reqPath === "/apple-icon" ||
+    reqPath === "/manifest.json" ||
+    reqPath === "/apple-touch-icon.png" ||
+    reqPath === "/apple-touch-icon-precomposed.png"
+  ) {
+    return NextResponse.next();
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(
