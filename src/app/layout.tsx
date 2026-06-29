@@ -26,15 +26,15 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "Swena",
-    startupImage: [],
   },
   icons: {
     icon: [
       { url: "/icon", sizes: "512x512", type: "image/png" },
       { url: "/icon", sizes: "192x192", type: "image/png" },
     ],
+    // Extension .png explicite — Safari la recherche en priorité
     apple: [
-      { url: "/apple-icon", sizes: "180x180", type: "image/png" },
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
     ],
     shortcut: "/icon",
   },
@@ -54,6 +54,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="fr" className={`${inter.variable} ${fraunces.variable}`}>
+      <head>
+        {/* Fallback explicite — certains Safari ignorent la balise metadata sans extension .png */}
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+      </head>
       <body className="bg-paper text-ink">
         <AuthProvider>
           <AppShell>{children}</AppShell>

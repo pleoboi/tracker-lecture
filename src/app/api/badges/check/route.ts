@@ -43,10 +43,12 @@ export async function POST(req: NextRequest) {
   let booksCompleted = 0, uniqueGenres = 0, reviewsCount = 0, monthlyBooksCount = 0;
 
   const today = new Date();
-  const thisYear  = today.getFullYear();
-  const thisMonth = String(today.getMonth() + 1).padStart(2, "0");
+  const todayStr   = today.toISOString().slice(0, 10);
+  const thisYear   = today.getFullYear();
+  const thisMonth  = String(today.getMonth() + 1).padStart(2, "0");
   const firstOfMonth = `${thisYear}-${thisMonth}-01`;
-  const lastOfMonth  = `${thisYear}-${thisMonth}-31`;
+  // Dernier jour réel du mois (évite les faux positifs si 31 n'existe pas)
+  const lastOfMonth  = new Date(thisYear, today.getMonth() + 1, 0).toISOString().slice(0, 10);
 
   const monthlySessionCount = recentLogs.filter(
     (r) => r.date >= firstOfMonth && r.date <= lastOfMonth
@@ -211,18 +213,26 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Défi mensuel livres : 3 livres dans le mois en cours ─────────────────
+  // ── Défi mensuel livres : 3 livres DANS le mois en cours uniquement ────────
   const currentMonthBooksId = `defi-books-${thisYear}-${thisMonth}`;
   if (can(currentMonthBooksId) && monthlyBooksCount >= 3) {
     const def = BADGE_DEFS.find((b) => b.id === currentMonthBooksId);
-    if (def) toAward.push(def);
+    // Double garde : ne décerner que si aujourd'hui est bien dans la fenêtre du badge
+    if (def?.startDate && def?.endDate && todayStr >= def.startDate && todayStr <= def.endDate) {
+      toAward.push(def);
+    }
   }
 
-  // ── Défi mensuel sessions : 15 sessions dans le mois en cours ────────────
+  // ── Défi mensuel sessions : 15 sessions DANS le mois en cours uniquement ──
   const currentMonthSessionsId = `defi-sessions-${thisYear}-${thisMonth}`;
   if (can(currentMonthSessionsId)) {
     const def = BADGE_DEFS.find((b) => b.id === currentMonthSessionsId);
-    if (def && monthlySessionCount >= def.targetValue) {
+    // Double garde identique
+    if (
+      def?.startDate && def?.endDate &&
+      todayStr >= def.startDate && todayStr <= def.endDate &&
+      monthlySessionCount >= def.targetValue
+    ) {
       toAward.push(def);
     }
   }
@@ -231,8 +241,10 @@ export async function POST(req: NextRequest) {
   const uniqueAward = [...new Map(toAward.filter(Boolean).map((d) => [d.id, d])).values()];
 
   if (uniqueAward.length > 0) {
-    await db.from("user_badges").insert(
-      uniqueAward.map((def) => ({ user_id: userId, badge_id: def.id }))
+    // upsert avec ignoreDuplicates pour éviter les erreurs de contrainte unique
+    await db.from("user_badges").upsert(
+      uniqueAward.map((def) => ({ user_id: userId, badge_id: def.id })),
+      { onConflict: "user_id,badge_id", ignoreDuplicates: true }
     );
   }
 
