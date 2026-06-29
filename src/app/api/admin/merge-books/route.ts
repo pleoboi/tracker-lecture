@@ -26,37 +26,19 @@ type BookRow = {
   import_source: string | null;
 };
 
-// Normalise un titre pour comparaison (retire accents, ponctuation, casse)
-function normTitle(s: string): string {
-  return s.toLowerCase()
-    .normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ").trim();
-}
-
-// True si les titres partagent suffisamment de mots longs
-function titlesMatch(a: string, b: string): boolean {
-  const words = (s: string) =>
-    new Set(normTitle(s).split(" ").filter((w) => w.length >= 4));
-  const wa = words(a), wb = words(b);
-  if (!wa.size || !wb.size) return false;
-  let common = 0;
-  for (const w of wa) if (wb.has(w)) common++;
-  return common / Math.min(wa.size, wb.size) >= 0.65;
-}
-
-// True si le nom d'auteur correspond (on compare juste le dernier mot/nom de famille)
-function authorsMatch(a: string, b: string): boolean {
-  const surname = (s: string) =>
-    normTitle(s).split(" ").filter(Boolean).pop() ?? "";
-  const sa = surname(a), sb = surname(b);
-  return !sa || !sb || sa === sb || sa.includes(sb) || sb.includes(sa);
-}
+export type AffectedEntry = {
+  bookId: string;
+  userId: string;
+  memberName: string;
+  originalTitle: string;
+  action: "update_metadata" | "deduplicate";
+  targetBookId?: string;
+};
 
 export async function POST(req: NextRequest) {
-  const { sourceId, targetId, callerEmail, dryRun } =
+  const { sourceIds, targetId, callerEmail, dryRun } =
     (await req.json()) as {
-      sourceId?: string;
+      sourceIds?: string[];
       targetId?: string;
       callerEmail?: string;
       dryRun?: boolean;
@@ -65,90 +47,72 @@ export async function POST(req: NextRequest) {
   if (!callerEmail || callerEmail !== ADMIN_EMAIL) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
-  if (!sourceId || !targetId || sourceId === targetId) {
-    return NextResponse.json({ error: "IDs source et cible requis et distincts" }, { status: 400 });
+  if (!sourceIds?.length || !targetId) {
+    return NextResponse.json({ error: "sourceIds et targetId requis" }, { status: 400 });
+  }
+  if (sourceIds.includes(targetId)) {
+    return NextResponse.json({ error: "La cible ne peut pas être dans les sources" }, { status: 400 });
   }
 
   const db = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  // ── 1. Charger les deux livres de référence ──────────────────────────────────
-  const [{ data: srcData }, { data: tgtData }] = await Promise.all([
-    db.from("books").select("*").eq("id", sourceId).single(),
-    db.from("books").select("*").eq("id", targetId).single(),
-  ]);
-
-  if (!srcData || !tgtData) {
-    return NextResponse.json({ error: "Un des deux livres est introuvable" }, { status: 404 });
+  // ── Charger le livre cible (métadonnées de référence) ────────────────────────
+  const { data: tgtData } = await db.from("books").select("*").eq("id", targetId).single();
+  if (!tgtData) {
+    return NextResponse.json({ error: "Le livre cible est introuvable" }, { status: 404 });
   }
-
-  const source = srcData as BookRow;
   const target = tgtData as BookRow;
 
-  // ── 2. Trouver TOUS les livres qui ressemblent au source (toutes langues, tous membres) ─
-  // Critères : même ISBN13, ou même titre + même auteur
-  const { data: allBooks } = await db
-    .from("books")
-    .select("*")
-    .neq("id", targetId); // garder targetId hors du scope
-
-  const candidates = ((allBooks ?? []) as BookRow[]).filter((b) => {
-    if (b.id === targetId) return false;
-    // Correspondance ISBN13 (éditions différentes, même œuvre)
-    if (source.isbn13 && b.isbn13 && b.isbn13 === source.isbn13) return true;
-    // Correspondance titre + auteur (pour livres sans ISBN ou ISBN différent)
-    return titlesMatch(b.title, source.title) && authorsMatch(b.author, source.author);
-  });
-
-  // ── 3. Pour chaque doublon, calculer l'action à appliquer ────────────────────
-  // Charger les profils pour les noms d'affichage
-  const userIds = [...new Set(candidates.map((b) => b.user_id))];
-  const { data: profiles } = await db
-    .from("user_profiles")
-    .select("id, display_name")
-    .in("id", userIds);
+  // ── Charger les profils pour les noms d'affichage ────────────────────────────
+  const { data: allProfiles } = await db.from("user_profiles").select("id, display_name");
   const nameMap = new Map(
-    (profiles ?? []).map((p: { id: string; display_name: string }) => [p.id, p.display_name])
+    (allProfiles ?? []).map((p: { id: string; display_name: string }) => [p.id, p.display_name])
   );
 
-  type AffectedEntry = {
-    bookId: string;
-    userId: string;
-    memberName: string;
-    originalTitle: string;
-    action: "update_metadata" | "deduplicate";
-    targetBookId?: string; // pour l'action "deduplicate"
-  };
-
+  // ── Construire la liste des entrées affectées ────────────────────────────────
+  // Pour chaque source sélectionné par l'admin :
+  //   - Si l'utilisateur propriétaire de cette source a déjà la cible → fusion (transfer + delete)
+  //   - Sinon → mise à jour des métadonnées de l'entrée source
   const affected: AffectedEntry[] = [];
+  const seenBookIds = new Set<string>();
 
-  for (const dup of candidates) {
-    // Chercher si ce membre a déjà un exemplaire correspondant au TARGET
-    const sameUserTarget = ((allBooks ?? []) as BookRow[]).find(
-      (b) =>
-        b.user_id === dup.user_id &&
-        b.id !== dup.id &&
-        (
-          (target.isbn13 && b.isbn13 && b.isbn13 === target.isbn13) ||
-          (titlesMatch(b.title, target.title) && authorsMatch(b.author, target.author))
-        )
-    );
+  for (const sourceId of sourceIds) {
+    if (seenBookIds.has(sourceId)) continue;
+    seenBookIds.add(sourceId);
+
+    const { data: srcData } = await db.from("books").select("*").eq("id", sourceId).single();
+    if (!srcData) continue;
+    const source = srcData as BookRow;
+
+    // Ce membre a-t-il déjà un livre correspondant à la cible (autre que lui-même) ?
+    const { data: sameUserBooks } = await db
+      .from("books")
+      .select("id, title, isbn13")
+      .eq("user_id", source.user_id)
+      .neq("id", sourceId);
+
+    const frenchVersion = (sameUserBooks ?? []).find((b: { id: string; title: string; isbn13: string | null }) => {
+      if (b.id === targetId) return true;
+      if (target.isbn13 && b.isbn13 && b.isbn13 === target.isbn13) return true;
+      return normTitle(b.title) === normTitle(target.title);
+    });
 
     affected.push({
-      bookId:        dup.id,
-      userId:        dup.user_id,
-      memberName:    nameMap.get(dup.user_id) ?? "Inconnu",
-      originalTitle: dup.title,
-      action:        sameUserTarget ? "deduplicate" : "update_metadata",
-      targetBookId:  sameUserTarget?.id,
+      bookId:        sourceId,
+      userId:        source.user_id,
+      memberName:    nameMap.get(source.user_id) ?? "Inconnu",
+      originalTitle: source.title,
+      action:        frenchVersion ? "deduplicate" : "update_metadata",
+      targetBookId:  frenchVersion?.id ?? targetId,
     });
   }
 
-  // ── Mode prévisualisation : on retourne sans modifier ───────────────────────
+  // ── Mode prévisualisation ────────────────────────────────────────────────────
   if (dryRun) {
     return NextResponse.json({ affected, count: affected.length });
   }
 
-  // ── 4. Application des fusions ───────────────────────────────────────────────
+  // ── Application ─────────────────────────────────────────────────────────────
   const targetMeta = {
     title:          target.title,
     author:         target.author,
@@ -157,7 +121,7 @@ export async function POST(req: NextRequest) {
     summary:        target.summary,
     genre:          target.genre,
     published_year: target.published_year,
-    pages:          target.pages || source.pages,
+    pages:          target.pages,
   };
 
   let updated = 0;
@@ -166,58 +130,52 @@ export async function POST(req: NextRequest) {
 
   for (const entry of affected) {
     if (entry.action === "update_metadata") {
-      // Basculer l'entrée vers les métadonnées françaises en conservant les données personnelles
-      const { error } = await db
-        .from("books")
-        .update(targetMeta)
-        .eq("id", entry.bookId);
+      // Remplacer les métadonnées en conservant les données personnelles
+      const { error } = await db.from("books").update(targetMeta).eq("id", entry.bookId);
       if (error) errors.push(`update ${entry.bookId}: ${error.message}`);
       else updated++;
 
     } else if (entry.action === "deduplicate" && entry.targetBookId) {
-      // Ce membre a déjà la version française : transférer les reading_logs et supprimer le doublon
+      // Transférer les reading_logs
       const { error: logsErr } = await db
         .from("reading_logs")
         .update({ book_id: entry.targetBookId })
         .eq("book_id", entry.bookId);
+      if (logsErr) { errors.push(`logs ${entry.bookId}: ${logsErr.message}`); continue; }
 
-      if (logsErr) {
-        errors.push(`logs ${entry.bookId}: ${logsErr.message}`);
-        continue;
+      // Fusionner notes/rating si l'entrée française est vide
+      const { data: srcFull } = await db.from("books").select("notes, rating, pages").eq("id", entry.bookId).single();
+      const { data: tgtFull } = await db.from("books").select("notes, rating, pages").eq("id", entry.targetBookId).single();
+      const src = srcFull as { notes: string | null; rating: number | null; pages: number } | null;
+      const tgt = tgtFull as { notes: string | null; rating: number | null; pages: number } | null;
+      if (src && tgt) {
+        await db.from("books").update({
+          notes:  tgt.notes  ?? src.notes,
+          rating: tgt.rating ?? src.rating,
+          pages:  Math.max(tgt.pages ?? 0, src.pages ?? 0) || tgt.pages,
+        }).eq("id", entry.targetBookId);
       }
 
-      // Enrichir le livre français de ce membre si ses données sont meilleures
-      const { data: dupBook } = await db.from("books").select("*").eq("id", entry.bookId).single();
-      const dup = dupBook as BookRow | null;
-      if (dup) {
-        const { data: frBook } = await db.from("books").select("*").eq("id", entry.targetBookId).single();
-        const fr = frBook as BookRow | null;
-        if (fr) {
-          await db.from("books").update({
-            notes:  fr.notes  ?? dup.notes,
-            rating: fr.rating ?? dup.rating,
-            pages:  Math.max(fr.pages ?? 0, dup.pages ?? 0) || fr.pages,
-          }).eq("id", entry.targetBookId);
-        }
-      }
-
+      // Supprimer la source
       const { error: delErr } = await db.from("books").delete().eq("id", entry.bookId);
       if (delErr) errors.push(`delete ${entry.bookId}: ${delErr.message}`);
       else deduplicated++;
     }
   }
 
-  // ── 5. Mettre à jour les quiz du source ──────────────────────────────────────
-  await db
-    .from("book_quizzes")
-    .update({ quiz_key: `book-${targetId}` })
-    .eq("quiz_key", `book-${sourceId}`);
+  // Mettre à jour les quiz éventuels
+  for (const sourceId of sourceIds) {
+    await db.from("book_quizzes")
+      .update({ quiz_key: `book-${targetId}` })
+      .eq("quiz_key", `book-${sourceId}`);
+  }
 
-  return NextResponse.json({
-    ok: true,
-    updated,
-    deduplicated,
-    errors: errors.length ? errors : undefined,
-    affected,
-  });
+  return NextResponse.json({ ok: true, updated, deduplicated, errors: errors.length ? errors : undefined, affected });
+}
+
+function normTitle(s: string): string {
+  return s.toLowerCase()
+    .normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ").trim();
 }

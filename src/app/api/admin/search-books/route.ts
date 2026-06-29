@@ -13,18 +13,19 @@ export async function POST(req: NextRequest) {
   if (!callerEmail || callerEmail !== ADMIN_EMAIL) {
     return NextResponse.json({ error: "Accès refusé" }, { status: 403 });
   }
-  if (!query?.trim()) {
-    return NextResponse.json({ error: "Requête vide" }, { status: 400 });
-  }
-
   const db = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  const { data, error } = await db
+  let dbQuery = db
     .from("books")
     .select("id, title, author, isbn13, cover_url, status, user_id, import_source")
-    .ilike("title", `%${query.trim()}%`)
     .order("title")
-    .limit(40);
+    .limit(600);
+
+  if (query?.trim()) {
+    dbQuery = dbQuery.ilike("title", `%${query.trim()}%`);
+  }
+
+  const { data, error } = await dbQuery;
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
