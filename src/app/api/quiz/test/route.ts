@@ -3,19 +3,45 @@ import { NextResponse } from "next/server";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const key = process.env.GEMINI_API_KEY;
+  // Vérifie plusieurs noms possibles pour la clé Gemini
+  const candidates: Record<string, string | undefined> = {
+    GEMINI_API_KEY:          process.env.GEMINI_API_KEY,
+    GOOGLE_AI_API_KEY:       process.env.GOOGLE_AI_API_KEY,
+    GOOGLE_GEMINI_API_KEY:   process.env.GOOGLE_GEMINI_API_KEY,
+    GEMINI_KEY:              process.env.GEMINI_KEY,
+    // Vérifie aussi que les autres vars connues sont bien présentes
+    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ? "présente" : "manquante",
+  };
 
-  if (!key) {
-    return NextResponse.json({ ok: false, reason: "GEMINI_API_KEY manquante dans les variables Vercel" });
+  const found = Object.entries(candidates)
+    .filter(([, v]) => v)
+    .map(([k, v]) => ({
+      name: k,
+      preview: v && v.length > 8 ? `${v.slice(0, 6)}...${v.slice(-4)} (${v.length} chars)` : v,
+    }));
+
+  const missing = Object.keys(candidates).filter((k) => !candidates[k]);
+
+  const geminiKey =
+    process.env.GEMINI_API_KEY ||
+    process.env.GOOGLE_AI_API_KEY ||
+    process.env.GOOGLE_GEMINI_API_KEY ||
+    process.env.GEMINI_KEY;
+
+  if (!geminiKey) {
+    return NextResponse.json({
+      ok: false,
+      message: "Aucune clé Gemini trouvée parmi les noms testés",
+      found,
+      missing,
+    });
   }
 
-  const preview = `${key.slice(0, 6)}...${key.slice(-4)} (${key.length} chars)`;
-
-  let status = 0;
-  let body = "";
+  // Test appel Gemini
   try {
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${key}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -25,14 +51,9 @@ export async function GET() {
         }),
       }
     );
-    status = res.status;
-    body = await res.text();
-    if (res.ok) {
-      return NextResponse.json({ ok: true, key: preview, status, response: body.slice(0, 200) });
-    }
+    const body = await res.text();
+    return NextResponse.json({ ok: res.ok, status: res.status, found, response: body.slice(0, 300) });
   } catch (err) {
-    return NextResponse.json({ ok: false, key: preview, reason: "Erreur réseau", error: String(err) });
+    return NextResponse.json({ ok: false, found, error: String(err) });
   }
-
-  return NextResponse.json({ ok: false, key: preview, status, error: body.slice(0, 400) });
 }
