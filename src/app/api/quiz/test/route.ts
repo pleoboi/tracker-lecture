@@ -1,25 +1,31 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
-// v3 — force rebuild
 
 export async function GET() {
-  const key = process.env.GEMINI_API_KEY;
-  const deployId = process.env.VERCEL_DEPLOYMENT_ID ?? "local";
-  const commitSha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local";
+  const db = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
-  if (!key) {
+  // Vérifier la clé dans Supabase
+  const { data, error } = await db
+    .from("app_settings")
+    .select("value")
+    .eq("key", "gemini_api_key")
+    .single();
+
+  if (error || !data) {
     return NextResponse.json({
       ok: false,
-      reason: "GEMINI_API_KEY manquante",
-      deploy: deployId,
-      commit: commitSha,
-      allKeys: Object.keys(process.env).filter((k) =>
-        k.includes("GEMINI") || k.includes("GOOGLE") || k.includes("AI")
-      ),
+      reason: "Clé Gemini absente de app_settings",
+      hint: "Exécutez le SQL dans Supabase pour insérer la clé",
+      supabaseError: error?.message,
     });
   }
 
+  const key = (data as { value: string }).value;
   const preview = `${key.slice(0, 6)}...${key.slice(-4)} (${key.length} chars)`;
 
   try {
@@ -29,14 +35,14 @@ export async function GET() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: "Dis juste: OK" }] }],
-          generationConfig: { maxOutputTokens: 10 },
+          contents: [{ role: "user", parts: [{ text: "Réponds uniquement: OK" }] }],
+          generationConfig: { maxOutputTokens: 5 },
         }),
       }
     );
     const body = await res.text();
-    return NextResponse.json({ ok: res.ok, status: res.status, key: preview, deploy: deployId, commit: commitSha, response: body.slice(0, 300) });
+    return NextResponse.json({ ok: res.ok, status: res.status, key: preview, response: body.slice(0, 200) });
   } catch (err) {
-    return NextResponse.json({ ok: false, key: preview, deploy: deployId, commit: commitSha, error: String(err) });
+    return NextResponse.json({ ok: false, key: preview, error: String(err) });
   }
 }
