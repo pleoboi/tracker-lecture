@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import React, { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
@@ -10,18 +10,19 @@ import {
 
 // ── Gradients par (type, palier) [top, bottom] ───────────────────────────────
 const TYPE_GRADIENT: Record<BadgeType, [string, string][]> = {
-  volume:      [["#93c5fd","#1d4ed8"],["#60a5fa","#1e3a8a"],["#3b82f6","#172554"],["#1e40af","#0f172a"]],
-  genre:       [["#6ee7b7","#059669"],["#34d399","#047857"],["#10b981","#065f46"],["#059669","#022c22"]],
-  sessions:    [["#fcd34d","#d97706"],["#fbbf24","#b45309"],["#f59e0b","#92400e"],["#d97706","#451a03"]],
-  review:      [["#f9a8d4","#db2777"],["#f472b6","#be185d"],["#ec4899","#9d174d"],["#db2777","#500724"]],
-  pages:       [["#a5b4fc","#4f46e5"],["#818cf8","#4338ca"],["#6366f1","#3730a3"],["#4f46e5","#1e1b4b"]],
-  streak:      [["#fca5a5","#dc2626"],["#f87171","#b91c1c"],["#ef4444","#991b1b"],["#dc2626","#450a0a"]],
-  monthly:     [["#c4b5fd","#7c3aed"],["#a78bfa","#6d28d9"],["#8b5cf6","#5b21b6"],["#7c3aed","#2e1065"]],
-  event:       [["#fda4af","#e11d48"],["#fb7185","#be123c"],["#f43f5e","#9f1239"],["#e11d48","#4c0519"]],
-  time_of_day: [["#bae6fd","#0369a1"],["#7dd3fc","#075985"],["#38bdf8","#0c4a6e"],["#0ea5e9","#082f49"]],
-  performance: [["#fdba74","#c2410c"],["#fb923c","#9a3412"],["#f97316","#7c2d12"],["#ea580c","#431407"]],
-  social:      [["#5eead4","#0f766e"],["#2dd4bf","#0d6b63"],["#14b8a6","#0b5e57"],["#0d9488","#042f2e"]],
-  quiz:        [["#fde68a","#d97706"],["#fcd34d","#b45309"],["#f59e0b","#92400e"],["#d97706","#451a03"]],
+  volume:        [["#93c5fd","#1d4ed8"],["#60a5fa","#1e3a8a"],["#3b82f6","#172554"],["#1e40af","#0f172a"]],
+  genre:         [["#6ee7b7","#059669"],["#34d399","#047857"],["#10b981","#065f46"],["#059669","#022c22"]],
+  sessions:      [["#fcd34d","#d97706"],["#fbbf24","#b45309"],["#f59e0b","#92400e"],["#d97706","#451a03"]],
+  review:        [["#f9a8d4","#db2777"],["#f472b6","#be185d"],["#ec4899","#9d174d"],["#db2777","#500724"]],
+  pages:         [["#a5b4fc","#4f46e5"],["#818cf8","#4338ca"],["#6366f1","#3730a3"],["#4f46e5","#1e1b4b"]],
+  streak:        [["#fca5a5","#dc2626"],["#f87171","#b91c1c"],["#ef4444","#991b1b"],["#dc2626","#450a0a"]],
+  monthly:       [["#c4b5fd","#7c3aed"],["#a78bfa","#6d28d9"],["#8b5cf6","#5b21b6"],["#7c3aed","#2e1065"]],
+  monthly_books: [["#86efac","#15803d"],["#4ade80","#166534"],["#22c55e","#14532d"],["#16a34a","#052e16"]],
+  event:         [["#fda4af","#e11d48"],["#fb7185","#be123c"],["#f43f5e","#9f1239"],["#e11d48","#4c0519"]],
+  time_of_day:   [["#bae6fd","#0369a1"],["#7dd3fc","#075985"],["#38bdf8","#0c4a6e"],["#0ea5e9","#082f49"]],
+  performance:   [["#fdba74","#c2410c"],["#fb923c","#9a3412"],["#f97316","#7c2d12"],["#ea580c","#431407"]],
+  social:        [["#5eead4","#0f766e"],["#2dd4bf","#0d6b63"],["#14b8a6","#0b5e57"],["#0d9488","#042f2e"]],
+  quiz:          [["#fde68a","#d97706"],["#fcd34d","#b45309"],["#f59e0b","#92400e"],["#d97706","#451a03"]],
 };
 
 // ── Stats helper ──────────────────────────────────────────────────────────────
@@ -49,16 +50,23 @@ async function fetchBadgeStats(memberId: string): Promise<UserBadgeStats> {
     (r) => r.date >= "2026-07-01" && r.date <= "2026-07-31"
   ).length;
 
-  let booksCompleted = 0, uniqueGenres = 0, reviewsCount = 0;
+  const today = new Date();
+  const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
+
+  let booksCompleted = 0, uniqueGenres = 0, reviewsCount = 0, monthlyBooksCount = 0;
   if (activeBookIds.length > 0) {
-    const [booksRes, reviewsRes] = await Promise.all([
+    const [booksRes, reviewsRes, monthlyBooksRes] = await Promise.all([
       supabase.from("books").select("genre, status").eq("user_id", memberId).in("id", activeBookIds),
       supabase.from("books").select("id", { count: "exact", head: true })
         .eq("user_id", memberId).not("notes", "is", null).neq("notes", "").in("id", activeBookIds),
+      supabase.from("books").select("id", { count: "exact", head: true })
+        .eq("user_id", memberId).eq("status", "completed")
+        .gte("date_read", firstOfMonth).in("id", activeBookIds),
     ]);
     const books = (booksRes.data ?? []) as { genre: string | null; status: string }[];
-    booksCompleted = books.filter((b) => b.status === "completed").length;
-    reviewsCount   = reviewsRes.count ?? 0;
+    booksCompleted    = books.filter((b) => b.status === "completed").length;
+    reviewsCount      = reviewsRes.count ?? 0;
+    monthlyBooksCount = monthlyBooksRes.count ?? 0;
     const genreSet = new Set<string>();
     for (const b of books) {
       if (!b.genre || b.status !== "completed") continue;
@@ -67,7 +75,7 @@ async function fetchBadgeStats(memberId: string): Promise<UserBadgeStats> {
     uniqueGenres = genreSet.size;
   }
 
-  return { booksCompleted, uniqueGenres, sessionsCount, reviewsCount, totalPages, maxStreak, monthlySessionCount };
+  return { booksCompleted, uniqueGenres, sessionsCount, reviewsCount, totalPages, maxStreak, monthlySessionCount, monthlyBooksCount };
 }
 
 // ── SVG Icons ─────────────────────────────────────────────────────────────────
@@ -466,7 +474,7 @@ function LeaderboardView({ currentUserId }: { currentUserId?: string }) {
 // ── Type labels pour l'onglet Disponible ──────────────────────────────────────
 const TYPE_LABEL: Record<BadgeType, string> = {
   volume:"Bâtisseur", genre:"Explorateur", sessions:"Marathonien", review:"Critique",
-  pages:"Vorace", streak:"Régulier", monthly:"Défis mensuels",
+  pages:"Vorace", streak:"Régulier", monthly:"Défis mensuels", monthly_books:"Défi du mois",
   event:"Événements", time_of_day:"Horaires", performance:"Performance", social:"Social & Profil",
   quiz:"Validation de lecture",
 };
@@ -482,8 +490,10 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
   const [stats,         setStats]         = useState<UserBadgeStats | null>(null);
   const [selected,      setSelected]      = useState<BadgeDef | null>(null);
   const [awardQueue,    setAwardQueue]    = useState<BadgeDef[]>([]);
-  const [quizPassCount, setQuizPassCount] = useState(0);
-  const [quizBonus,     setQuizBonus]     = useState(0);
+  const [quizPassCount,   setQuizPassCount]   = useState(0);
+  const [quizBonus,       setQuizBonus]       = useState(0);
+  const [sprintCount,     setSprintCount]     = useState(0);
+  const [sprintBonus,     setSprintBonus]     = useState(0);
 
   useEffect(() => { document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = ""; }; }, []);
 
@@ -506,16 +516,18 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
       }
 
       const [profileRes, ubRes, computedStats] = await Promise.all([
-        supabase.from("user_profiles").select("display_name, avatar_url, quiz_pass_count, quiz_bonus_points").eq("id", memberId).single(),
+        supabase.from("user_profiles").select("display_name, avatar_url, quiz_pass_count, quiz_bonus_points, sprint_eclair_count, sprint_bonus_points").eq("id", memberId).single(),
         supabase.from("user_badges").select("badge_id, unlocked_at").eq("user_id", memberId)
           .order("unlocked_at", { ascending: false }),
         fetchBadgeStats(memberId),
       ]);
 
-      const prof = profileRes.data as { display_name: string; avatar_url: string | null; quiz_pass_count?: number; quiz_bonus_points?: number } | null;
+      const prof = profileRes.data as { display_name: string; avatar_url: string | null; quiz_pass_count?: number; quiz_bonus_points?: number; sprint_eclair_count?: number; sprint_bonus_points?: number } | null;
       setProfile(prof);
       setQuizPassCount(prof?.quiz_pass_count ?? 0);
       setQuizBonus(prof?.quiz_bonus_points ?? 0);
+      setSprintCount(prof?.sprint_eclair_count ?? 0);
+      setSprintBonus(prof?.sprint_bonus_points ?? 0);
       setUnlocked((ubRes.data ?? []) as { badge_id: string; unlocked_at: string }[]);
       setStats(computedStats);
       setAwardQueue(newlyAwarded);
@@ -525,7 +537,7 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
   }, [memberId, currentUserId]);
 
   const unlockedSet  = new Set(unlocked.map((u) => u.badge_id));
-  const totalPoints  = getTotalPoints(unlockedSet) + quizBonus;
+  const totalPoints  = getTotalPoints(unlockedSet) + quizBonus + sprintBonus;
   const lvl          = getLevelProgress(totalPoints);
   const wonBadges    = BADGE_DEFS.filter((d) => unlockedSet.has(d.id));
   const lockedBadges = BADGE_DEFS.filter((d) => !unlockedSet.has(d.id));
@@ -624,21 +636,23 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
                 <div className="grid grid-cols-3 gap-4">
                   {wonBadges.map((def) => {
                     const ub = unlocked.find((u) => u.badge_id === def.id);
-                    const isSansFaute = def.id === "sans-faute";
+                    const isSansFaute    = def.id === "sans-faute";
+                    const isSprintEclair = def.id === "sprint-eclair";
+                    const cumulCount = isSansFaute ? quizPassCount : isSprintEclair ? sprintCount : 0;
                     return (
                       <button key={def.id} onClick={() => setSelected(def)}
                         className="group flex flex-col items-center gap-1.5 focus:outline-none">
                         <div className="relative transition-transform group-hover:scale-105">
                           <BookmarkBadge def={def} unlocked unlockedAt={ub?.unlocked_at} size={76} />
-                          {isSansFaute && quizPassCount > 1 && (
+                          {cumulCount > 1 && (
                             <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center
                               rounded-full bg-amber-500 font-mono text-[9px] font-black text-white ring-2 ring-paper">
-                              {quizPassCount}
+                              {cumulCount}
                             </span>
                           )}
                         </div>
                         <p className="text-center text-[10.5px] font-semibold leading-tight text-ink">
-                          {def.name}{isSansFaute && quizPassCount > 1 ? ` × ${quizPassCount}` : ""}
+                          {def.name}{cumulCount > 1 ? ` × ${cumulCount}` : ""}
                         </p>
                         <p className={`text-[9.5px] font-bold ${TIER_META[def.tier as BadgeTier].textClass}`}>
                           {TIER_META[def.tier as BadgeTier].label}
@@ -651,7 +665,12 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
             ) : tab === "available" ? (
               <div className="flex flex-col gap-5">
                 {(Object.keys(TYPE_LABEL) as BadgeType[]).map((type) => {
-                  const group = lockedBadges.filter((d) => d.type === type);
+                  const currentMonthBadgeId = `defi-books-${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`;
+                  const group = lockedBadges.filter((d) => {
+                    if (d.type !== type) return false;
+                    if (d.type === "monthly_books") return d.id === currentMonthBadgeId;
+                    return true;
+                  });
                   if (!group.length) return null;
                   return (
                     <div key={type}>

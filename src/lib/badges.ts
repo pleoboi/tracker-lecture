@@ -1,7 +1,7 @@
 export type BadgeTier = 1 | 2 | 3 | 4;
 export type BadgeType =
   | "volume" | "genre" | "sessions" | "pages" | "review" | "streak" | "monthly"
-  | "event" | "time_of_day" | "performance" | "social" | "quiz";
+  | "event" | "time_of_day" | "performance" | "social" | "quiz" | "monthly_books";
 
 export type IconKey =
   | "books" | "compass" | "lightning" | "quill" | "pages" | "flame" | "calendar"
@@ -29,6 +29,7 @@ export interface UserBadgeStats {
   totalPages: number;
   maxStreak: number;
   monthlySessionCount: number;
+  monthlyBooksCount: number;
 }
 
 // ── Couleurs par palier ───────────────────────────────────────────────────────
@@ -73,9 +74,13 @@ export const BADGE_DEFS: BadgeDef[] = [
   { id:"streak-2", name:"Régulier", description:"21 jours consécutifs de lecture",  type:"streak", tier:2, targetValue:21,  points:40,  iconKey:"flame" },
   { id:"streak-3", name:"Régulier", description:"60 jours consécutifs de lecture",  type:"streak", tier:3, targetValue:60,  points:120, iconKey:"flame" },
   { id:"streak-4", name:"Régulier", description:"180 jours consécutifs de lecture", type:"streak", tier:4, targetValue:180, points:300, iconKey:"flame" },
-  // ── Défi mensuel — Juillet 2026 ─────────────────────────────────────────
+  // ── Défi mensuel sessions — Juillet 2026 ────────────────────────────────
   { id:"monthly-jul-2026", name:"Défi Juillet 2026", description:"Enregistrer 15 sessions en juillet 2026",
     type:"monthly", tier:3, targetValue:15, points:50, iconKey:"calendar", startDate:"2026-07-01", endDate:"2026-07-31" },
+
+  // ── Sprint Éclair (cumulatif : +40 pts par livre dévoré en une journée) ─
+  { id:"sprint-eclair", name:"Sprint Éclair", description:"Commencer et terminer un livre dans la même journée",
+    type:"performance", tier:3, targetValue:1, points:0, iconKey:"lightning", isSpecial:true },
 
   // ── Événements temporels ─────────────────────────────────────────────────
   { id:"event-dec31",  name:"Dernier chapitre de l'année", description:"Session de lecture le 31 décembre",        type:"event", tier:2, targetValue:1, points:30, iconKey:"calendar", isSpecial:true },
@@ -104,6 +109,30 @@ export const BADGE_DEFS: BadgeDef[] = [
     type:"quiz", tier:3, targetValue:1, points:0, iconKey:"seal", isSpecial:true },
 ];
 
+// ── Badges Défi mensuel livres (Juin 2026 → Décembre 2027) ──────────────────
+const MONTHS_FR = ["Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"];
+function monthlyBooksName(m: number): string {
+  const n = MONTHS_FR[m - 1];
+  return ["Avril","Août","Octobre"].includes(n) ? `Défi d'${n}` : `Défi de ${n}`;
+}
+
+const MONTHLY_BOOKS_DEFS: BadgeDef[] = [];
+for (let y = 2026; y <= 2027; y++) {
+  for (let m = (y === 2026 ? 6 : 1); m <= 12; m++) {
+    MONTHLY_BOOKS_DEFS.push({
+      id: `defi-books-${y}-${String(m).padStart(2, "0")}`,
+      name: monthlyBooksName(m),
+      description: `Terminer 3 livres en ${MONTHS_FR[m - 1]} ${y}`,
+      type: "monthly_books",
+      tier: 2,
+      targetValue: 3,
+      points: 30,
+      iconKey: "calendar",
+    });
+  }
+}
+BADGE_DEFS.push(...MONTHLY_BOOKS_DEFS);
+
 export const BADGE_CUTOFF_DATE = "2026-06-20";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -116,6 +145,7 @@ export function getStatValue(def: BadgeDef, stats: UserBadgeStats): number {
     case "pages":       return stats.totalPages;
     case "streak":      return stats.maxStreak;
     case "monthly":     return stats.monthlySessionCount;
+    case "monthly_books": return stats.monthlyBooksCount;
     case "event":
     case "time_of_day":
     case "performance":

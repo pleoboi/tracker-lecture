@@ -140,12 +140,39 @@ function titleSimilarity(a: string, b: string): number {
 
 function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [mode, setMode] = useState<"auto" | "csv">("auto");
+  const [goodreadsUrl, setGoodreadsUrl] = useState("");
+  const [fetchingRss, setFetchingRss] = useState(false);
   const [preview, setPreview] = useState<GRRow[] | null>(null);
   const [importing, setImporting] = useState(false);
   const [phase, setPhase] = useState<"enrich" | "insert" | null>(null);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [result, setResult] = useState<{ inserted: number; skipped: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const handleAutoFetch = async () => {
+    if (!goodreadsUrl.trim()) return;
+    setFetchingRss(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/goodreads/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: goodreadsUrl.trim() }),
+      });
+      const data = await res.json() as { error?: string; books?: GRRow[]; count?: number };
+      if (data.error) { setError(data.error); return; }
+      if (!data.books?.length) {
+        setError("Aucun livre trouvé. Vérifiez que votre profil Goodreads est public.");
+        return;
+      }
+      setPreview(data.books);
+    } catch {
+      setError("Connexion à Goodreads impossible. Vérifiez l'URL et réessayez.");
+    } finally {
+      setFetchingRss(false);
+    }
+  };
 
   const handleFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -381,28 +408,90 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
   }
 
   return (
-    <div className="flex flex-col gap-3">
-      <p className="text-[13px] leading-relaxed text-ink-2">
-        Exporte ton historique depuis{" "}
-        <span className="font-semibold">Goodreads</span>{" "}
-        (Mon profil → Importer/Exporter → Exporter la bibliothèque), puis charge le fichier CSV ici.
-        Les livres déjà présents ne seront pas dupliqués.
-      </p>
-      {error && (
-        <p className="rounded-xl border border-[#e7c7bd] bg-[#f6e7e1] px-3 py-2 text-xs font-medium text-danger">
-          {error}
-        </p>
+    <div className="flex flex-col gap-4">
+      {/* Sélecteur de mode */}
+      <div className="flex overflow-hidden rounded-xl border border-line text-[12.5px] font-semibold">
+        <button
+          onClick={() => { setMode("auto"); setError(null); }}
+          className={`flex-1 py-2 transition-colors ${mode === "auto" ? "bg-violet text-cream" : "bg-card text-muted hover:text-ink"}`}
+        >
+          Automatique
+        </button>
+        <button
+          onClick={() => { setMode("csv"); setError(null); }}
+          className={`flex-1 border-l border-line py-2 transition-colors ${mode === "csv" ? "bg-violet text-cream" : "bg-card text-muted hover:text-ink"}`}
+        >
+          Fichier CSV
+        </button>
+      </div>
+
+      {mode === "auto" ? (
+        <div className="flex flex-col gap-4">
+          {/* 3 étapes style Lexu */}
+          <div className="flex flex-col gap-2.5 rounded-xl border border-line bg-paper px-4 py-3.5">
+            {[
+              { n: 1, title: "Connectez-vous à Goodreads", desc: "Ouvrez votre profil Goodreads et copiez l'URL depuis la barre d'adresse." },
+              { n: 2, title: "Vos étagères sont analysées", desc: "SWENA récupère automatiquement votre bibliothèque lue depuis le flux public." },
+              { n: 3, title: "Vos livres sont importés", desc: "Chaque livre est enrichi (couverture, résumé, genre) puis ajouté à votre collection." },
+            ].map(({ n, title, desc }) => (
+              <div key={n} className="flex gap-3">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-soft font-mono text-[11px] font-black text-violet-deep">
+                  {n}
+                </span>
+                <div>
+                  <p className="text-[12.5px] font-semibold text-ink">{title}</p>
+                  <p className="text-[11.5px] leading-relaxed text-muted">{desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Avertissement de confidentialité */}
+          <p className="rounded-xl bg-input px-3 py-2 text-[11px] leading-relaxed text-muted">
+            Vos identifiants Goodreads ne sont ni stockés ni transmis. Seule la liste de vos livres est récupérée depuis votre profil public.
+          </p>
+
+          {/* Champ URL */}
+          <input
+            type="url"
+            value={goodreadsUrl}
+            onChange={(e) => setGoodreadsUrl(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAutoFetch()}
+            placeholder="https://www.goodreads.com/user/show/12345678-votre-nom"
+            className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-[13px] text-ink placeholder:text-muted focus:border-violet focus:outline-none"
+          />
+
+          {error && (
+            <p className="rounded-xl border border-[#e7c7bd] bg-[#f6e7e1] px-3 py-2 text-xs font-medium text-danger">
+              {error}
+            </p>
+          )}
+
+          <Button
+            onClick={handleAutoFetch}
+            disabled={fetchingRss || !goodreadsUrl.trim()}
+            className="w-full text-sm"
+          >
+            {fetchingRss ? "Connexion en cours…" : "Se connecter a Goodreads"}
+          </Button>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <p className="text-[13px] leading-relaxed text-ink-2">
+            Exporte ton historique depuis <span className="font-semibold">Goodreads</span> (Mon profil → Importer/Exporter → Exporter la bibliothèque), puis charge le fichier CSV ici.
+            Les livres déjà présents ne seront pas dupliqués.
+          </p>
+          {error && (
+            <p className="rounded-xl border border-[#e7c7bd] bg-[#f6e7e1] px-3 py-2 text-xs font-medium text-danger">
+              {error}
+            </p>
+          )}
+          <input ref={fileRef} type="file" accept=".csv" onChange={handleFile} className="hidden" />
+          <Button onClick={() => fileRef.current?.click()} variant="ghost" className="w-full text-sm">
+            Choisir le fichier CSV Goodreads
+          </Button>
+        </div>
       )}
-      <input
-        ref={fileRef}
-        type="file"
-        accept=".csv"
-        onChange={handleFile}
-        className="hidden"
-      />
-      <Button onClick={() => fileRef.current?.click()} variant="ghost" className="w-full text-sm">
-        📂 Choisir le fichier CSV Goodreads
-      </Button>
     </div>
   );
 }
@@ -1254,15 +1343,6 @@ export default function ComptePage() {
           {/* Import Goodreads */}
           <div id="import-goodreads" className="rounded-2xl border border-line bg-card p-4">
             <h3 className="font-serif text-[15px] font-medium text-ink">Import Goodreads</h3>
-            <div className="mt-2 rounded-xl border border-line bg-paper px-3.5 py-3">
-              <p className="text-[11.5px] font-semibold text-ink-2">Comment exporter depuis Goodreads ?</p>
-              <ol className="mt-1.5 flex flex-col gap-0.5 text-[11px] text-muted">
-                <li>1. Rendez-vous sur <span className="font-medium text-ink-2">goodreads.com</span> depuis votre ordinateur</li>
-                <li>2. <span className="font-medium text-ink-2">Paramètres du compte</span> → section <span className="font-medium text-ink-2">Importer et exporter</span></li>
-                <li>3. Cliquez sur <span className="font-medium text-ink-2">Export Library</span></li>
-                <li>4. Téléversez le fichier <code className="rounded bg-violet-soft px-1 font-mono text-violet-deep">.csv</code> obtenu ci-dessous</li>
-              </ol>
-            </div>
             <div className="mt-3">
               {userId && (
                 <GoodreadsImport

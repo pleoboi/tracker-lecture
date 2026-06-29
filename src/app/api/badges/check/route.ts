@@ -44,17 +44,24 @@ export async function POST(req: NextRequest) {
   ).length;
 
   // ── 2. Livres actifs depuis la date butoir ────────────────────────────────
-  let booksCompleted = 0, uniqueGenres = 0, reviewsCount = 0;
+  let booksCompleted = 0, uniqueGenres = 0, reviewsCount = 0, monthlyBooksCount = 0;
+
+  const today = new Date();
+  const firstOfMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-01`;
 
   if (activeBookIds.length > 0) {
-    const [booksRes, reviewsRes] = await Promise.all([
+    const [booksRes, reviewsRes, monthlyBooksRes] = await Promise.all([
       db.from("books").select("genre, status").eq("user_id", userId).in("id", activeBookIds),
       db.from("books").select("id", { count: "exact", head: true })
         .eq("user_id", userId).not("notes", "is", null).neq("notes", "").in("id", activeBookIds),
+      db.from("books").select("id", { count: "exact", head: true })
+        .eq("user_id", userId).eq("status", "completed")
+        .gte("date_read", firstOfMonth).in("id", activeBookIds),
     ]);
     const books = (booksRes.data ?? []) as { genre: string | null; status: string }[];
-    booksCompleted = books.filter((b) => b.status === "completed").length;
-    reviewsCount   = reviewsRes.count ?? 0;
+    booksCompleted    = books.filter((b) => b.status === "completed").length;
+    reviewsCount      = reviewsRes.count ?? 0;
+    monthlyBooksCount = monthlyBooksRes.count ?? 0;
     const genreSet = new Set<string>();
     for (const b of books) {
       if (!b.genre || b.status !== "completed") continue;
@@ -63,9 +70,17 @@ export async function POST(req: NextRequest) {
     uniqueGenres = genreSet.size;
   }
 
+  // ── Profil utilisateur (pour les badges cumulatifs) ──────────────────────
+  const { data: profileData } = await db
+    .from("user_profiles")
+    .select("sprint_eclair_count, sprint_bonus_points")
+    .eq("id", userId)
+    .single();
+  const currentSprintCount = (profileData as { sprint_eclair_count: number } | null)?.sprint_eclair_count ?? 0;
+
   const stats: UserBadgeStats = {
     booksCompleted, uniqueGenres, sessionsCount, reviewsCount,
-    totalPages, maxStreak, monthlySessionCount,
+    totalPages, maxStreak, monthlySessionCount, monthlyBooksCount,
   };
 
   // ── 3. Badges déjà débloqués ──────────────────────────────────────────────
@@ -161,6 +176,44 @@ export async function POST(req: NextRequest) {
   //     .eq("liked_user_id", userId);
   //   if ((count ?? 0) >= 25) toAward.push(BADGE_DEFS.find(b => b.id === "social-liked")!);
   // }
+
+  // ── Sprint Éclair : livre dévoré dans la même journée (cumulatif) ────────
+  let newSprintCount = 0;
+  if (activeBookIds.length > 0) {
+    const { data: sprintBooks } = await db
+      .from("books")
+      .select("id, date_started, date_read")
+      .eq("user_id", userId)
+      .eq("status", "completed")
+      .gte("date_read", BADGE_CUTOFF_DATE)
+      .not("date_started", "is", null)
+      .neq("import_source", "goodreads")
+      .in("id", activeBookIds);
+
+    const sprintTotal = ((sprintBooks ?? []) as { date_started: string | null; date_read: string | null }[])
+      .filter((b) => b.date_started && b.date_read && b.date_started === b.date_read)
+      .length;
+
+    newSprintCount = sprintTotal - currentSprintCount;
+    if (newSprintCount > 0) {
+      await db.from("user_profiles").update({
+        sprint_eclair_count: sprintTotal,
+        sprint_bonus_points: sprintTotal * 40,
+      }).eq("id", userId);
+
+      if (currentSprintCount === 0) {
+        const def = BADGE_DEFS.find((b) => b.id === "sprint-eclair");
+        if (def) toAward.push(def);
+      }
+    }
+  }
+
+  // ── Défi mensuel livres : 3 livres dans le mois en cours ─────────────────
+  const currentMonthBadgeId = `defi-books-${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  if (can(currentMonthBadgeId) && monthlyBooksCount >= 3) {
+    const def = BADGE_DEFS.find((b) => b.id === currentMonthBadgeId);
+    if (def) toAward.push(def);
+  }
 
   // ── 6. Dédoublonner (un badge ne peut être attribué qu'une fois) ──────────
   const uniqueAward = [...new Map(toAward.filter(Boolean).map((d) => [d.id, d])).values()];
