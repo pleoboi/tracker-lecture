@@ -198,7 +198,10 @@ function MobileTopBar({
   const profileHref = userId ? `/membre/${userId}` : "/compte";
   const isProfileActive = userId ? pathname === `/membre/${userId}` : pathname === "/compte";
   return (
-    <header className="sticky top-0 z-50 flex items-center justify-between border-b border-line bg-paper/90 px-5 py-2.5 backdrop-blur-md md:hidden">
+    <header
+      className="sticky top-0 z-50 flex items-center justify-between border-b border-line bg-paper/90 px-5 pb-2.5 backdrop-blur-md md:hidden"
+      style={{ paddingTop: "max(env(safe-area-inset-top), 0.625rem)" }}
+    >
       <Link href="/accueil">
         <SwenaWordmark />
       </Link>
@@ -251,7 +254,10 @@ function TopBar({
   onNotifClick: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-50 hidden border-b border-line bg-paper/90 backdrop-blur-md md:block">
+    <header
+      className="sticky top-0 z-50 hidden border-b border-line bg-paper/90 backdrop-blur-md md:block"
+      style={{ paddingTop: "env(safe-area-inset-top)" }}
+    >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-10">
         <Link href="/accueil">
           <SwenaWordmark />
