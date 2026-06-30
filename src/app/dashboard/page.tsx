@@ -460,10 +460,8 @@ export default function DashboardPage() {
 
           <GenreBreakdown books={books} />
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <FictionDonut books={books} />
-            <PageCountHistogram books={books} />
-          </div>
+          <FictionDonut books={books} />
+          <PageCountHistogram books={books} />
 
           <AuthorDeepDive books={books} />
 

@@ -1,13 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import {
   PieChart,
   Pie,
-  Cell,
   BarChart,
   Bar,
   XAxis,
+  YAxis,
   Tooltip,
   LabelList,
   ResponsiveContainer,
@@ -36,7 +35,7 @@ const NONFICTION_KEYS = [
   "science", "philosophy", "psychology", "business", "self-help", "travel",
   "cooking", "health", "education", "politics", "economics", "memoir",
   "true crime", "journalism", "essay", "biographie", "histoire", "essai",
-  "développement personnel",
+  "développement personnel", "guerre",
 ];
 
 function classifyFiction(genre: string | null | undefined): "Fiction" | "Non-Fiction" | "Inconnu" {
@@ -47,30 +46,14 @@ function classifyFiction(genre: string | null | undefined): "Fiction" | "Non-Fic
   return "Inconnu";
 }
 
-// ── Tooltip générique ─────────────────────────────────────────────────────────
-function ChartTooltip({ active, payload, label, unit = "" }: {
-  active?: boolean; payload?: { value: number }[]; label?: string | number; unit?: string;
-}) {
-  if (!active || !payload?.length) return null;
-  return (
-    <div className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-[11px] shadow-md">
-      {label !== undefined && <span className="font-semibold text-ink">{label} </span>}
-      <span className="text-muted">{payload[0].value}{unit ? ` ${unit}` : ""}</span>
-    </div>
-  );
-}
-
-// ── Section header ────────────────────────────────────────────────────────────
 function SectionLabel({ label }: { label: string }) {
   return <p className="text-[9.5px] font-bold uppercase tracking-widest text-muted">{label}</p>;
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 1. GENRE BREAKDOWN
+// 1. GENRE BREAKDOWN — top 10, pas d'expansion
 // ══════════════════════════════════════════════════════════════════════════════
 export function GenreBreakdown({ books }: { books: Book[] }) {
-  const [showAll, setShowAll] = useState(false);
-
   const completed = books.filter((b) => b.status === "completed");
   const missing = completed.filter((b) => !b.genre).length;
 
@@ -84,6 +67,7 @@ export function GenreBreakdown({ books }: { books: Book[] }) {
   const total = completed.length;
   const genres = Array.from(genreMap.entries())
     .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
     .map(([name, count], i) => ({
       name,
       count,
@@ -92,9 +76,7 @@ export function GenreBreakdown({ books }: { books: Book[] }) {
     }));
 
   if (genres.length === 0) return null;
-
-  const shown = showAll ? genres : genres.slice(0, 8);
-  const topGenre = genres[0]?.name ?? "Fiction";
+  const topGenre = genres[0].name;
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
@@ -106,12 +88,9 @@ export function GenreBreakdown({ books }: { books: Book[] }) {
       </div>
 
       <div className="flex flex-col gap-2.5">
-        {shown.map(({ name, count, pct, color }) => (
+        {genres.map(({ name, count, pct, color }) => (
           <div key={name} className="flex items-center gap-3">
-            <span
-              className="w-[108px] shrink-0 truncate text-[12.5px] font-semibold"
-              style={{ color }}
-            >
+            <span className="w-[110px] shrink-0 truncate text-[12.5px] font-semibold" style={{ color }}>
               {name}
             </span>
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-line">
@@ -120,31 +99,21 @@ export function GenreBreakdown({ books }: { books: Book[] }) {
                 style={{ width: `${pct}%`, backgroundColor: color }}
               />
             </div>
-            <span className="w-[72px] shrink-0 text-right text-[11px] font-semibold text-ink-2">
+            <span className="w-[74px] shrink-0 text-right text-[11px] font-semibold text-ink-2">
               {count} ({pct.toFixed(1)}%)
             </span>
           </div>
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-        {missing > 0 && (
-          <p className="flex items-center gap-1.5 text-[11px] text-muted">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
-            </svg>
-            Données manquantes pour {missing} livre{missing > 1 ? "s" : ""}
-          </p>
-        )}
-        {genres.length > 8 && (
-          <button
-            onClick={() => setShowAll((v) => !v)}
-            className="ml-auto rounded-lg border border-line px-3 py-1 text-[11px] font-medium text-muted transition-colors hover:text-ink"
-          >
-            {showAll ? "Réduire" : `Voir plus (${genres.length - 8})`}
-          </button>
-        )}
-      </div>
+      {missing > 0 && (
+        <p className="flex items-center gap-1.5 text-[11px] text-muted">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="12" cy="12" r="10" /><path d="M12 16v-4" /><path d="M12 8h.01" />
+          </svg>
+          Données manquantes pour {missing} livre{missing > 1 ? "s" : ""}
+        </p>
+      )}
     </div>
   );
 }
@@ -167,9 +136,9 @@ export function FictionDonut({ books }: { books: Book[] }) {
 
   const data = (Object.keys(DONUT_META) as (keyof typeof DONUT_META)[])
     .filter((k) => counts[k] > 0)
-    .map((k) => ({ name: k, value: counts[k], ...DONUT_META[k] }));
+    .map((k) => ({ name: k, value: counts[k], ...DONUT_META[k], fill: DONUT_META[k].color }));
 
-  const top = data.sort((a, b) => b.value - a.value)[0];
+  const top = [...data].sort((a, b) => b.value - a.value)[0];
   const majority =
     top.name === "Fiction" ? "de la fiction"
     : top.name === "Non-Fiction" ? "de la non-fiction"
@@ -188,22 +157,20 @@ export function FictionDonut({ books }: { books: Book[] }) {
         <PieChart width={220} height={220}>
           <Pie
             data={data}
-            cx={110}
-            cy={110}
-            innerRadius={64}
-            outerRadius={96}
+            cx={110} cy={110}
+            innerRadius={64} outerRadius={96}
             paddingAngle={3}
             dataKey="value"
             isAnimationActive={false}
           >
-            {data.map((entry) => (
-              <Cell key={entry.name} fill={entry.color} />
-            ))}
           </Pie>
           <Tooltip
             content={({ active, payload }) =>
               active && payload?.[0] ? (
-                <ChartTooltip active label={payload[0].name as string} payload={[{ value: payload[0].value as number }]} unit="livres" />
+                <div className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-[11px] shadow-md">
+                  <span className="font-semibold text-ink">{payload[0].name}</span>
+                  <span className="ml-2 text-muted">{payload[0].value} livres</span>
+                </div>
               ) : null
             }
           />
@@ -217,14 +184,14 @@ export function FictionDonut({ books }: { books: Book[] }) {
       </div>
 
       <div className="flex flex-col gap-2 border-t border-line pt-3">
-        {data.sort((a, b) => b.value - a.value).map(({ name, value, color, label }) => (
+        {[...data].sort((a, b) => b.value - a.value).map(({ name, value, color, label }) => (
           <div key={name} className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
               <span className="text-[12.5px] font-medium text-ink-2">{label}</span>
             </div>
             <span className="text-[12.5px] font-semibold text-ink">
-              {total > 0 ? Math.round((value / total) * 100) : 0}%
+              {Math.round((value / total) * 100)}%
               <span className="ml-1 font-normal text-muted">({value} livre{value > 1 ? "s" : ""})</span>
             </span>
           </div>
@@ -235,38 +202,42 @@ export function FictionDonut({ books }: { books: Book[] }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 3. BOOKS BY PAGE COUNT
+// 3. BOOKS BY PAGE COUNT — hauteur fixe, pas d'espace vide
 // ══════════════════════════════════════════════════════════════════════════════
 const PAGE_RANGES = [
-  { label: "1-100",   min: 1,    max: 100  },
-  { label: "101-200", min: 101,  max: 200  },
-  { label: "201-300", min: 201,  max: 300  },
-  { label: "301-400", min: 301,  max: 400  },
-  { label: "401-500", min: 401,  max: 500  },
-  { label: "501-600", min: 501,  max: 600  },
-  { label: "601-1000",min: 601,  max: 1000 },
-  { label: "1000+",   min: 1001, max: Infinity },
+  { label: "1-100",    min: 1,    max: 100  },
+  { label: "101-200",  min: 101,  max: 200  },
+  { label: "201-300",  min: 201,  max: 300  },
+  { label: "301-400",  min: 301,  max: 400  },
+  { label: "401-500",  min: 401,  max: 500  },
+  { label: "501-600",  min: 501,  max: 600  },
+  { label: "601-1000", min: 601,  max: 1000 },
+  { label: "1000+",    min: 1001, max: Infinity },
 ];
 
 export function PageCountHistogram({ books }: { books: Book[] }) {
   const completed = books.filter((b) => b.status === "completed" && (b.pages ?? 0) > 0);
   if (completed.length === 0) return null;
 
-  const counts = PAGE_RANGES.map(({ label, min, max }) => ({
+  const rawCounts = PAGE_RANGES.map(({ label, min, max }) => ({
     label,
     value: completed.filter((b) => (b.pages ?? 0) >= min && (b.pages ?? 0) <= max).length,
   }));
 
   const avgPages = Math.round(completed.reduce((s, b) => s + (b.pages ?? 0), 0) / completed.length);
-  const peak = counts.reduce((a, b) => (b.value > a.value ? b : a), counts[0]);
+  const peak = rawCounts.reduce((a, b) => (b.value > a.value ? b : a), rawCounts[0]);
+  const counts = rawCounts.map((c) => ({
+    ...c,
+    fill: c.value === peak.value ? "var(--color-violet-deep)" : "var(--color-violet)",
+  }));
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
-      <div className="flex items-start justify-between gap-3">
+    <div className="rounded-2xl border border-line bg-card p-4">
+      <div className="mb-3 flex items-start justify-between gap-3">
         <div>
           <SectionLabel label="Formats & Volumes" />
           <h2 className="font-serif text-[16px] font-semibold text-ink">
-            La majorité de vos livres font entre {peak.label} pages
+            La majorité fait entre {peak.label} pages
           </h2>
         </div>
         {avgPages > 0 && (
@@ -276,33 +247,25 @@ export function PageCountHistogram({ books }: { books: Book[] }) {
         )}
       </div>
 
-      <ResponsiveContainer width="100%" height={180}>
-        <BarChart data={counts} margin={{ top: 22, right: 4, left: -28, bottom: 0 }}>
+      <ResponsiveContainer width="100%" height={160}>
+        <BarChart data={counts} margin={{ top: 20, right: 4, left: -28, bottom: 0 }}>
           <XAxis
             dataKey="label"
             tick={{ fill: "var(--color-muted)", fontSize: 9 }}
-            axisLine={false}
-            tickLine={false}
+            axisLine={false} tickLine={false}
           />
           <Tooltip
             content={({ active, payload }) =>
               active && payload?.[0] ? (
-                <ChartTooltip active label={payload[0].payload.label} payload={[{ value: payload[0].value as number }]} unit="livres" />
+                <div className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-[11px] shadow-md">
+                  <span className="font-semibold text-ink">{payload[0].payload.label}</span>
+                  <span className="ml-2 text-muted">{payload[0].value} livres</span>
+                </div>
               ) : null
             }
           />
           <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-            <LabelList
-              dataKey="value"
-              position="top"
-              style={{ fill: "var(--color-muted)", fontSize: 10 }}
-            />
-            {counts.map(({ label, value }) => (
-              <Cell
-                key={label}
-                fill={value === peak.value ? "var(--color-violet-deep)" : "var(--color-violet)"}
-              />
-            ))}
+            <LabelList dataKey="value" position="top" style={{ fill: "var(--color-muted)", fontSize: 10 }} />
           </Bar>
         </BarChart>
       </ResponsiveContainer>
@@ -311,11 +274,9 @@ export function PageCountHistogram({ books }: { books: Book[] }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 4. AUTHOR DEEP DIVE
+// 4. AUTHOR DEEP DIVE — top 4, YAxis, tooltip titre livre
 // ══════════════════════════════════════════════════════════════════════════════
 export function AuthorDeepDive({ books }: { books: Book[] }) {
-  const [showAll, setShowAll] = useState(false);
-
   const completed = books.filter((b) => b.status === "completed");
 
   const authorMap = new Map<string, Book[]>();
@@ -335,15 +296,14 @@ export function AuthorDeepDive({ books }: { books: Book[] }) {
       );
       const lineData = byDate
         .filter((b) => (b.rating ?? 0) > 0)
-        .map((b, i) => ({ i, value: b.rating ?? 0 }));
+        .map((b) => ({ value: b.rating ?? 0, title: b.title }));
       const topCovers = [...ab].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)).slice(0, 5);
       return { name, count: ab.length, avg, lineData, topCovers };
     })
-    .sort((a, b) => b.count - a.count);
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 4); // top 4 uniquement
 
   if (authors.length === 0) return null;
-
-  const shown = showAll ? authors : authors.slice(0, 3);
 
   return (
     <div className="flex flex-col gap-0 rounded-2xl border border-line bg-card p-4">
@@ -353,13 +313,8 @@ export function AuthorDeepDive({ books }: { books: Book[] }) {
       </div>
 
       <div className="flex flex-col divide-y divide-line">
-        {shown.map(({ name, count, avg, lineData, topCovers }) => {
-          const initials = name
-            .split(" ")
-            .map((w) => w[0] ?? "")
-            .join("")
-            .slice(0, 2)
-            .toUpperCase();
+        {authors.map(({ name, count, avg, lineData, topCovers }) => {
+          const initials = name.split(" ").map((w) => w[0] ?? "").join("").slice(0, 2).toUpperCase();
           return (
             <div key={name} className="flex flex-col gap-3 py-4 last:pb-0">
               <div className="flex items-center gap-3">
@@ -381,12 +336,8 @@ export function AuthorDeepDive({ books }: { books: Book[] }) {
                     <div key={b.id} className="flex shrink-0 flex-col items-center gap-1">
                       {b.cover_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={b.cover_url}
-                          alt={b.title}
-                          title={b.title}
-                          className="h-16 w-11 rounded object-cover shadow"
-                        />
+                        <img src={b.cover_url} alt={b.title} title={b.title}
+                          className="h-16 w-11 rounded object-cover shadow" />
                       ) : (
                         <div className="flex h-16 w-11 items-center justify-center rounded bg-violet-soft p-1 text-center text-[8px] font-medium leading-tight text-muted">
                           {b.title.slice(0, 20)}
@@ -400,16 +351,36 @@ export function AuthorDeepDive({ books }: { books: Book[] }) {
                 </div>
               )}
 
+              {/* Mini line chart avec YAxis 1-5 et tooltip titre */}
               {lineData.length >= 2 && (
-                <div className="h-[56px] w-full">
-                  <ResponsiveContainer width="100%" height={56}>
-                    <LineChart data={lineData} margin={{ top: 6, right: 6, left: 6, bottom: 6 }}>
+                <div className="h-[70px] w-full">
+                  <ResponsiveContainer width="100%" height={70}>
+                    <LineChart data={lineData} margin={{ top: 6, right: 8, left: 0, bottom: 4 }}>
+                      <YAxis
+                        domain={[0.5, 5.5]}
+                        ticks={[1, 2, 3, 4, 5]}
+                        tick={{ fill: "var(--color-muted)", fontSize: 8 }}
+                        axisLine={false}
+                        tickLine={false}
+                        width={14}
+                      />
+                      <Tooltip
+                        content={({ active, payload }) =>
+                          active && payload?.[0] ? (
+                            <div className="max-w-[160px] rounded-lg border border-line bg-card px-2.5 py-1.5 text-[11px] shadow-md">
+                              <p className="font-semibold leading-snug text-ink">{payload[0].payload.title}</p>
+                              <p className="text-muted">{(payload[0].value as number).toFixed(1)} / 5</p>
+                            </div>
+                          ) : null
+                        }
+                      />
                       <Line
                         type="monotone"
                         dataKey="value"
                         stroke="var(--color-gold)"
                         strokeWidth={1.5}
                         dot={{ fill: "var(--color-gold)", r: 3, strokeWidth: 0 }}
+                        activeDot={{ r: 4, strokeWidth: 0 }}
                         isAnimationActive={false}
                       />
                     </LineChart>
@@ -420,44 +391,39 @@ export function AuthorDeepDive({ books }: { books: Book[] }) {
           );
         })}
       </div>
-
-      {authors.length > 3 && (
-        <button
-          onClick={() => setShowAll((v) => !v)}
-          className="mt-3 rounded-xl bg-violet-soft px-4 py-2 text-xs font-semibold text-violet-deep"
-        >
-          {showAll ? "Réduire" : `Voir tous les auteurs (${authors.length - 3} de plus)`}
-        </button>
-      )}
     </div>
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 5a. DIVERGENCES CRITIQUES
+// 5a. DIVERGENCES CRITIQUES — hover tooltip sur les couvertures
 // ══════════════════════════════════════════════════════════════════════════════
 function CoverGrid({ items }: { items: Book[] }) {
   return (
     <div className="flex flex-wrap gap-1.5">
-      {items.map((b) =>
-        b.cover_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            key={b.id}
-            src={b.cover_url}
-            alt={b.title}
-            title={`${b.title} — ${b.rating}/5`}
-            className="h-16 w-11 rounded object-cover shadow"
-          />
-        ) : (
-          <div
-            key={b.id}
-            className="flex h-16 w-11 items-center justify-center rounded bg-violet-soft p-1 text-center text-[8px] font-medium leading-tight text-muted"
-          >
-            {b.title.slice(0, 15)}
+      {items.map((b) => (
+        <div key={b.id} className="group relative shrink-0">
+          {b.cover_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={b.cover_url}
+              alt={b.title}
+              className="h-16 w-11 rounded object-cover shadow"
+            />
+          ) : (
+            <div className="flex h-16 w-11 items-center justify-center rounded bg-violet-soft p-1 text-center text-[8px] font-medium leading-tight text-muted">
+              {b.title.slice(0, 15)}
+            </div>
+          )}
+          {/* Tooltip au survol */}
+          <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 hidden w-max max-w-[150px] -translate-x-1/2 rounded-lg border border-line bg-card px-2 py-1.5 text-center shadow-md group-hover:block">
+            <p className="text-[10px] font-semibold leading-snug text-ink">{b.title}</p>
+            {(b.rating ?? 0) > 0 && (
+              <p className="text-[10px] text-gold">{b.rating} / 5</p>
+            )}
           </div>
-        )
-      )}
+        </div>
+      ))}
     </div>
   );
 }
@@ -467,15 +433,14 @@ export function CriticalDivergence({ books }: { books: Book[] }) {
   if (rated.length < 5) return null;
 
   const avg = rated.reduce((s, b) => s + (b.rating ?? 0), 0) / rated.length;
-  const threshold = 0.75;
 
   const above = [...rated]
-    .filter((b) => (b.rating ?? 0) >= avg + threshold)
+    .filter((b) => (b.rating ?? 0) >= avg + 0.75)
     .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0))
     .slice(0, 12);
 
   const below = [...rated]
-    .filter((b) => (b.rating ?? 0) <= avg - threshold)
+    .filter((b) => (b.rating ?? 0) <= avg - 0.75)
     .sort((a, b) => (a.rating ?? 0) - (b.rating ?? 0))
     .slice(0, 12);
 
@@ -487,7 +452,7 @@ export function CriticalDivergence({ books }: { books: Book[] }) {
         <SectionLabel label="Divergences critiques" />
         <h2 className="font-serif text-[16px] font-semibold text-ink">
           Vos coups de coeur et déceptions
-          <span className="ml-2 text-[12px] font-normal text-muted">(moy. personnelle : {avg.toFixed(1)})</span>
+          <span className="ml-2 text-[12px] font-normal text-muted">(moy. {avg.toFixed(1)})</span>
         </h2>
       </div>
 
@@ -514,7 +479,7 @@ export function CriticalDivergence({ books }: { books: Book[] }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 5b. PUBLICATION TIMELINE
+// 5b. PUBLICATION TIMELINE — seulement les années avec des livres
 // ══════════════════════════════════════════════════════════════════════════════
 export function PublicationTimeline({ books }: { books: Book[] }) {
   const withYear = books.filter(
@@ -528,19 +493,26 @@ export function PublicationTimeline({ books }: { books: Book[] }) {
     yearMap.set(y, (yearMap.get(y) || 0) + 1);
   });
 
-  const years = Array.from(yearMap.keys()).sort((a, b) => a - b);
+  // Seulement les années avec au moins 1 livre (pas de remplissage des trous)
+  const data = Array.from(yearMap.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([year, value]) => ({ year, value }));
+
+  const years = data.map((d) => d.year);
   const minY = years[0];
   const maxY = years[years.length - 1];
-
-  const data: { year: number; value: number }[] = [];
-  for (let y = minY; y <= maxY; y++) {
-    data.push({ year: y, value: yearMap.get(y) || 0 });
-  }
-
   const range = maxY - minY;
-  const labelEvery = range > 150 ? 50 : range > 60 ? 20 : range > 30 ? 10 : range > 15 ? 5 : 2;
-  const barW = Math.max(2, Math.min(10, Math.floor(320 / data.length)));
-  const minWidth = Math.max(360, data.length * (barW + 2));
+
+  // Jalons lisibles sur l'axe X
+  const milestones = [
+    1500, 1600, 1700, 1750, 1800, 1850, 1900, 1920, 1940,
+    1950, 1960, 1970, 1980, 1990, 2000, 2005, 2010, 2015, 2020, 2025,
+  ].filter((y) => y >= minY && y <= maxY);
+
+  const labelEvery = range > 100 ? 25 : range > 50 ? 10 : range > 20 ? 5 : 2;
+
+  const barW = Math.max(4, Math.min(16, Math.floor(560 / data.length)));
+  const chartW = Math.max(400, data.length * (barW + 3));
 
   const modern = withYear.filter((b) => (b.published_year ?? 0) >= 2000).length;
   const classic = withYear.filter((b) => (b.published_year ?? 0) < 1970).length;
@@ -548,6 +520,8 @@ export function PublicationTimeline({ books }: { books: Book[] }) {
     modern > classic * 2 ? "des publications contemporaines"
     : classic > modern * 2 ? "des classiques"
     : "un équilibre entre classiques et contemporain";
+
+  void milestones; // computed but used as fallback; tickFormatter below handles display
 
   return (
     <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
@@ -559,9 +533,14 @@ export function PublicationTimeline({ books }: { books: Book[] }) {
       </div>
 
       <div className="overflow-x-auto">
-        <div style={{ minWidth }}>
+        <div style={{ width: chartW }}>
           <ResponsiveContainer width="100%" height={150}>
-            <BarChart data={data} margin={{ top: 8, right: 4, left: -36, bottom: 0 }} barSize={barW}>
+            <BarChart
+              data={data}
+              margin={{ top: 8, right: 4, left: -36, bottom: 0 }}
+              barSize={barW}
+              barCategoryGap={2}
+            >
               <XAxis
                 dataKey="year"
                 tick={{ fill: "var(--color-muted)", fontSize: 9 }}
@@ -573,12 +552,12 @@ export function PublicationTimeline({ books }: { books: Book[] }) {
               <Tooltip
                 content={({ active, payload }) =>
                   active && payload?.[0] && (payload[0].value as number) > 0 ? (
-                    <ChartTooltip
-                      active
-                      label={payload[0].payload.year}
-                      payload={[{ value: payload[0].value as number }]}
-                      unit="livre(s)"
-                    />
+                    <div className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-[11px] shadow-md">
+                      <span className="font-semibold text-ink">{payload[0].payload.year}</span>
+                      <span className="ml-2 text-muted">
+                        {payload[0].value} livre{(payload[0].value as number) > 1 ? "s" : ""}
+                      </span>
+                    </div>
                   ) : null
                 }
               />
