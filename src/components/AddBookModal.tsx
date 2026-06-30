@@ -48,6 +48,7 @@ export default function AddBookModal({
   const [endDate, setEndDate] = useState("");
   const [rating, setRating] = useState(0);
 
+  const [currentPage, setCurrentPage] = useState("");
   const [localCoverUrl, setLocalCoverUrl] = useState<string | null>(null);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -65,6 +66,7 @@ export default function AddBookModal({
       setDraft(emptyDraft);
       setStatus("reading");
       setPages("");
+      setCurrentPage("");
       setStartDate("");
       setEndDate("");
       setRating(0);
@@ -185,7 +187,7 @@ export default function AddBookModal({
       title: b.title,
       author: b.author || "Auteur inconnu",
       pages: b.pages,
-      progress: status === "completed" ? b.pages : 0,
+      progress: status === "completed" ? b.pages : (currentPage ? Math.min(Number(currentPage), b.pages) : 0),
       status,
       cover_url: b.cover_url ?? null,
       rating: rating || 0,
@@ -308,10 +310,10 @@ export default function AddBookModal({
         </div>
       )}
 
-      {/* Pages — En cours et Terminé */}
+      {/* Pages totales — En cours et Terminé */}
       {status !== "to-read" && (
         <div>
-          <FieldLabel>Nombre de pages (optionnel)</FieldLabel>
+          <FieldLabel>Nombre de pages total (optionnel)</FieldLabel>
           <input
             type="number"
             min={1}
@@ -320,6 +322,21 @@ export default function AddBookModal({
             placeholder="ex. 384"
             className={inputClass}
             autoFocus={autoFocusPages}
+          />
+        </div>
+      )}
+
+      {/* Page actuelle — En cours seulement */}
+      {status === "reading" && (
+        <div>
+          <FieldLabel>Page actuelle (optionnel)</FieldLabel>
+          <input
+            type="number"
+            min={0}
+            value={currentPage}
+            onChange={(e) => setCurrentPage(e.target.value)}
+            placeholder="ex. 47"
+            className={inputClass}
           />
         </div>
       )}
@@ -550,6 +567,7 @@ export default function AddBookModal({
                     setSelected(r);
                     setError(null);
                     setPages(r.pages ? String(r.pages) : "");
+                    setCurrentPage("");
                     setStatus("reading");
                     setStartDate("");
                     setEndDate("");
@@ -632,6 +650,7 @@ export default function AddBookModal({
             setDraft({ ...emptyDraft, title: query.trim() });
             setStatus("reading");
             setPages("");
+            setCurrentPage("");
             setStartDate("");
             setEndDate("");
             setRating(0);

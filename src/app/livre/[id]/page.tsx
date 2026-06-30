@@ -75,7 +75,7 @@ export default function BookDetailPage() {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [editingInfo, setEditingInfo] = useState(false);
-  const [infoDraft, setInfoDraft] = useState({ title: "", author: "", year: "", summary: "", coverUrl: "" });
+  const [infoDraft, setInfoDraft] = useState({ title: "", author: "", year: "", pages: "", summary: "", coverUrl: "" });
 
   // Social
   const [memberActivity, setMemberActivity] = useState<MemberEntry[]>([]);
@@ -147,6 +147,7 @@ export default function BookDetailPage() {
       title: urlBook.title,
       author: urlBook.author,
       year: urlBook.published_year ? String(urlBook.published_year) : "",
+      pages: urlBook.pages ? String(urlBook.pages) : "",
       summary: urlBook.summary || "",
       coverUrl: urlBook.cover_url || "",
     });
@@ -325,6 +326,7 @@ export default function BookDetailPage() {
   const saveInfo = async () => {
     if (!book) return;
     const year = infoDraft.year ? Number(infoDraft.year) : null;
+    const pages = infoDraft.pages ? Number(infoDraft.pages) : book.pages;
     const update = {
       title: infoDraft.title.trim() || book.title,
       author: infoDraft.author.trim() || book.author,
@@ -333,7 +335,7 @@ export default function BookDetailPage() {
       cover_url: infoDraft.coverUrl.trim() || null,
     };
     if (isAdmin) {
-      // Passe par l'API route (service role) pour bypasser RLS et mettre à jour toutes les copies
+      // Admin : métadonnées globales (toutes les copies), pages uniquement sur sa propre copie
       const { data: { session } } = await supabase.auth.getSession();
       await fetch("/api/books/update-metadata", {
         method: "POST",
@@ -343,11 +345,14 @@ export default function BookDetailPage() {
         },
         body: JSON.stringify({ title: book.title, update }),
       });
+      if (activeBook) {
+        await supabase.from("books").update({ pages }).eq("id", activeBook.id);
+      }
     } else if (activeBook) {
-      await supabase.from("books").update(update).eq("id", activeBook.id);
+      await supabase.from("books").update({ ...update, pages }).eq("id", activeBook.id);
     }
-    setBook({ ...book, ...update });
-    if (activeBook) updateActiveBook({ ...activeBook, ...update });
+    setBook({ ...book, ...update, pages });
+    if (activeBook) updateActiveBook({ ...activeBook, ...update, pages });
     setEditingInfo(false);
   };
 
@@ -649,13 +654,23 @@ export default function BookDetailPage() {
               placeholder="Auteur"
               className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
             />
-            <input
-              value={infoDraft.year}
-              onChange={(e) => setInfoDraft({ ...infoDraft, year: e.target.value })}
-              placeholder="Année (ex. 2021)"
-              type="number"
-              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
-            />
+            <div className="flex gap-2">
+              <input
+                value={infoDraft.year}
+                onChange={(e) => setInfoDraft({ ...infoDraft, year: e.target.value })}
+                placeholder="Année (ex. 2021)"
+                type="number"
+                className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              />
+              <input
+                value={infoDraft.pages}
+                onChange={(e) => setInfoDraft({ ...infoDraft, pages: e.target.value })}
+                placeholder="Pages (votre éd.)"
+                type="number"
+                min={1}
+                className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+              />
+            </div>
             <textarea
               value={infoDraft.summary}
               onChange={(e) => setInfoDraft({ ...infoDraft, summary: e.target.value })}
