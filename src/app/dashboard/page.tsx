@@ -14,6 +14,14 @@ import {
 } from "../../components/DashboardWidgets";
 import { DateRangePicker, buildRange, DEFAULT_RANGE, type DateRange } from "../../components/DateRangePicker";
 import PodiumModal from "../../components/PodiumModal";
+import {
+  GenreBreakdown,
+  FictionDonut,
+  PageCountHistogram,
+  AuthorDeepDive,
+  CriticalDivergence,
+  PublicationTimeline,
+} from "../../components/AdvancedStats";
 
 const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 const MS_DAY = 86_400_000;
@@ -442,6 +450,26 @@ export default function DashboardPage() {
           )}
 
           <RatingsChart counts={ratingCounts} average={ratingAvg} total={ratedCount} />
+
+          {/* ── Suite analytique avancée ─────────────────────────────── */}
+          <div className="flex items-center gap-2">
+            <div className="h-px flex-1 bg-line" />
+            <span className="text-[9.5px] font-bold uppercase tracking-widest text-muted">Analyse approfondie</span>
+            <div className="h-px flex-1 bg-line" />
+          </div>
+
+          <GenreBreakdown books={books} />
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <FictionDonut books={books} />
+            <PageCountHistogram books={books} />
+          </div>
+
+          <AuthorDeepDive books={books} />
+
+          <CriticalDivergence books={books} />
+
+          <PublicationTimeline books={books} />
         </>
       )}
 
