@@ -12,14 +12,14 @@ export const DEFAULT_GOALS: Goals = {
 
 export async function loadGoals(userId: string): Promise<Goals> {
   const { data } = await supabase
-    .from("app_settings")
-    .select("*")
+    .from("user_goals")
+    .select("reading_pages_year, reading_books_year")
     .eq("user_id", userId)
     .single();
   if (!data) return DEFAULT_GOALS;
   return {
-    reading_pages_year: data.reading_pages_year ?? null,
-    reading_books_year: data.reading_books_year ?? null,
+    reading_pages_year: (data as Goals).reading_pages_year ?? null,
+    reading_books_year: (data as Goals).reading_books_year ?? null,
   };
 }
 
@@ -28,20 +28,7 @@ export async function updateGoal(
   value: number | null,
   userId: string
 ): Promise<void> {
-  const { data: existing } = await supabase
-    .from("app_settings")
-    .select("id")
-    .eq("user_id", userId)
-    .single();
-
-  if (existing) {
-    await supabase
-      .from("app_settings")
-      .update({ [key]: value })
-      .eq("user_id", userId);
-  } else {
-    await supabase
-      .from("app_settings")
-      .insert({ user_id: userId, [key]: value });
-  }
+  await supabase
+    .from("user_goals")
+    .upsert({ user_id: userId, [key]: value }, { onConflict: "user_id" });
 }
