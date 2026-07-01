@@ -18,31 +18,46 @@ async function verifyAdmin(req: NextRequest) {
   return user;
 }
 
-// GET — livres de la bibliothèque personnelle de l'admin sans genre
+// GET — tous les livres du site avec ≤ 2 genres (dédupliqués par titre)
 export async function GET(req: NextRequest) {
   const user = await verifyAdmin(req);
   if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const db = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  // On cible uniquement les livres de l'admin (pas les copies des autres membres)
   const { data, error } = await db
     .from("books")
-    .select("title, author, cover_url, summary, pages, published_year")
-    .eq("user_id", user.id)
-    .or("genre.is.null,genre.eq.")
+    .select("title, author, cover_url, summary, pages, published_year, genre")
     .order("title", { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const books = (data ?? []) as {
+  type BookRow = {
     title: string;
     author: string;
     cover_url: string | null;
     summary: string | null;
     pages: number | null;
     published_year: number | null;
-  }[];
+    genre: string | null;
+  };
+
+  // Dédupliquer par titre (on garde la copie la plus riche en données)
+  const byTitle = new Map<string, BookRow>();
+  for (const b of (data ?? []) as BookRow[]) {
+    const key = b.title.toLowerCase().trim();
+    const existing = byTitle.get(key);
+    if (!existing || (!existing.cover_url && b.cover_url) || (!existing.summary && b.summary)) {
+      byTitle.set(key, b);
+    }
+  }
+
+  // Garder uniquement les livres avec ≤ 2 genres
+  const books = [...byTitle.values()].filter((b) => {
+    if (!b.genre || b.genre.trim() === "") return true;
+    const parts = b.genre.split(",").map((g) => g.trim()).filter(Boolean);
+    return parts.length <= 2;
+  });
 
   return NextResponse.json({ books, total: books.length });
 }

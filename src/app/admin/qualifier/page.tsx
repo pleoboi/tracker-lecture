@@ -25,6 +25,7 @@ type QBook = {
   summary: string | null;
   pages: number | null;
   published_year: number | null;
+  genre: string | null;
 };
 
 export default function QualifierPage() {
@@ -40,6 +41,8 @@ export default function QualifierPage() {
 
   const [dataLoading, setDataLoading] = useState(true);
   const [selection, setSelection] = useState<string[]>([]);
+  const firstBookTitle = queue[0]?.title;
+  const firstBookGenre = queue[0]?.genre;
   const [leaving, setLeaving] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -75,6 +78,13 @@ export default function QualifierPage() {
     if (token) loadBooks(token);
   }, [token, loadBooks]);
 
+  // Pré-sélectionner les genres déjà existants quand on passe au livre suivant
+  useEffect(() => {
+    if (!firstBookTitle) return;
+    const genres = firstBookGenre?.split(",").map((g) => g.trim()).filter(Boolean) ?? [];
+    setSelection(genres);
+  }, [firstBookTitle, firstBookGenre]);
+
   // ── Action : passer / enregistrer ────────────────────────────────────────
   const advance = useCallback(
     async (save: boolean) => {
@@ -104,7 +114,6 @@ export default function QualifierPage() {
       await savePromise;
 
       setQueue((prev) => prev.slice(1));
-      setSelection([]);
       setProcessed((p) => p + 1);
       if (save) setQualified((q) => q + 1);
 
@@ -229,6 +238,19 @@ export default function QualifierPage() {
                   .filter(Boolean)
                   .join(" · ")}
               </p>
+            )}
+            {current.genre && current.genre.trim() && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {current.genre.split(",").map((g) => g.trim()).filter(Boolean).map((g) => (
+                  <span
+                    key={g}
+                    className="rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                    style={{ background: "#2a1a58", color: "#b09de0" }}
+                  >
+                    {g}
+                  </span>
+                ))}
+              </div>
             )}
             {current.summary && (
               <p className="mt-2 line-clamp-4 text-[12px] leading-relaxed text-ink-2">
