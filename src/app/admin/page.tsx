@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 
 const ADMIN_EMAIL = process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? "";
@@ -180,7 +181,7 @@ export default function AdminPage() {
             <path d="M19 12H5M5 12l7 7M5 12l7-7" />
           </svg>
         </button>
-        <div>
+        <div className="flex-1">
           <h1 className="font-serif text-xl font-semibold text-ink">Administration</h1>
           {step !== "library" && (
             <p className="text-[11px] text-muted">
@@ -190,6 +191,14 @@ export default function AdminPage() {
             </p>
           )}
         </div>
+        {step === "library" && (
+          <Link
+            href="/admin/qualifier"
+            className="shrink-0 rounded-xl bg-violet px-4 py-2 text-[12px] font-bold text-cream"
+          >
+            Qualifier genres →
+          </Link>
+        )}
       </div>
 
       {/* ── Étape 1 : Bibliothèque + sélection ─────────────────────────────── */}

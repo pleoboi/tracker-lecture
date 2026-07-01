@@ -21,7 +21,7 @@ const GENRES = [
   "Développement personnel", "Philosophie", "Poésie", "Psychologie",
   "Économie", "Science", "Sciences humaines", "Sciences politiques",
   "Essai", "Aventure", "Romance", "Humour", "Sport", "Cinéma",
-  "Musique", "Drame", "Suspense", "Théâtre",
+  "Musique", "Drame", "Suspense", "Théâtre", "Guerre",
 ];
 
 interface MemberEntry {
