@@ -45,6 +45,7 @@ interface ActivityLog extends ReadingLog {
   eventType?: "start"; // undefined = session normale
   allNotes?: string[];  // toutes les notes de session du jour pour ce livre
   allPhotos?: string[]; // toutes les photos du jour pour ce livre
+  bookPages?: number;
 }
 
 interface Champion {
@@ -76,6 +77,11 @@ export default function AccueilPage() {
   // Members
   const [members, setMembers] = useState<Profile[]>([]);
   const [hasFollows, setHasFollows] = useState(false);
+
+  // Challenges actifs
+  const [activeChallenges, setActiveChallenges] = useState<
+    { id: string; title: string; metric: string; target_value: number; start_date: string; end_date: string; myScore: number }[]
+  >([]);
 
   // Mini-modal note / review
   const [noteModal, setNoteModal] = useState<{
@@ -221,13 +227,14 @@ export default function AccueilPage() {
       const bookIds = [...new Set(aggregatedLogs.map((l) => l.book_id))];
       const { data: bookData } = await supabase
         .from("books")
-        .select("id, title, cover_url, author, status, rating, notes")
+        .select("id, title, cover_url, author, status, rating, notes, pages")
         .in("id", bookIds);
 
       type BookPreview = Pick<Book, "id" | "title" | "cover_url" | "author"> & {
         status: string;
         rating: number | null;
         notes: string | null;
+        pages: number | null;
       };
 
       const bookMap = new Map(
@@ -267,6 +274,7 @@ export default function AccueilPage() {
             bookReview: isCompletion ? (bk.notes ?? null) : null,
             allNotes: (log as any).allNotes ?? [],
             allPhotos: (log as any).allPhotos ?? [],
+            bookPages: bk.pages ?? 0,
           };
         })
         .filter(Boolean) as ActivityLog[];
@@ -318,6 +326,61 @@ export default function AccueilPage() {
     load();
     loadClub();
   }, [load, loadClub]);
+
+  // Challenges actifs
+  useEffect(() => {
+    if (!userId) return;
+    const today = new Date().toISOString().split("T")[0];
+    (async () => {
+      const { data: parts } = await supabase
+        .from("challenge_participants")
+        .select("challenge_id")
+        .eq("user_id", userId)
+        .eq("status", "accepted");
+      if (!parts?.length) return;
+      const ids = (parts as { challenge_id: string }[]).map((p) => p.challenge_id);
+      const { data: chs } = await supabase
+        .from("challenges")
+        .select("id, title, metric, target_value, start_date, end_date")
+        .in("id", ids)
+        .lte("start_date", today)
+        .gte("end_date", today);
+      if (!chs?.length) return;
+      const enriched = await Promise.all(
+        (chs as { id: string; title: string; metric: string; target_value: number; start_date: string; end_date: string }[]).map(async (c) => {
+          let myScore = 0;
+          if (c.metric === "pages") {
+            const { data } = await supabase
+              .from("reading_logs")
+              .select("pages_read")
+              .eq("user_id", userId)
+              .gte("date", c.start_date)
+              .lte("date", c.end_date);
+            myScore = ((data ?? []) as { pages_read: number }[]).reduce((s, l) => s + (l.pages_read ?? 0), 0);
+          } else if (c.metric === "books") {
+            const { count } = await supabase
+              .from("books")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", userId)
+              .eq("status", "completed")
+              .gte("date_read", c.start_date)
+              .lte("date_read", c.end_date);
+            myScore = count ?? 0;
+          } else {
+            const { count } = await supabase
+              .from("reading_logs")
+              .select("id", { count: "exact", head: true })
+              .eq("user_id", userId)
+              .gte("date", c.start_date)
+              .lte("date", c.end_date);
+            myScore = count ?? 0;
+          }
+          return { ...c, myScore };
+        })
+      );
+      setActiveChallenges(enriched);
+    })();
+  }, [userId]);
 
   // Écoute les mises à jour déclenchées depuis AppShell
   useEffect(() => {
@@ -498,6 +561,42 @@ export default function AccueilPage() {
           </div>
         )}
       </section>
+
+      {/* Challenges actifs */}
+      {activeChallenges.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-serif text-lg font-medium text-ink">Challenges actifs</h2>
+          </div>
+          <div className="flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {activeChallenges.map((c) => {
+              const pct = Math.min(100, Math.round((c.myScore / c.target_value) * 100));
+              const daysLeft = Math.max(0, Math.ceil((new Date(c.end_date).getTime() - Date.now()) / 86400000));
+              const metricLabel = c.metric === "pages" ? "pages" : c.metric === "books" ? "livres" : "sessions";
+              return (
+                <div
+                  key={c.id}
+                  className="flex w-[200px] shrink-0 flex-col gap-2 rounded-2xl border border-violet/30 bg-violet-soft p-3"
+                >
+                  <p className="line-clamp-1 text-[12.5px] font-semibold text-ink">{c.title}</p>
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-serif text-[18px] font-black text-violet-deep">
+                      {c.myScore.toLocaleString("fr-FR")}
+                    </span>
+                    <span className="text-[11px] text-muted">/ {c.target_value.toLocaleString("fr-FR")} {metricLabel}</span>
+                  </div>
+                  <div className="h-1.5 overflow-hidden rounded-full bg-violet/20">
+                    <div className="h-full rounded-full bg-violet transition-all" style={{ width: `${pct}%` }} />
+                  </div>
+                  <p className="text-[10px] text-muted">
+                    {pct}% · {daysLeft} jour{daysLeft !== 1 ? "s" : ""} restant{daysLeft !== 1 ? "s" : ""}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* Membres du club */}
       {members.length > 0 && (
@@ -801,6 +900,21 @@ function ActivityCarouselItem({
           </div>
         )}
       </div>
+
+      {/* Barre de progression — sessions de lecture uniquement */}
+      {log.eventType !== "start" && !log.isCompletion && (log.bookPages ?? 0) > 0 && log.end_page > 0 && (
+        <div className="flex flex-col gap-0.5">
+          <div className="h-[3px] w-full overflow-hidden rounded-full bg-line">
+            <div
+              className="h-full rounded-full bg-violet"
+              style={{ width: `${Math.min(100, (log.end_page / log.bookPages!) * 100)}%` }}
+            />
+          </div>
+          <p className="text-[8.5px] text-muted">
+            p.{log.end_page} / {log.bookPages}
+          </p>
+        </div>
+      )}
 
       {/* Avatar + pseudo — clic vers profil */}
       {avatarLink(
