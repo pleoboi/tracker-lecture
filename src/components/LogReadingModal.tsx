@@ -71,10 +71,13 @@ function SessionStarRating({ value, onChange }: { value: number; onChange: (v: n
   const display = hovered || value;
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col items-center gap-2 py-2">
+      <p className="min-h-[18px] text-[13px] font-semibold text-muted transition-all">
+        {display > 0 ? display.toFixed(1).replace(".", ",") + " / 5" : "Rate"}
+      </p>
       <div
         ref={containerRef}
-        className="flex cursor-pointer py-0.5"
+        className="flex cursor-pointer gap-2 py-1"
         style={{ touchAction: "none", userSelect: "none" }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -85,8 +88,8 @@ function SessionStarRating({ value, onChange }: { value: number; onChange: (v: n
           const full = display >= star;
           const half = !full && display >= star - 0.5;
           return (
-            <span key={star} className="relative flex-1 text-center text-[28px] leading-none">
-              <span style={{ color: "#d1d5db" }}>★</span>
+            <span key={star} className="relative text-[40px] leading-none">
+              <span style={{ color: "var(--color-line, #3a3a5c)" }}>★</span>
               {(full || half) && (
                 <span
                   className="absolute inset-0 overflow-hidden"
@@ -99,11 +102,6 @@ function SessionStarRating({ value, onChange }: { value: number; onChange: (v: n
           );
         })}
       </div>
-      <p className="text-[10.5px] text-muted">
-        {display > 0
-          ? `${display.toFixed(1).replace(".", ",")} / 5`
-          : "Glisse pour noter (optionnel)"}
-      </p>
     </div>
   );
 }
