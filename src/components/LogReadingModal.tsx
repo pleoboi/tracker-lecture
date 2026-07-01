@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import type { Book } from "../lib/types";
@@ -23,6 +23,87 @@ function StarFill({ value }: { value: number }) {
       >
         ★★★★★
       </span>
+    </div>
+  );
+}
+
+// ── Notation glissante demi-étoile ───────────────────────────────────────────
+function SessionStarRating({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+  const [hovered, setHovered] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+  const startVal = useRef(0);
+
+  const calcVal = (clientX: number) => {
+    if (!containerRef.current) return 0;
+    const rect = containerRef.current.getBoundingClientRect();
+    const relX = Math.max(0, Math.min(rect.width - 1, clientX - rect.left));
+    return Math.max(0.5, Math.min(5, Math.round(((relX / rect.width) * 5) * 2) / 2));
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    dragging.current = true;
+    startVal.current = value;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const v = calcVal(e.clientX);
+    setHovered(v);
+    onChange(v);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const v = calcVal(e.clientX);
+    setHovered(v);
+    if (dragging.current) onChange(v);
+  };
+
+  const onPointerUp = (e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    const v = calcVal(e.clientX);
+    onChange(startVal.current === v ? 0 : v);
+    setHovered(0);
+  };
+
+  const onPointerLeave = () => {
+    if (!dragging.current) setHovered(0);
+  };
+
+  const display = hovered || value;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div
+        ref={containerRef}
+        className="flex cursor-pointer py-0.5"
+        style={{ touchAction: "none", userSelect: "none" }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerLeave}
+      >
+        {[1, 2, 3, 4, 5].map((star) => {
+          const full = display >= star;
+          const half = !full && display >= star - 0.5;
+          return (
+            <span key={star} className="relative flex-1 text-center text-[28px] leading-none">
+              <span style={{ color: "#d1d5db" }}>★</span>
+              {(full || half) && (
+                <span
+                  className="absolute inset-0 overflow-hidden"
+                  style={{ color: "#c9a227", width: full ? "100%" : "50%" }}
+                >
+                  ★
+                </span>
+              )}
+            </span>
+          );
+        })}
+      </div>
+      <p className="text-[10.5px] text-muted">
+        {display > 0
+          ? `${display.toFixed(1).replace(".", ",")} / 5`
+          : "Glisse pour noter (optionnel)"}
+      </p>
     </div>
   );
 }
@@ -563,25 +644,8 @@ export default function LogReadingModal({
               {/* Évaluation de session */}
               <div>
                 <FieldLabel>Évaluation de session (optionnel)</FieldLabel>
-                <div className="mt-1 flex items-center gap-3">
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        key={star}
-                        type="button"
-                        onClick={() => setSessionRating(sessionRating === star ? 0 : star)}
-                        className="text-2xl leading-none transition-transform active:scale-90"
-                        style={{ color: star <= sessionRating ? "#c9a227" : "#d1d5db" }}
-                      >
-                        ★
-                      </button>
-                    ))}
-                  </div>
-                  {sessionRating > 0 && (
-                    <span className="text-[12px] font-semibold text-ink">
-                      {sessionRating} / 5
-                    </span>
-                  )}
+                <div className="mt-1">
+                  <SessionStarRating value={sessionRating} onChange={setSessionRating} />
                 </div>
               </div>
 
