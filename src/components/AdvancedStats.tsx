@@ -57,21 +57,28 @@ export function GenreBreakdown({ books }: { books: Book[] }) {
   const completed = books.filter((b) => b.status === "completed");
   const missing = completed.filter((b) => !b.genre).length;
 
+  // Genres à exclure (méta-catégories utilisées pour le donut Fiction/Non-Fiction)
+  const EXCLUDED = new Set(["fiction", "non-fiction", "nonfiction"]);
+
   const genreMap = new Map<string, number>();
   completed.forEach((b) => {
     if (!b.genre) return;
-    const g = b.genre.trim();
-    genreMap.set(g, (genreMap.get(g) || 0) + 1);
+    // Chaque livre peut avoir plusieurs genres séparés par une virgule
+    b.genre.split(",").forEach((raw) => {
+      const g = raw.trim();
+      if (!g || EXCLUDED.has(g.toLowerCase())) return;
+      genreMap.set(g, (genreMap.get(g) || 0) + 1);
+    });
   });
 
-  const total = completed.length;
+  const maxCount = Math.max(...Array.from(genreMap.values()), 1);
   const genres = Array.from(genreMap.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
     .map(([name, count], i) => ({
       name,
       count,
-      pct: total > 0 ? (count / total) * 100 : 0,
+      pct: (count / maxCount) * 100,
       color: GENRE_PALETTE[i % GENRE_PALETTE.length],
     }));
 
