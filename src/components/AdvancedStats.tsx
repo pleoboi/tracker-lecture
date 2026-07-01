@@ -99,8 +99,8 @@ export function GenreBreakdown({ books }: { books: Book[] }) {
                 style={{ width: `${pct}%`, backgroundColor: color }}
               />
             </div>
-            <span className="w-[74px] shrink-0 text-right text-[11px] font-semibold text-ink-2">
-              {count} ({pct.toFixed(1)}%)
+            <span className="w-[32px] shrink-0 text-right text-[12px] font-bold text-ink">
+              {count}
             </span>
           </div>
         ))}

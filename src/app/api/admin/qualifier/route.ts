@@ -18,52 +18,36 @@ async function verifyAdmin(req: NextRequest) {
   return user;
 }
 
-// GET — liste des livres sans genre (dédoublonnés par titre+auteur)
+// GET — livres de la bibliothèque personnelle de l'admin sans genre
 export async function GET(req: NextRequest) {
-  if (!(await verifyAdmin(req))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  const user = await verifyAdmin(req);
+  if (!user) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const db = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  // Récupère jusqu'à 3000 entrées sans genre pour dédoublonner côté JS
+  // On cible uniquement les livres de l'admin (pas les copies des autres membres)
   const { data, error } = await db
     .from("books")
     .select("title, author, cover_url, summary, pages, published_year")
+    .eq("user_id", user.id)
     .or("genre.is.null,genre.eq.")
-    .order("created_at", { ascending: false })
-    .limit(3000);
+    .order("title", { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  type Row = { title: string; author: string; cover_url: string | null; summary: string | null; pages: number | null; published_year: number | null };
-  const rows = (data as Row[]) ?? [];
+  const books = (data ?? []) as {
+    title: string;
+    author: string;
+    cover_url: string | null;
+    summary: string | null;
+    pages: number | null;
+    published_year: number | null;
+  }[];
 
-  // Dédoublonnage : pour chaque titre+auteur, garde la meilleure entrée
-  const seen = new Map<string, Row>();
-  for (const book of rows) {
-    const key = `${book.title.toLowerCase().trim()}__${(book.author ?? "").toLowerCase().trim()}`;
-    const existing = seen.get(key);
-    if (!existing) {
-      seen.set(key, book);
-    } else {
-      // Préfère l'entrée avec cover + summary
-      const better = {
-        ...existing,
-        cover_url: existing.cover_url ?? book.cover_url,
-        summary: existing.summary ?? book.summary,
-        pages: existing.pages ?? book.pages,
-        published_year: existing.published_year ?? book.published_year,
-      };
-      seen.set(key, better);
-    }
-  }
-
-  const books = Array.from(seen.values());
   return NextResponse.json({ books, total: books.length });
 }
 
-// POST — enregistre le genre d'un livre (toutes ses copies)
+// POST — enregistre le genre d'un livre (toutes les copies sur la plateforme)
 export async function POST(req: NextRequest) {
   if (!(await verifyAdmin(req))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
