@@ -59,6 +59,7 @@ export default function LogReadingModal({
   const [sessionNotes, setSessionNotes] = useState("");
   const [sessionPhotoUrl, setSessionPhotoUrl] = useState("");
   const [showExtras, setShowExtras] = useState(false);
+  const [sessionRating, setSessionRating] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
@@ -82,6 +83,7 @@ export default function LogReadingModal({
       setEndPage("");
       setSessionNotes("");
       setSessionPhotoUrl("");
+      setSessionRating(0);
       setShowExtras(false);
       setError(null);
       setPhotoUploading(false);
@@ -174,6 +176,14 @@ export default function LogReadingModal({
         user_id: user.id,
         session_notes: sessionNotes.trim() || null,
         session_photo_url: sessionPhotoUrl.trim() || null,
+      });
+    }
+    if (sessionRating > 0) {
+      await supabase.from("book_ratings_history").insert({
+        user_id: user.id,
+        book_id: book.id,
+        rating: sessionRating,
+        page_at: target,
       });
     }
     await supabase
@@ -550,6 +560,31 @@ export default function LogReadingModal({
 
           {showExtras && (
             <div className="flex flex-col gap-3 rounded-2xl border border-violet/20 bg-violet-soft p-3.5">
+              {/* Évaluation de session */}
+              <div>
+                <FieldLabel>Évaluation de session (optionnel)</FieldLabel>
+                <div className="mt-1 flex items-center gap-3">
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setSessionRating(sessionRating === star ? 0 : star)}
+                        className="text-2xl leading-none transition-transform active:scale-90"
+                        style={{ color: star <= sessionRating ? "#c9a227" : "#d1d5db" }}
+                      >
+                        ★
+                      </button>
+                    ))}
+                  </div>
+                  {sessionRating > 0 && (
+                    <span className="text-[12px] font-semibold text-ink">
+                      {sessionRating} / 5
+                    </span>
+                  )}
+                </div>
+              </div>
+
               <div>
                 <FieldLabel>Note de session (optionnel)</FieldLabel>
                 <textarea
