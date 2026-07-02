@@ -45,7 +45,7 @@ interface ChallengeRow {
   creator_id: string;
   title: string;
   metric: "pages" | "books" | "sessions";
-  target_value: number;
+  target_value: number | null;
   start_date: string;
   end_date: string;
   created_at: string;
@@ -157,8 +157,7 @@ function ChallengeCard({ challenge, currentUserId, profileMap, onUpdate }: {
           <p className="font-serif text-[15px] font-semibold text-ink">{challenge.title}</p>
           <p className="mt-0.5 text-[11px] text-muted">
             {new Date(challenge.start_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} —{" "}
-            {new Date(challenge.end_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} · objectif :{" "}
-            {challenge.target_value.toLocaleString("fr-FR")} {metricLabel}
+            {new Date(challenge.end_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} · {metricLabel}
           </p>
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${statusCls}`}>
@@ -192,9 +191,10 @@ function ChallengeCard({ challenge, currentUserId, profileMap, onUpdate }: {
             <div className="flex flex-col gap-2.5">
               {sorted.map((p, i) => {
                 const score = scores?.get(p.user_id) ?? 0;
-                const pctVal = Math.min(100, (score / challenge.target_value) * 100);
                 const prof = profileMap.get(p.user_id);
                 const isMe = p.user_id === currentUserId;
+                const maxScore = scores ? Math.max(...[...scores.values()], 1) : 1;
+                const barPct = Math.min(100, (score / maxScore) * 100);
                 return (
                   <div
                     key={p.user_id}
@@ -212,7 +212,7 @@ function ChallengeCard({ challenge, currentUserId, profileMap, onUpdate }: {
                         {isMe && <span className="ml-1 text-[9.5px] font-normal text-muted">(toi)</span>}
                       </p>
                       <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-line">
-                        <div className="h-full rounded-full bg-violet" style={{ width: `${pctVal}%` }} />
+                        <div className="h-full rounded-full bg-violet" style={{ width: `${barPct}%` }} />
                       </div>
                     </div>
                     <span className="shrink-0 text-[10.5px] font-bold text-ink">
@@ -282,7 +282,6 @@ export default function MembrePage() {
   const [challengeForm, setChallengeForm] = useState({
     title: "",
     metric: "pages" as "pages" | "books" | "sessions",
-    target: "",
     startDate: new Date().toISOString().split("T")[0],
     endDate: "",
   });
@@ -507,13 +506,13 @@ export default function MembrePage() {
   }, [isOwn, user?.id]);
 
   const createChallenge = async () => {
-    if (!user?.id || !challengeForm.title || !challengeForm.target || !challengeForm.endDate) return;
+    if (!user?.id || !challengeForm.title || !challengeForm.endDate) return;
     setSavingChallenge(true);
     const { data: ch } = await supabase.from("challenges").insert({
       creator_id: user.id,
       title: challengeForm.title.trim(),
       metric: challengeForm.metric,
-      target_value: Number(challengeForm.target),
+      target_value: null,
       start_date: challengeForm.startDate,
       end_date: challengeForm.endDate,
     }).select("id").single();
@@ -537,7 +536,7 @@ export default function MembrePage() {
     }
     setSavingChallenge(false);
     setShowCreateChallenge(false);
-    setChallengeForm({ title: "", metric: "pages", target: "", startDate: new Date().toISOString().split("T")[0], endDate: "" });
+    setChallengeForm({ title: "", metric: "pages", startDate: new Date().toISOString().split("T")[0], endDate: "" });
     setInviteIds([]);
     loadChallenges();
   };
@@ -1075,7 +1074,7 @@ export default function MembrePage() {
       {/* ── Challenges tab ───────────────────────────────────────────────────── */}
       {activeTab === "challenges" && (
         <div className="flex flex-col gap-4">
-          {isOwn && (
+          {!!user?.id && (
             <button
               onClick={() => setShowCreateChallenge(true)}
               className="flex w-full items-center justify-center gap-2 rounded-2xl bg-violet py-3.5 text-[14px] font-bold text-cream"
@@ -1159,19 +1158,6 @@ export default function MembrePage() {
                 </div>
               </div>
 
-              {/* Objectif */}
-              <div className="flex flex-col gap-1.5">
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted">Objectif</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={challengeForm.target}
-                  onChange={(e) => setChallengeForm((f) => ({ ...f, target: e.target.value }))}
-                  placeholder={challengeForm.metric === "pages" ? "Ex. : 5000" : challengeForm.metric === "books" ? "Ex. : 3" : "Ex. : 20"}
-                  className="w-full rounded-xl border border-line bg-input px-3.5 py-2.5 text-sm text-ink outline-none focus:border-violet"
-                />
-              </div>
-
               {/* Dates */}
               <div className="flex gap-3">
                 <div className="flex flex-1 flex-col gap-1.5">
@@ -1221,7 +1207,7 @@ export default function MembrePage() {
 
               <button
                 onClick={createChallenge}
-                disabled={savingChallenge || !challengeForm.title || !challengeForm.target || !challengeForm.endDate}
+                disabled={savingChallenge || !challengeForm.title || !challengeForm.endDate}
                 className="mt-1 w-full rounded-2xl bg-violet py-3.5 text-[14px] font-bold text-cream disabled:opacity-40"
               >
                 {savingChallenge ? "Création…" : "Créer le challenge"}

@@ -73,6 +73,7 @@ export default function AccueilPage() {
   const [todayChampion, setTodayChampion] = useState<Champion | null>(null);
   const [yesterdayChampion, setYesterdayChampion] = useState<Champion | null>(null);
   const [showPodium, setShowPodium] = useState(false);
+  const [likeMap, setLikeMap] = useState<Map<string, { count: number; liked: boolean }>>(new Map());
 
   // Members
   const [members, setMembers] = useState<Profile[]>([]);
@@ -80,7 +81,7 @@ export default function AccueilPage() {
 
   // Challenges actifs
   const [activeChallenges, setActiveChallenges] = useState<
-    { id: string; title: string; metric: string; target_value: number; start_date: string; end_date: string; myScore: number }[]
+    { id: string; title: string; metric: string; target_value: number | null; start_date: string; end_date: string; myScore: number }[]
   >([]);
 
   // Mini-modal note / review
@@ -320,6 +321,23 @@ export default function AccueilPage() {
 
     setActivity(allEvents);
     setActivityLoading(false);
+
+    // Fetch likes for real logs (start events have negative ids)
+    const realLogIds = allEvents
+      .filter((e) => typeof e.id === "number" ? e.id > 0 : true)
+      .map((e) => String(e.id));
+    if (realLogIds.length > 0) {
+      const { data: likesData } = await supabase
+        .from("session_likes")
+        .select("log_id, liker_id")
+        .in("log_id", realLogIds);
+      const map = new Map<string, { count: number; liked: boolean }>();
+      for (const row of (likesData ?? []) as { log_id: string; liker_id: string }[]) {
+        const cur = map.get(row.log_id) ?? { count: 0, liked: false };
+        map.set(row.log_id, { count: cur.count + 1, liked: cur.liked || row.liker_id === userId });
+      }
+      setLikeMap(map);
+    }
   }, [userId]);
 
   useEffect(() => {
@@ -546,51 +564,74 @@ export default function AccueilPage() {
           <div className="rounded-2xl border border-dashed border-line bg-card p-6 text-center">
             <p className="text-sm text-muted">Pas encore d&apos;activité dans le club.</p>
           </div>
-        ) : (
-          <div className="flex gap-3 overflow-x-auto pb-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {activity.map((log) => (
-              <ActivityCarouselItem
-                key={log.id}
-                log={log}
-                isChampion={todayChampion?.userId === log.user_id}
-                onNoteClick={(type, text, photoUrl, date, bookId, reviewerUserId, bookTitle) =>
-                  setNoteModal({ type, text, member: log.memberName, date, photoUrl, bookId, reviewerUserId, bookTitle })
-                }
-              />
-            ))}
-          </div>
-        )}
+        ) : (() => {
+          const todayStr = new Date().toISOString().split("T")[0];
+          const yesterdayStr = new Date(Date.now() - 86_400_000).toISOString().split("T")[0];
+          const dayGroups: { dateKey: string; label: string; logs: ActivityLog[] }[] = [];
+          for (const log of activity) {
+            const dk = log.date ?? "";
+            const label = dk === todayStr ? "Aujourd'hui" : dk === yesterdayStr ? "Hier"
+              : dk ? new Date(dk + "T12:00:00").toLocaleDateString("fr-FR", { day: "numeric", month: "long" }) : "";
+            const last = dayGroups[dayGroups.length - 1];
+            if (last && last.dateKey === dk) last.logs.push(log);
+            else dayGroups.push({ dateKey: dk, label, logs: [log] });
+          }
+          return (
+            <div className="flex flex-col gap-4">
+              {dayGroups.map(({ dateKey, label, logs: dayLogs }) => (
+                <div key={dateKey} className="flex flex-col gap-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="h-px flex-1 bg-line" />
+                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</span>
+                    <div className="h-px flex-1 bg-line" />
+                  </div>
+                  <div className="flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                    {dayLogs.map((log) => (
+                      <ActivityCarouselItem
+                        key={log.id}
+                        log={log}
+                        isChampion={todayChampion?.userId === log.user_id}
+                        likeData={likeMap.get(String(log.id))}
+                        currentUserId={userId}
+                        onLike={(logId) => {
+                          if (!userId || log.user_id === userId) return;
+                          const cur = likeMap.get(logId) ?? { count: 0, liked: false };
+                          setLikeMap((prev) => new Map(prev).set(logId, { count: cur.liked ? Math.max(0, cur.count - 1) : cur.count + 1, liked: !cur.liked }));
+                          if (cur.liked) {
+                            supabase.from("session_likes").delete().eq("log_id", logId).eq("liker_id", userId);
+                          } else {
+                            supabase.from("session_likes").insert({ log_id: logId, liker_id: userId });
+                          }
+                        }}
+                        onNoteClick={(type, text, photoUrl, date, bookId, reviewerUserId, bookTitle) =>
+                          setNoteModal({ type, text, member: log.memberName, date, photoUrl, bookId, reviewerUserId, bookTitle })
+                        }
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
       </section>
 
       {/* Challenges actifs */}
       {activeChallenges.length > 0 && (
         <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between">
-            <h2 className="font-serif text-lg font-medium text-ink">Challenges actifs</h2>
-          </div>
+          <h2 className="font-serif text-lg font-medium text-ink">Challenges actifs</h2>
           <div className="flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {activeChallenges.map((c) => {
-              const pct = Math.min(100, Math.round((c.myScore / c.target_value) * 100));
               const daysLeft = Math.max(0, Math.ceil((new Date(c.end_date).getTime() - Date.now()) / 86400000));
               const metricLabel = c.metric === "pages" ? "pages" : c.metric === "books" ? "livres" : "sessions";
               return (
-                <div
-                  key={c.id}
-                  className="flex w-[200px] shrink-0 flex-col gap-2 rounded-2xl border border-violet/30 bg-violet-soft p-3"
-                >
+                <div key={c.id} className="flex w-[200px] shrink-0 flex-col gap-2 rounded-2xl border border-violet/30 bg-violet-soft p-3">
                   <p className="line-clamp-1 text-[12.5px] font-semibold text-ink">{c.title}</p>
                   <div className="flex items-baseline gap-1">
-                    <span className="font-serif text-[18px] font-black text-violet-deep">
-                      {c.myScore.toLocaleString("fr-FR")}
-                    </span>
-                    <span className="text-[11px] text-muted">/ {c.target_value.toLocaleString("fr-FR")} {metricLabel}</span>
+                    <span className="font-serif text-[20px] font-black text-violet-deep">{c.myScore.toLocaleString("fr-FR")}</span>
+                    <span className="text-[11px] text-muted"> {metricLabel}</span>
                   </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-violet/20">
-                    <div className="h-full rounded-full bg-violet transition-all" style={{ width: `${pct}%` }} />
-                  </div>
-                  <p className="text-[10px] text-muted">
-                    {pct}% · {daysLeft} jour{daysLeft !== 1 ? "s" : ""} restant{daysLeft !== 1 ? "s" : ""}
-                  </p>
+                  <p className="text-[10px] text-muted">{daysLeft} jour{daysLeft !== 1 ? "s" : ""} restant{daysLeft !== 1 ? "s" : ""}</p>
                 </div>
               );
             })}
@@ -790,10 +831,16 @@ function ChampionBanner({ champion, yesterdayChampion, isMe }: {
 function ActivityCarouselItem({
   log,
   isChampion,
+  likeData,
+  currentUserId,
+  onLike,
   onNoteClick,
 }: {
   log: ActivityLog;
   isChampion?: boolean;
+  likeData?: { count: number; liked: boolean };
+  currentUserId?: string;
+  onLike?: (logId: string) => void;
   onNoteClick?: (type: "review" | "session", text: string, photoUrl: string | null | undefined, date: string, bookId: number, reviewerUserId: string, bookTitle: string) => void;
 }) {
   const todayStr = new Date().toISOString().split("T")[0];
@@ -858,9 +905,6 @@ function ActivityCarouselItem({
           <p className={`text-[11px] font-semibold leading-tight ${actionLabel.color}`}>
             {actionLabel.text}
           </p>
-          <p className="text-[9.5px] text-muted">
-            {new Date(log.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
-          </p>
         </div>
         {(hasReview || hasSessionNote) && (
           <div className="flex shrink-0 flex-col gap-0.5">
@@ -916,13 +960,39 @@ function ActivityCarouselItem({
         </div>
       )}
 
-      {/* Avatar + pseudo — clic vers profil */}
-      {avatarLink(
-        <>
-          <AvatarImg url={log.memberAvatar} name={log.memberName} className="h-4 w-4 shrink-0 text-[7px]" />
-          <span className="truncate text-[10px] font-medium text-muted">{log.memberName}</span>
-        </>
-      )}
+      {/* Avatar + pseudo + like */}
+      <div className="flex items-center justify-between gap-1">
+        {avatarLink(
+          <>
+            <AvatarImg url={log.memberAvatar} name={log.memberName} className="h-4 w-4 shrink-0 text-[7px]" />
+            <span className="truncate text-[10px] font-medium text-muted">{log.memberName}</span>
+          </>
+        )}
+        {log.eventType !== "start" && (
+          log.user_id !== currentUserId ? (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onLike?.(String(log.id)); }}
+              className="flex shrink-0 items-center gap-0.5 transition-transform active:scale-90"
+            >
+              {likeData && likeData.count > 0 ? (
+                <>
+                  <span className="text-[13px] leading-none" style={{ color: likeData.liked ? "#e05c7a" : "#c084a8" }}>
+                    {likeData.liked ? "♥" : "♥"}
+                  </span>
+                  <span className="text-[9px] font-bold" style={{ color: "#e05c7a" }}>{likeData.count}</span>
+                </>
+              ) : (
+                <span className="text-[13px] leading-none text-line">♡</span>
+              )}
+            </button>
+          ) : likeData && likeData.count > 0 ? (
+            <span className="flex shrink-0 items-center gap-0.5">
+              <span className="text-[13px] leading-none" style={{ color: "#e05c7a" }}>♥</span>
+              <span className="text-[9px] font-bold" style={{ color: "#e05c7a" }}>{likeData.count}</span>
+            </span>
+          ) : null
+        )}
+      </div>
     </div>
   );
 }

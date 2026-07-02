@@ -396,6 +396,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     created_at: string;
     isNew: boolean;
   }[]>([]);
+  const [challengeInvites, setChallengeInvites] = useState<{
+    id: string;
+    from_name: string;
+    challenge_id: string;
+    challenge_title: string;
+    created_at: string;
+    isNew: boolean;
+  }[]>([]);
 
   const displayName =
     user?.user_metadata?.display_name || user?.email?.split("@")[0] || "?";
@@ -430,14 +438,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       ? (localStorage.getItem(`notif_last_seen_${uid}`) ?? "1970-01-01")
       : "1970-01-01";
 
-    // Likes sur les reviews (parallèle)
-    const { data: likeRows } = await supabase
-      .from("notifications")
-      .select("id, from_user_id, book_id, book_title, created_at")
-      .eq("user_id", uid)
-      .eq("type", "review_like")
-      .order("created_at", { ascending: false })
-      .limit(20);
+    // Likes sur les reviews + invitations challenges (parallèle)
+    const [{ data: likeRows }, { data: inviteRows }] = await Promise.all([
+      supabase
+        .from("notifications")
+        .select("id, from_user_id, book_id, book_title, created_at")
+        .eq("user_id", uid)
+        .eq("type", "review_like")
+        .order("created_at", { ascending: false })
+        .limit(20),
+      supabase
+        .from("notifications")
+        .select("id, from_user_id, challenge_id, book_title, created_at")
+        .eq("user_id", uid)
+        .eq("type", "challenge_invite")
+        .order("created_at", { ascending: false })
+        .limit(10),
+    ]);
 
     // Abonnés
     let enriched: { id: string; created_at: string; display_name: string; avatar_url: string | null; isNew: boolean }[] = [];
@@ -478,8 +495,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       }));
     }
     setLikeNotifs(enrichedLikes);
+
+    // Invitations challenges
+    let enrichedInvites: typeof challengeInvites = [];
+    if (inviteRows && inviteRows.length > 0) {
+      type InviteRow = { id: string; from_user_id: string; challenge_id: string; book_title: string; created_at: string };
+      const fromIds = [...new Set((inviteRows as InviteRow[]).map((r) => r.from_user_id))];
+      const { data: fromProfiles } = await supabase.from("user_profiles").select("id, display_name").in("id", fromIds);
+      const fromMap = new Map(((fromProfiles || []) as { id: string; display_name: string }[]).map((p) => [p.id, p.display_name]));
+      enrichedInvites = (inviteRows as InviteRow[]).map((r) => ({
+        id: r.id,
+        from_name: fromMap.get(r.from_user_id) ?? "Membre",
+        challenge_id: r.challenge_id,
+        challenge_title: r.book_title ?? "Challenge",
+        created_at: r.created_at,
+        isNew: r.created_at > lastSeen,
+      }));
+    }
+    setChallengeInvites(enrichedInvites);
+
     setNewFollowersCount(
-      enriched.filter((f) => f.isNew).length + enrichedLikes.filter((l) => l.isNew).length
+      enriched.filter((f) => f.isNew).length +
+      enrichedLikes.filter((l) => l.isNew).length +
+      enrichedInvites.filter((i) => i.isNew).length
     );
   };
 
@@ -632,13 +670,56 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <button onClick={() => setShowNotif(false)} className="text-xs text-muted">✕</button>
             </div>
 
-            {notifFollowers.length === 0 && likeNotifs.length === 0 ? (
+            {notifFollowers.length === 0 && likeNotifs.length === 0 && challengeInvites.length === 0 ? (
               <p className="px-4 py-8 text-center text-xs text-muted">
                 Aucune notification pour l&apos;instant.
               </p>
             ) : (
-              <div className="max-h-80 overflow-y-auto">
-                {/* Toutes les notifs mélangées, triées par date décroissante */}
+              <div className="max-h-[28rem] overflow-y-auto">
+                {/* Invitations challenges — toujours en tête */}
+                {challengeInvites.map((inv) => (
+                  <div key={`inv-${inv.id}`} className="border-b border-line px-4 py-3">
+                    <div className="flex items-start gap-2">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-soft text-sm">⚡</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12.5px] font-semibold text-ink">
+                          {inv.from_name} <span className="font-normal text-muted">t&apos;invite au challenge</span>
+                        </p>
+                        <p className="truncate text-[11px] font-medium text-violet-deep">{inv.challenge_title}</p>
+                        <p className="text-[10px] text-muted">{relativeTime(inv.created_at)}</p>
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            onClick={async () => {
+                              if (!user?.id) return;
+                              await supabase.from("challenge_participants").update({ status: "accepted" }).eq("challenge_id", inv.challenge_id).eq("user_id", user.id);
+                              await supabase.from("notifications").delete().eq("id", inv.id);
+                              setChallengeInvites((prev) => prev.filter((i) => i.id !== inv.id));
+                              setNewFollowersCount((n) => Math.max(0, n - (inv.isNew ? 1 : 0)));
+                            }}
+                            className="flex-1 rounded-xl bg-violet py-1.5 text-[11px] font-bold text-cream"
+                          >
+                            Rejoindre
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!user?.id) return;
+                              await supabase.from("challenge_participants").update({ status: "declined" }).eq("challenge_id", inv.challenge_id).eq("user_id", user.id);
+                              await supabase.from("notifications").delete().eq("id", inv.id);
+                              setChallengeInvites((prev) => prev.filter((i) => i.id !== inv.id));
+                              setNewFollowersCount((n) => Math.max(0, n - (inv.isNew ? 1 : 0)));
+                            }}
+                            className="flex-1 rounded-xl border border-line bg-card py-1.5 text-[11px] font-medium text-muted"
+                          >
+                            Refuser
+                          </button>
+                        </div>
+                      </div>
+                      {inv.isNew && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-violet" />}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Likes + abonnés triés par date */}
                 {[
                   ...likeNotifs.map((n) => ({ ...n, _type: "like" as const })),
                   ...notifFollowers.map((f) => ({ ...f, _type: "follow" as const })),
