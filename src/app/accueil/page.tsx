@@ -345,6 +345,36 @@ export default function AccueilPage() {
     loadClub();
   }, [load, loadClub]);
 
+  const handleLike = useCallback(async (log: ActivityLog) => {
+    if (!userId || log.user_id === userId) return;
+    const logId = String(log.id);
+    const cur = likeMap.get(logId) ?? { count: 0, liked: false };
+    const wasLiked = cur.liked;
+    // Optimistic update
+    setLikeMap((prev) => new Map(prev).set(logId, {
+      count: wasLiked ? Math.max(0, cur.count - 1) : cur.count + 1,
+      liked: !wasLiked,
+    }));
+    if (wasLiked) {
+      const { error } = await supabase.from("session_likes").delete().eq("log_id", logId).eq("liker_id", userId);
+      if (error) setLikeMap((prev) => new Map(prev).set(logId, cur)); // rollback
+    } else {
+      const { error } = await supabase.from("session_likes").insert({ log_id: logId, liker_id: userId });
+      if (error) {
+        setLikeMap((prev) => new Map(prev).set(logId, cur)); // rollback
+      } else if (log.user_id) {
+        // Notification au propriétaire de la session
+        await supabase.from("notifications").insert({
+          user_id: log.user_id,
+          from_user_id: userId,
+          type: "review_like",
+          book_id: log.bookId,
+          book_title: log.bookTitle,
+        });
+      }
+    }
+  }, [userId, likeMap]);
+
   // Challenges actifs
   useEffect(() => {
     if (!userId) return;
@@ -589,16 +619,7 @@ export default function AccueilPage() {
                         isChampion={todayChampion?.userId === log.user_id}
                         likeData={likeMap.get(String(log.id))}
                         currentUserId={userId}
-                        onLike={(logId) => {
-                          if (!userId || log.user_id === userId) return;
-                          const cur = likeMap.get(logId) ?? { count: 0, liked: false };
-                          setLikeMap((prev) => new Map(prev).set(logId, { count: cur.liked ? Math.max(0, cur.count - 1) : cur.count + 1, liked: !cur.liked }));
-                          if (cur.liked) {
-                            supabase.from("session_likes").delete().eq("log_id", logId).eq("liker_id", userId);
-                          } else {
-                            supabase.from("session_likes").insert({ log_id: logId, liker_id: userId });
-                          }
-                        }}
+                        onLike={() => handleLike(log)}
                         onNoteClick={(type, text, photoUrl, date, bookId, reviewerUserId, bookTitle) =>
                           setNoteModal({ type, text, member: log.memberName, date, photoUrl, bookId, reviewerUserId, bookTitle })
                         }
