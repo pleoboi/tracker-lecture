@@ -540,7 +540,7 @@ export default function AccueilPage() {
             onClick={() => setShowPodium(true)}
             className="w-full text-left"
           >
-            <ChampionBanner champion={todayChampion} yesterdayChampion={yesterdayChampion} isMe={todayChampion.userId === userId} />
+            <ChampionBanner champion={todayChampion} yesterdayChampion={yesterdayChampion} />
           </button>
         )}
 
@@ -577,39 +577,40 @@ export default function AccueilPage() {
             else dayGroups.push({ dateKey: dk, label, logs: [log] });
           }
           return (
-            <div className="flex flex-col gap-4">
-              {dayGroups.map(({ dateKey, label, logs: dayLogs }) => (
-                <div key={dateKey} className="flex flex-col gap-2.5">
-                  <div className="flex items-center gap-2">
-                    <div className="h-px flex-1 bg-line" />
-                    <span className="text-[10px] font-semibold uppercase tracking-widest text-muted">{label}</span>
-                    <div className="h-px flex-1 bg-line" />
+            <div className="flex gap-3 overflow-x-auto pb-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {dayGroups.map(({ dateKey, label, logs: dayLogs }, gi) => (
+                <React.Fragment key={dateKey}>
+                  {/* Séparateur de jour vertical inline */}
+                  <div className={`flex shrink-0 flex-col items-center justify-center gap-1.5 self-stretch ${gi === 0 ? "pr-1" : "px-1"}`}>
+                    {gi > 0 && <div className="w-px flex-1 bg-line" />}
+                    <span className="whitespace-nowrap rounded-full border border-line bg-card px-2 py-0.5 text-[9px] font-semibold uppercase tracking-widest text-muted">
+                      {label}
+                    </span>
+                    {gi > 0 && <div className="w-px flex-1 bg-line" />}
                   </div>
-                  <div className="flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                    {dayLogs.map((log) => (
-                      <ActivityCarouselItem
-                        key={log.id}
-                        log={log}
-                        isChampion={todayChampion?.userId === log.user_id}
-                        likeData={likeMap.get(String(log.id))}
-                        currentUserId={userId}
-                        onLike={(logId) => {
-                          if (!userId || log.user_id === userId) return;
-                          const cur = likeMap.get(logId) ?? { count: 0, liked: false };
-                          setLikeMap((prev) => new Map(prev).set(logId, { count: cur.liked ? Math.max(0, cur.count - 1) : cur.count + 1, liked: !cur.liked }));
-                          if (cur.liked) {
-                            supabase.from("session_likes").delete().eq("log_id", logId).eq("liker_id", userId);
-                          } else {
-                            supabase.from("session_likes").insert({ log_id: logId, liker_id: userId });
-                          }
-                        }}
-                        onNoteClick={(type, text, photoUrl, date, bookId, reviewerUserId, bookTitle) =>
-                          setNoteModal({ type, text, member: log.memberName, date, photoUrl, bookId, reviewerUserId, bookTitle })
+                  {dayLogs.map((log) => (
+                    <ActivityCarouselItem
+                      key={log.id}
+                      log={log}
+                      isChampion={todayChampion?.userId === log.user_id}
+                      likeData={likeMap.get(String(log.id))}
+                      currentUserId={userId}
+                      onLike={(logId) => {
+                        if (!userId || log.user_id === userId) return;
+                        const cur = likeMap.get(logId) ?? { count: 0, liked: false };
+                        setLikeMap((prev) => new Map(prev).set(logId, { count: cur.liked ? Math.max(0, cur.count - 1) : cur.count + 1, liked: !cur.liked }));
+                        if (cur.liked) {
+                          supabase.from("session_likes").delete().eq("log_id", logId).eq("liker_id", userId);
+                        } else {
+                          supabase.from("session_likes").insert({ log_id: logId, liker_id: userId });
                         }
-                      />
-                    ))}
-                  </div>
-                </div>
+                      }}
+                      onNoteClick={(type, text, photoUrl, date, bookId, reviewerUserId, bookTitle) =>
+                        setNoteModal({ type, text, member: log.memberName, date, photoUrl, bookId, reviewerUserId, bookTitle })
+                      }
+                    />
+                  ))}
+                </React.Fragment>
               ))}
             </div>
           );
@@ -772,10 +773,9 @@ function BookCard({ book }: { book: Book }) {
   );
 }
 
-function ChampionBanner({ champion, yesterdayChampion, isMe }: {
+function ChampionBanner({ champion, yesterdayChampion }: {
   champion: Champion;
   yesterdayChampion: Champion | null;
-  isMe: boolean;
 }) {
   return (
     <div
