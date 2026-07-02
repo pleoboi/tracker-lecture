@@ -972,23 +972,23 @@ function ActivityCarouselItem({
           log.user_id !== currentUserId ? (
             <button
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onLike?.(String(log.id)); }}
-              className="flex shrink-0 items-center gap-0.5 transition-transform active:scale-90"
+              className="flex shrink-0 items-center gap-1 transition-transform active:scale-90"
             >
               {likeData && likeData.count > 0 ? (
                 <>
-                  <span className="text-[13px] leading-none" style={{ color: likeData.liked ? "#e05c7a" : "#c084a8" }}>
+                  <span className="text-[18px] leading-none" style={{ color: likeData.liked ? "#e05c7a" : "#c084a8" }}>
                     {likeData.liked ? "♥" : "♥"}
                   </span>
-                  <span className="text-[9px] font-bold" style={{ color: "#e05c7a" }}>{likeData.count}</span>
+                  <span className="text-[11px] font-bold" style={{ color: "#e05c7a" }}>{likeData.count}</span>
                 </>
               ) : (
-                <span className="text-[13px] leading-none text-line">♡</span>
+                <span className="text-[18px] leading-none text-line">♡</span>
               )}
             </button>
           ) : likeData && likeData.count > 0 ? (
-            <span className="flex shrink-0 items-center gap-0.5">
-              <span className="text-[13px] leading-none" style={{ color: "#e05c7a" }}>♥</span>
-              <span className="text-[9px] font-bold" style={{ color: "#e05c7a" }}>{likeData.count}</span>
+            <span className="flex shrink-0 items-center gap-1">
+              <span className="text-[18px] leading-none" style={{ color: "#e05c7a" }}>♥</span>
+              <span className="text-[11px] font-bold" style={{ color: "#e05c7a" }}>{likeData.count}</span>
             </span>
           ) : null
         )}
