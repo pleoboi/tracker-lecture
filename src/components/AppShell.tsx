@@ -404,6 +404,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     created_at: string;
     isNew: boolean;
   }[]>([]);
+  const [weeklyRecap, setWeeklyRecap] = useState<{
+    pages: number;
+    sessions: number;
+    booksCompleted: number;
+    clubChampion: { name: string; pages: number } | null;
+    weekLabel: string;
+  } | null>(null);
 
   const displayName =
     user?.user_metadata?.display_name || user?.email?.split("@")[0] || "?";
@@ -532,6 +539,58 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (user?.id) { fetchAvatar(user.id); fetchNotifications(user.id); }
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!user?.id || typeof window === "undefined") return;
+    const today = new Date();
+    if (today.getDay() !== 1) return; // seulement le lundi
+    const mondayKey = today.toISOString().split("T")[0];
+    if (localStorage.getItem(`weeklyRecap_${mondayKey}`)) return; // déjà vu
+
+    const prevWeekEnd = new Date(today);
+    prevWeekEnd.setDate(today.getDate() - 1);
+    const prevWeekStart = new Date(today);
+    prevWeekStart.setDate(today.getDate() - 7);
+    const startStr = prevWeekStart.toISOString().split("T")[0];
+    const endStr = prevWeekEnd.toISOString().split("T")[0];
+
+    const weekLabel = `${prevWeekStart.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })} – ${prevWeekEnd.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`;
+
+    (async () => {
+      const uid = user.id;
+      const [{ data: myLogs }, { data: followRows }] = await Promise.all([
+        supabase.from("reading_logs").select("pages_read, date, book_id").eq("user_id", uid).gte("date", startStr).lte("date", endStr),
+        supabase.from("user_follows").select("following_id").eq("follower_id", uid),
+      ]);
+
+      const myPages = ((myLogs ?? []) as { pages_read: number }[]).reduce((s, l) => s + (l.pages_read || 0), 0);
+      const mySessions = (myLogs ?? []).length;
+
+      const { data: completedBooks } = await supabase.from("books").select("id").eq("user_id", uid).eq("status", "completed").gte("date_read", startStr).lte("date_read", endStr);
+      const booksCompleted = (completedBooks ?? []).length;
+
+      let clubChampion: { name: string; pages: number } | null = null;
+      const followedIds = ((followRows ?? []) as { following_id: string }[]).map((r) => r.following_id);
+      if (followedIds.length > 0) {
+        const { data: clubLogs } = await supabase.from("reading_logs").select("user_id, pages_read").in("user_id", followedIds).gte("date", startStr).lte("date", endStr);
+        if (clubLogs?.length) {
+          const pagesByUser = new Map<string, number>();
+          (clubLogs as { user_id: string; pages_read: number }[]).forEach((l) => {
+            pagesByUser.set(l.user_id, (pagesByUser.get(l.user_id) ?? 0) + (l.pages_read || 0));
+          });
+          const [champId, champPages] = [...pagesByUser.entries()].sort((a, b) => b[1] - a[1])[0];
+          if (champPages > 0) {
+            const { data: champProfile } = await supabase.from("user_profiles").select("display_name").eq("id", champId).single();
+            clubChampion = { name: (champProfile as { display_name: string } | null)?.display_name ?? "Membre", pages: champPages };
+          }
+        }
+      }
+
+      if (myPages > 0 || mySessions > 0 || booksCompleted > 0) {
+        setWeeklyRecap({ pages: myPages, sessions: mySessions, booksCompleted, clubChampion, weekLabel });
+      }
+    })();
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Restaure le thème persisté dès le montage
@@ -783,6 +842,67 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       )}
 
       <GuideModal userId={user?.id} open={showGuide} onClose={() => setShowGuide(false)} />
+
+      {/* Récap hebdo du lundi */}
+      {weeklyRecap && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-5">
+          <div className="w-full max-w-sm overflow-hidden rounded-3xl bg-paper shadow-2xl">
+            {/* Header */}
+            <div className="relative flex flex-col items-center gap-1 px-6 pb-4 pt-7"
+              style={{ background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 60%, #4f46e5 100%)" }}>
+              <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10" />
+              <span className="text-3xl">📚</span>
+              <h2 className="font-serif text-xl font-black text-white">Récap de la semaine</h2>
+              <p className="text-[11px] font-medium text-white/60">{weeklyRecap.weekLabel}</p>
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-3 divide-x divide-line border-b border-line">
+              {[
+                { value: weeklyRecap.pages.toLocaleString("fr-FR"), label: "pages" },
+                { value: String(weeklyRecap.sessions), label: "sessions" },
+                { value: String(weeklyRecap.booksCompleted), label: weeklyRecap.booksCompleted > 1 ? "livres terminés" : "livre terminé" },
+              ].map(({ value, label }) => (
+                <div key={label} className="flex flex-col items-center gap-0.5 py-5">
+                  <span className="font-serif text-2xl font-black text-ink">{value}</span>
+                  <span className="text-[10px] text-muted">{label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Champion du club */}
+            <div className="px-6 py-4">
+              {weeklyRecap.clubChampion ? (
+                <div className="flex items-center gap-3 rounded-2xl border border-violet/20 bg-violet-soft px-4 py-3">
+                  <span className="text-xl">🏆</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Champion du club</p>
+                    <p className="truncate font-serif text-[15px] font-bold text-ink">{weeklyRecap.clubChampion.name}</p>
+                    <p className="text-[11px] text-violet-deep">{weeklyRecap.clubChampion.pages.toLocaleString("fr-FR")} pages</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-center text-[12px] text-muted">Pas encore d&apos;activité dans le club cette semaine.</p>
+              )}
+            </div>
+
+            <div className="px-6 pb-6">
+              <button
+                onClick={() => {
+                  if (user?.id && typeof window !== "undefined") {
+                    const mondayKey = new Date().toISOString().split("T")[0];
+                    localStorage.setItem(`weeklyRecap_${mondayKey}`, "1");
+                  }
+                  setWeeklyRecap(null);
+                }}
+                className="w-full rounded-2xl bg-violet py-3.5 text-[14px] font-bold text-cream"
+              >
+                C&apos;est parti pour cette semaine 🚀
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AddBookModal
         open={showAdd}
