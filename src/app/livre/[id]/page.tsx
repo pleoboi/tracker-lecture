@@ -31,6 +31,8 @@ interface MemberEntry {
   rating: number | null;
   review: string | null;
   status: string;
+  dateRead: string | null;
+  isFollowed: boolean;
 }
 
 /* ── Confetti ──────────────────────────────────────────────────────── */
@@ -189,16 +191,17 @@ export default function BookDetailPage() {
     // Étape D : activité des autres membres
     const { data: otherBooks } = await supabase
       .from("books")
-      .select("user_id, rating, notes, status")
+      .select("user_id, rating, notes, status, date_read")
       .ilike("title", `%${urlBook.title.replace(/[%_]/g, "\\$&")}%`)
       .neq("user_id", userId);
 
     if (otherBooks?.length) {
       const uids = [...new Set((otherBooks as any[]).map((ob) => ob.user_id))] as string[];
-      const { data: profiles } = await supabase
-        .from("user_profiles")
-        .select("id, display_name, avatar_url")
-        .in("id", uids);
+      const [{ data: profiles }, { data: followRows }] = await Promise.all([
+        supabase.from("user_profiles").select("id, display_name, avatar_url").in("id", uids),
+        supabase.from("user_follows").select("following_id").eq("follower_id", userId),
+      ]);
+      const followedSet = new Set(((followRows as any[]) || []).map((r) => r.following_id));
 
       setMemberActivity(
         (otherBooks as any[])
@@ -212,7 +215,14 @@ export default function BookDetailPage() {
               rating: ob.rating || null,
               review: ob.notes || null,
               status: ob.status,
+              dateRead: ob.date_read || null,
+              isFollowed: followedSet.has(ob.user_id),
             };
+          })
+          .sort((a, b) => {
+            // Abonnés d'abord, puis triés par note décroissante
+            if (a.isFollowed !== b.isFollowed) return a.isFollowed ? -1 : 1;
+            return (b.rating ?? 0) - (a.rating ?? 0);
           })
       );
     }
@@ -518,7 +528,10 @@ export default function BookDetailPage() {
   const stats = activeBook ? readingStats(activeBook, logs) : { startDate: null, endDate: null, durationDays: null, pagesPerDay: null };
   const rating = activeBook?.rating || 0;
 
-  // Note moyenne du club (tous lecteurs ayant noté, y compris soi-même)
+  // Stats communauté
+  const communityCompleted = memberActivity.filter((m) => m.status === "completed").length + (activeBook && isCompleted(activeBook) ? 1 : 0);
+  const communityReading  = memberActivity.filter((m) => m.status === "reading").length  + (activeBook?.status === "reading" ? 1 : 0);
+  const communityWant     = memberActivity.filter((m) => m.status === "to-read").length  + (activeBook?.status === "to-read" ? 1 : 0);
   const ratedInClub = memberActivity.filter((m) => (m.rating ?? 0) > 0);
   const allClubRatings = [
     ...ratedInClub.map((m) => m.rating!),
@@ -529,6 +542,7 @@ export default function BookDetailPage() {
     clubRaterCount > 0
       ? allClubRatings.reduce((s, r) => s + r, 0) / clubRaterCount
       : 0;
+  const membersWithReview = memberActivity.filter((m) => !!m.review);
 
   return (
     <div className="animate-fadeIn -mx-5 md:-mx-10">
@@ -976,38 +990,92 @@ export default function BookDetailPage() {
         </div>
         )}
 
-        {/* Activité des membres (style Letterboxd) */}
-        {memberActivity.length > 0 && (
-          <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
-            <h2 className="font-serif text-[15px] font-medium text-ink">
-              Activité des membres{" "}
-              <span className="font-sans text-xs font-normal text-muted">({memberActivity.length})</span>
-            </h2>
-            <div className="flex flex-wrap gap-4">
-              {memberActivity.map((m) => (
-                <button
-                  key={m.userId}
-                  onClick={() => setSelectedMember(m)}
-                  className="flex flex-col items-center gap-1.5"
-                >
-                  <AvatarImg
-                    url={m.avatarUrl}
-                    name={m.displayName}
-                    className={`h-11 w-11 text-xs font-semibold ring-2 ring-offset-1 ${
-                      m.status === "completed" ? "ring-success/60" : "ring-violet/40"
-                    }`}
-                  />
-                  <span className="max-w-[56px] truncate text-[10px] font-medium text-muted">
-                    {m.displayName.split(" ")[0]}
-                  </span>
-                  {(m.rating ?? 0) > 0 && (
-                    <span className="text-[10px] font-semibold text-gold">
-                      {"★".repeat(Math.round(m.rating!))}
-                    </span>
-                  )}
-                </button>
+        {/* Section communauté */}
+        {(memberActivity.length > 0 || communityCompleted > 0) && (
+          <div className="flex flex-col gap-4">
+
+            {/* Stats lecteurs */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { count: communityCompleted, label: "ont lu", icon: "✓" },
+                { count: communityReading,   label: "en cours", icon: "📖" },
+                { count: communityWant,      label: "veulent lire", icon: "♡" },
+              ].map(({ count, label, icon }) => (
+                <div key={label} className="flex flex-col items-center gap-0.5 rounded-2xl border border-line bg-card py-3">
+                  <span className="font-serif text-xl font-black text-ink">{count}</span>
+                  <span className="text-[10px] text-muted">{icon} {label}</span>
+                </div>
               ))}
             </div>
+
+            {/* Avatars membres (tous) */}
+            {memberActivity.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Membres</p>
+                <div className="flex flex-wrap gap-3">
+                  {memberActivity.map((m) => (
+                    <button key={m.userId} onClick={() => setSelectedMember(m)} className="flex flex-col items-center gap-1">
+                      <div className="relative">
+                        <AvatarImg
+                          url={m.avatarUrl}
+                          name={m.displayName}
+                          className={`h-10 w-10 text-[11px] font-semibold ring-2 ring-offset-1 ${
+                            m.status === "completed" ? "ring-success/60" : m.status === "reading" ? "ring-violet/50" : "ring-line"
+                          }`}
+                        />
+                        {m.isFollowed && (
+                          <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-violet text-[7px] text-white">✓</span>
+                        )}
+                      </div>
+                      <span className="max-w-[48px] truncate text-[9.5px] text-muted">{m.displayName.split(" ")[0]}</span>
+                      {(m.rating ?? 0) > 0 && (
+                        <span className="text-[9px] font-bold text-gold">{"★".repeat(Math.round(m.rating! / 0.5) * 0.5 >= 1 ? Math.round(m.rating!) : 1)}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Reviews texte */}
+            {membersWithReview.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                  Critiques membres{membersWithReview.length > 0 ? ` · ${membersWithReview.length}` : ""}
+                </p>
+                <div className="flex flex-col gap-3">
+                  {membersWithReview.map((m) => (
+                    <button
+                      key={m.userId}
+                      onClick={() => setSelectedMember(m)}
+                      className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3.5 text-left transition-colors hover:border-violet/40"
+                    >
+                      <div className="relative shrink-0">
+                        <AvatarImg url={m.avatarUrl} name={m.displayName} className="h-9 w-9 text-[11px]" />
+                        {m.isFollowed && (
+                          <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-violet text-[7px] text-white">✓</span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[12.5px] font-semibold text-ink">{m.displayName}</span>
+                          {m.isFollowed && <span className="rounded-full bg-violet-soft px-1.5 py-0.5 text-[9px] font-semibold text-violet-deep">abonné</span>}
+                          {(m.rating ?? 0) > 0 && (
+                            <span className="ml-auto shrink-0 text-[11px] font-bold text-gold">{"★".repeat(Math.round(m.rating!))} {m.rating!.toFixed(1)}</span>
+                          )}
+                        </div>
+                        {m.dateRead && (
+                          <p className="text-[10px] text-muted">Lu le {new Date(m.dateRead).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</p>
+                        )}
+                        <p className="mt-1.5 line-clamp-3 font-serif text-[12.5px] italic leading-relaxed text-ink-2">
+                          « {m.review} »
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
