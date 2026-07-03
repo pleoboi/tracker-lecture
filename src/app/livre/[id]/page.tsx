@@ -380,11 +380,12 @@ export default function BookDetailPage() {
   const markAsReadNoDate = async () => {
     if (!activeBook || markingRead) return;
     setMarkingRead(true);
+    const todayDate = new Date().toISOString().split("T")[0];
     await supabase
       .from("books")
-      .update({ status: "completed", progress: activeBook.pages, date_read: null })
+      .update({ status: "completed", progress: activeBook.pages, date_read: todayDate })
       .eq("id", activeBook.id);
-    updateActiveBook({ ...activeBook, status: "completed", progress: activeBook.pages, date_read: null });
+    updateActiveBook({ ...activeBook, status: "completed", progress: activeBook.pages, date_read: todayDate });
     setMarkingRead(false);
     setShowConfetti(true);
     setTimeout(() => setShowConfetti(false), 3800);

@@ -593,9 +593,11 @@ export default function MembrePage() {
   const recencyKey = (b: Book): string => lastLogByBook.get(b.id) || b.date_read || b.created_at || "";
 
   const currentReading = reading.slice().sort((a, b) => recencyKey(b).localeCompare(recencyKey(a)))[0] ?? null;
+  // Pour les terminés : date_read prime sur la dernière session (c'est la date de fin qui compte)
+  const completedKey = (b: Book): string => b.date_read || lastLogByBook.get(b.id) || b.created_at || "";
   const last3Completed = [...completed]
-    .filter((b) => lastLogByBook.has(b.id) || !!b.date_read)
-    .sort((a, b) => recencyKey(b).localeCompare(recencyKey(a)))
+    .filter((b) => !!b.date_read || lastLogByBook.has(b.id))
+    .sort((a, b) => completedKey(b).localeCompare(completedKey(a)))
     .slice(0, 3);
 
   const ratedBooks = completed.filter((b) => (b.rating || 0) > 0);
