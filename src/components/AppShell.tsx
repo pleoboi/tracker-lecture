@@ -404,6 +404,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     created_at: string;
     isNew: boolean;
   }[]>([]);
+  const [recoNotifs, setRecoNotifs] = useState<{
+    id: string;
+    from_name: string;
+    book_title: string;
+    message: string | null;
+    created_at: string;
+    isNew: boolean;
+  }[]>([]);
   const [weeklyRecap, setWeeklyRecap] = useState<{
     pages: number;
     sessions: number;
@@ -445,8 +453,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       ? (localStorage.getItem(`notif_last_seen_${uid}`) ?? "1970-01-01")
       : "1970-01-01";
 
-    // Likes sur les reviews + invitations challenges (parallèle)
-    const [{ data: likeRows }, { data: inviteRows }] = await Promise.all([
+    // Likes + invitations challenges + recommandations (parallèle)
+    const [{ data: likeRows }, { data: inviteRows }, { data: recoRows }] = await Promise.all([
       supabase
         .from("notifications")
         .select("id, from_user_id, book_id, book_title, created_at")
@@ -459,6 +467,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         .select("id, from_user_id, challenge_id, book_title, created_at")
         .eq("user_id", uid)
         .eq("type", "challenge_invite")
+        .order("created_at", { ascending: false })
+        .limit(10),
+      supabase
+        .from("notifications")
+        .select("id, from_user_id, book_title, message, created_at")
+        .eq("user_id", uid)
+        .eq("type", "book_recommendation")
         .order("created_at", { ascending: false })
         .limit(10),
     ]);
@@ -521,10 +536,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
     setChallengeInvites(enrichedInvites);
 
+    // Recommandations de livres
+    let enrichedRecos: typeof recoNotifs = [];
+    if (recoRows && recoRows.length > 0) {
+      type RecoRow = { id: string; from_user_id: string; book_title: string; message: string | null; created_at: string };
+      const recoFromIds = [...new Set((recoRows as RecoRow[]).map((r) => r.from_user_id))];
+      const { data: recoProfiles } = await supabase.from("user_profiles").select("id, display_name").in("id", recoFromIds);
+      const recoMap = new Map(((recoProfiles || []) as { id: string; display_name: string }[]).map((p) => [p.id, p.display_name]));
+      enrichedRecos = (recoRows as RecoRow[]).map((r) => ({
+        id: r.id,
+        from_name: recoMap.get(r.from_user_id) ?? "Membre",
+        book_title: r.book_title ?? "un livre",
+        message: r.message ?? null,
+        created_at: r.created_at,
+        isNew: r.created_at > lastSeen,
+      }));
+    }
+    setRecoNotifs(enrichedRecos);
+
     setNewFollowersCount(
       enriched.filter((f) => f.isNew).length +
       enrichedLikes.filter((l) => l.isNew).length +
-      enrichedInvites.filter((i) => i.isNew).length
+      enrichedInvites.filter((i) => i.isNew).length +
+      enrichedRecos.filter((r) => r.isNew).length
     );
   };
 
@@ -729,7 +763,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <button onClick={() => setShowNotif(false)} className="text-xs text-muted">✕</button>
             </div>
 
-            {notifFollowers.length === 0 && likeNotifs.length === 0 && challengeInvites.length === 0 ? (
+            {notifFollowers.length === 0 && likeNotifs.length === 0 && challengeInvites.length === 0 && recoNotifs.length === 0 ? (
               <p className="px-4 py-8 text-center text-xs text-muted">
                 Aucune notification pour l&apos;instant.
               </p>
@@ -774,6 +808,36 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         </div>
                       </div>
                       {inv.isNew && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-violet" />}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Recommandations de livres */}
+                {recoNotifs.map((reco) => (
+                  <div key={`reco-${reco.id}`} className="border-b border-line px-4 py-3">
+                    <div className="flex items-start gap-2">
+                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-soft text-sm">📚</span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12.5px] font-semibold text-ink">
+                          {reco.from_name} <span className="font-normal text-muted">te recommande</span>
+                        </p>
+                        <p className="truncate text-[11px] font-medium text-violet-deep">{reco.book_title}</p>
+                        {reco.message && (
+                          <p className="mt-0.5 line-clamp-2 text-[11px] italic text-muted">&ldquo;{reco.message}&rdquo;</p>
+                        )}
+                        <p className="mt-0.5 text-[10px] text-muted">{relativeTime(reco.created_at)}</p>
+                        <button
+                          onClick={async () => {
+                            await supabase.from("notifications").delete().eq("id", reco.id);
+                            setRecoNotifs((prev) => prev.filter((r) => r.id !== reco.id));
+                            setNewFollowersCount((n) => Math.max(0, n - (reco.isNew ? 1 : 0)));
+                          }}
+                          className="mt-1.5 text-[11px] font-medium text-muted underline-offset-2 hover:underline"
+                        >
+                          Ignorer
+                        </button>
+                      </div>
+                      {reco.isNew && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-violet" />}
                     </div>
                   </div>
                 ))}

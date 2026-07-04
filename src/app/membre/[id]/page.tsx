@@ -274,6 +274,14 @@ export default function MembrePage() {
   const [sortBy, setSortBy] = useState<"date" | "rating" | "title">("date");
   const [libLimit, setLibLimit] = useState(20);
 
+  // Recommandation
+  const [showRecoModal, setShowRecoModal] = useState(false);
+  const [recoBooks, setRecoBooks] = useState<{ id: number; title: string; author: string; cover_url: string | null }[]>([]);
+  const [recoSearch, setRecoSearch] = useState("");
+  const [recoSelected, setRecoSelected] = useState<{ id: number; title: string; author: string; cover_url: string | null } | null>(null);
+  const [recoMessage, setRecoMessage] = useState("");
+  const [sendingReco, setSendingReco] = useState(false);
+
   // Challenge state
   const [challenges, setChallenges] = useState<ChallengeRow[]>([]);
   const [challengesLoading, setChallengesLoading] = useState(false);
@@ -717,17 +725,33 @@ export default function MembrePage() {
             </button>
           </div>
           {!isOwn && user?.id && (
-            <button
-              onClick={handleFollow}
-              disabled={loadingFollow}
-              className={`mt-3 w-full rounded-2xl py-3 text-sm font-semibold transition-colors disabled:opacity-50 sm:w-auto sm:rounded-xl sm:px-5 sm:py-2 ${
-                isFollowing
-                  ? "border border-line bg-card text-muted hover:border-danger/50 hover:text-danger"
-                  : "bg-violet text-cream hover:opacity-90"
-              }`}
-            >
-              {loadingFollow ? "…" : isFollowing ? "Abonné ✓" : "S'abonner"}
-            </button>
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={handleFollow}
+                disabled={loadingFollow}
+                className={`flex-1 rounded-2xl py-3 text-sm font-semibold transition-colors disabled:opacity-50 sm:flex-none sm:rounded-xl sm:px-5 sm:py-2 ${
+                  isFollowing
+                    ? "border border-line bg-card text-muted hover:border-danger/50 hover:text-danger"
+                    : "bg-violet text-cream hover:opacity-90"
+                }`}
+              >
+                {loadingFollow ? "…" : isFollowing ? "Abonné ✓" : "S'abonner"}
+              </button>
+              <button
+                onClick={async () => {
+                  if (!user?.id) return;
+                  const { data } = await supabase.from("books").select("id, title, author, cover_url").eq("user_id", user.id).order("title");
+                  setRecoBooks((data ?? []) as { id: number; title: string; author: string; cover_url: string | null }[]);
+                  setRecoSelected(null);
+                  setRecoMessage("");
+                  setRecoSearch("");
+                  setShowRecoModal(true);
+                }}
+                className="flex-1 rounded-2xl border border-violet/40 bg-violet-soft py-3 text-sm font-semibold text-violet-deep transition-colors hover:bg-violet/10 sm:flex-none sm:rounded-xl sm:px-5 sm:py-2"
+              >
+                Recommander un livre
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -1215,6 +1239,105 @@ export default function MembrePage() {
                 {savingChallenge ? "Création…" : "Créer le challenge"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal recommandation */}
+      {showRecoModal && (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 md:items-center" onClick={() => setShowRecoModal(false)}>
+          <div className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4 max-h-[85dvh]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-serif text-base font-semibold text-ink">Recommander à {profile?.display_name}</h3>
+              <button onClick={() => setShowRecoModal(false)} className="text-sm text-muted">✕</button>
+            </div>
+
+            {/* Recherche */}
+            <input
+              type="text"
+              placeholder="Chercher dans ta bibliothèque…"
+              value={recoSearch}
+              onChange={(e) => setRecoSearch(e.target.value)}
+              className="w-full rounded-xl border border-line bg-input px-3.5 py-2.5 text-sm text-ink outline-none focus:border-violet"
+              autoFocus
+            />
+
+            {/* Liste livres */}
+            {!recoSelected && (
+              <div className="flex flex-col gap-1.5 overflow-y-auto max-h-48">
+                {recoBooks
+                  .filter((b) => !recoSearch || b.title.toLowerCase().includes(recoSearch.toLowerCase()) || b.author.toLowerCase().includes(recoSearch.toLowerCase()))
+                  .slice(0, 20)
+                  .map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => setRecoSelected(b)}
+                      className="flex items-center gap-3 rounded-xl border border-line bg-card px-3 py-2.5 text-left transition-colors hover:border-violet/40 hover:bg-violet-soft"
+                    >
+                      {b.cover_url
+                        ? <img src={b.cover_url} alt="" className="h-10 w-7 shrink-0 rounded object-cover" />
+                        : <div className="h-10 w-7 shrink-0 rounded bg-violet-soft" />}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[13px] font-semibold text-ink">{b.title}</p>
+                        <p className="truncate text-[11px] text-muted">{b.author}</p>
+                      </div>
+                    </button>
+                  ))}
+              </div>
+            )}
+
+            {/* Livre sélectionné */}
+            {recoSelected && (
+              <div className="flex items-center gap-3 rounded-xl border border-violet/40 bg-violet-soft px-3 py-2.5">
+                {recoSelected.cover_url
+                  ? <img src={recoSelected.cover_url} alt="" className="h-12 w-8 shrink-0 rounded object-cover shadow" />
+                  : <div className="h-12 w-8 shrink-0 rounded bg-violet/20" />}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[13px] font-semibold text-ink">{recoSelected.title}</p>
+                  <p className="truncate text-[11px] text-muted">{recoSelected.author}</p>
+                </div>
+                <button onClick={() => setRecoSelected(null)} className="shrink-0 text-xs text-muted">✕</button>
+              </div>
+            )}
+
+            {/* Message */}
+            {recoSelected && (
+              <textarea
+                rows={3}
+                placeholder="Un message ? (optionnel)"
+                value={recoMessage}
+                onChange={(e) => setRecoMessage(e.target.value)}
+                className="w-full rounded-xl border border-line bg-input px-3.5 py-2.5 text-sm text-ink outline-none focus:border-violet resize-none"
+              />
+            )}
+
+            <button
+              disabled={!recoSelected || sendingReco}
+              onClick={async () => {
+                if (!recoSelected || !user?.id) return;
+                setSendingReco(true);
+                await supabase.from("book_recommendations").insert({
+                  from_user_id: user.id,
+                  to_user_id: memberId,
+                  book_title: recoSelected.title,
+                  book_author: recoSelected.author,
+                  book_cover: recoSelected.cover_url,
+                  message: recoMessage.trim() || null,
+                });
+                await supabase.from("notifications").insert({
+                  user_id: memberId,
+                  from_user_id: user.id,
+                  type: "book_recommendation",
+                  book_title: recoSelected.title,
+                  message: recoMessage.trim() || null,
+                });
+                setSendingReco(false);
+                setShowRecoModal(false);
+              }}
+              className="w-full rounded-2xl bg-violet py-3.5 text-[14px] font-bold text-cream disabled:opacity-40"
+            >
+              {sendingReco ? "Envoi…" : "Envoyer la recommandation"}
+            </button>
           </div>
         </div>
       )}
