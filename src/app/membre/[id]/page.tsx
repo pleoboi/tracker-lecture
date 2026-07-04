@@ -24,7 +24,7 @@ const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep
 const VIOLET = "var(--color-violet)";
 const VIOLET_LT = "#d8cfe6";
 
-type TabId = "bibliotheque" | "statistiques" | "collection" | "challenges";
+type TabId = "bibliotheque" | "statistiques" | "collection" | "challenges" | "listes";
 
 interface Profile {
   id: string;
@@ -274,6 +274,27 @@ export default function MembrePage() {
   const [sortBy, setSortBy] = useState<"date" | "rating" | "title">("date");
   const [libLimit, setLibLimit] = useState(20);
 
+  // Listes thématiques
+  const [lists, setLists] = useState<{ id: string; title: string; description: string | null; created_at: string; covers: (string | null)[] }[]>([]);
+  const [listsLoading, setListsLoading] = useState(false);
+  const [showCreateList, setShowCreateList] = useState(false);
+  const [newListTitle, setNewListTitle] = useState("");
+  const [newListDesc, setNewListDesc] = useState("");
+  const [creatingList, setCreatingList] = useState(false);
+
+  const loadLists = useCallback(async () => {
+    setListsLoading(true);
+    const { data } = await supabase.from("book_lists").select("id, title, description, created_at").eq("user_id", memberId).order("created_at", { ascending: false });
+    const rows = (data ?? []) as { id: string; title: string; description: string | null; created_at: string }[];
+    // Fetch first 4 covers per list
+    const withCovers = await Promise.all(rows.map(async (l) => {
+      const { data: items } = await supabase.from("book_list_items").select("book_cover_url").eq("list_id", l.id).order("position").limit(4);
+      return { ...l, covers: ((items ?? []) as { book_cover_url: string | null }[]).map((i) => i.book_cover_url) };
+    }));
+    setLists(withCovers);
+    setListsLoading(false);
+  }, [memberId]);
+
   // Recommandation
   const [showRecoModal, setShowRecoModal] = useState(false);
   const [recoBooks, setRecoBooks] = useState<{ id: number; title: string; author: string; cover_url: string | null }[]>([]);
@@ -500,7 +521,8 @@ export default function MembrePage() {
 
   useEffect(() => {
     if (activeTab === "challenges") loadChallenges();
-  }, [activeTab, loadChallenges]);
+    if (activeTab === "listes") loadLists();
+  }, [activeTab, loadChallenges, loadLists]);
 
   // Load followers for invite selector (own profile only)
   useEffect(() => {
@@ -642,6 +664,7 @@ export default function MembrePage() {
     { id: "statistiques", label: "Statistiques" },
     { id: "collection", label: "Collection" },
     { id: "challenges", label: "Challenges" },
+    { id: "listes", label: "Listes" },
   ];
 
   return (
@@ -1132,7 +1155,91 @@ export default function MembrePage() {
         </div>
       )}
 
+      {/* ── Tab Listes ───────────────────────────────────────────────────────── */}
+      {activeTab === "listes" && (
+        <div className="flex flex-col gap-4">
+          {isOwn && (
+            <button
+              onClick={() => { setNewListTitle(""); setNewListDesc(""); setShowCreateList(true); }}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-violet py-3.5 text-[14px] font-bold text-cream"
+            >
+              + Nouvelle liste
+            </button>
+          )}
+          {listsLoading ? (
+            <div className="py-8 text-center text-xs text-muted">Chargement…</div>
+          ) : lists.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-line bg-card p-8 text-center">
+              <p className="font-serif text-base text-ink">Aucune liste pour le moment.</p>
+              {isOwn && <p className="mt-1 text-sm text-muted">Crée ta première liste thématique !</p>}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {lists.map((l) => (
+                <Link key={l.id} href={`/listes/${l.id}`} className="flex items-center gap-3 rounded-2xl border border-line bg-card p-4 transition-colors hover:border-violet/40">
+                  {/* Mini covers */}
+                  <div className="flex shrink-0 gap-0.5">
+                    {[0, 1, 2, 3].map((i) => (
+                      l.covers[i]
+                        ? <img key={i} src={l.covers[i]!} alt="" className="h-12 w-8 rounded object-cover shadow-sm" />
+                        : <div key={i} className="h-12 w-8 rounded bg-violet-soft" />
+                    ))}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-serif text-[15px] font-semibold text-ink">{l.title}</p>
+                    {l.description && <p className="truncate text-[11px] text-muted">{l.description}</p>}
+                    <p className="text-[10px] text-muted">{l.covers.length} livre{l.covers.length !== 1 ? "s" : ""}</p>
+                  </div>
+                  <span className="shrink-0 text-muted">›</span>
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ── Modales ──────────────────────────────────────────────────────────── */}
+
+      {/* Créer une liste */}
+      {showCreateList && (
+        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 md:items-center" onClick={() => setShowCreateList(false)}>
+          <div className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-serif text-base font-semibold text-ink">Nouvelle liste</h3>
+              <button onClick={() => setShowCreateList(false)} className="text-sm text-muted">✕</button>
+            </div>
+            <input
+              type="text"
+              placeholder="Titre de la liste"
+              value={newListTitle}
+              onChange={(e) => setNewListTitle(e.target.value)}
+              className="w-full rounded-xl border border-line bg-input px-3.5 py-2.5 text-sm text-ink outline-none focus:border-violet"
+              autoFocus
+            />
+            <textarea
+              rows={2}
+              placeholder="Description (optionnelle)"
+              value={newListDesc}
+              onChange={(e) => setNewListDesc(e.target.value)}
+              className="w-full rounded-xl border border-line bg-input px-3.5 py-2.5 text-sm text-ink outline-none focus:border-violet resize-none"
+            />
+            <button
+              disabled={!newListTitle.trim() || creatingList}
+              onClick={async () => {
+                if (!user?.id || !newListTitle.trim()) return;
+                setCreatingList(true);
+                await supabase.from("book_lists").insert({ user_id: user.id, title: newListTitle.trim(), description: newListDesc.trim() || null });
+                setCreatingList(false);
+                setShowCreateList(false);
+                loadLists();
+              }}
+              className="w-full rounded-2xl bg-violet py-3.5 text-[14px] font-bold text-cream disabled:opacity-40"
+            >
+              {creatingList ? "Création…" : "Créer la liste"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Créer un challenge */}
       {showCreateChallenge && (
