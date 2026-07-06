@@ -125,11 +125,13 @@ export default function FrisePage() {
 
   useEffect(() => { if (userId) loadEvents(); }, [userId, loadEvents]);
 
-  // Lock body scroll when a modal is open (prevents iOS scroll-through)
+  // Block ALL touchmove on document when modal open (only working iOS fix)
   useEffect(() => {
     const open = detail !== null || showAdd;
-    document.body.style.overflow = open ? "hidden" : "";
-    return () => { document.body.style.overflow = ""; };
+    if (!open) return;
+    const prevent = (e: TouchEvent) => e.preventDefault();
+    document.addEventListener("touchmove", prevent, { passive: false });
+    return () => document.removeEventListener("touchmove", prevent);
   }, [detail, showAdd]);
 
   const openAdd = async () => {
@@ -454,11 +456,11 @@ export default function FrisePage() {
       {/* ── Detail modal ──────────────────────────────────────────────────────── */}
       {detail && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm sm:items-center"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm"
           onClick={() => setDetail(null)}
         >
           <div
-            className="flex w-full max-w-sm flex-col overflow-hidden rounded-t-3xl bg-paper sm:rounded-3xl max-h-[90dvh]"
+            className="flex w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-paper max-h-[85dvh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header with book cover */}
@@ -495,7 +497,10 @@ export default function FrisePage() {
               </div>
             )}
 
-            <div className="flex flex-col gap-3 overflow-y-auto overscroll-contain p-5">
+            <div
+              className="flex flex-col gap-3 overflow-y-auto overscroll-contain p-5"
+              onTouchMove={(e) => e.stopPropagation()}
+            >
               {/* Period */}
               <p className="font-serif text-2xl font-semibold text-violet-deep">
                 {fmtPeriod(detail.start_year, detail.end_year)}
