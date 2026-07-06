@@ -275,7 +275,7 @@ export default function MembrePage() {
   const [libLimit, setLibLimit] = useState(20);
 
   // Listes thématiques
-  const [lists, setLists] = useState<{ id: string; title: string; description: string | null; created_at: string; covers: (string | null)[] }[]>([]);
+  const [lists, setLists] = useState<{ id: string; title: string; description: string | null; created_at: string; covers: (string | null)[]; count: number }[]>([]);
   const [listsLoading, setListsLoading] = useState(false);
   const [showCreateList, setShowCreateList] = useState(false);
   const [newListTitle, setNewListTitle] = useState("");
@@ -288,8 +288,8 @@ export default function MembrePage() {
     const rows = (data ?? []) as { id: string; title: string; description: string | null; created_at: string }[];
     // Fetch first 4 covers per list
     const withCovers = await Promise.all(rows.map(async (l) => {
-      const { data: items } = await supabase.from("book_list_items").select("book_cover_url").eq("list_id", l.id).order("position").limit(4);
-      return { ...l, covers: ((items ?? []) as { book_cover_url: string | null }[]).map((i) => i.book_cover_url) };
+      const { data: items, count: totalCount } = await supabase.from("book_list_items").select("book_cover_url", { count: "exact" }).eq("list_id", l.id).order("position").limit(4);
+      return { ...l, covers: ((items ?? []) as { book_cover_url: string | null }[]).map((i) => i.book_cover_url), count: totalCount ?? 0 };
     }));
     setLists(withCovers);
     setListsLoading(false);
@@ -1188,7 +1188,7 @@ export default function MembrePage() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-serif text-[15px] font-semibold text-ink">{l.title}</p>
                     {l.description && <p className="truncate text-[11px] text-muted">{l.description}</p>}
-                    <p className="text-[10px] text-muted">{l.covers.length} livre{l.covers.length !== 1 ? "s" : ""}</p>
+                    <p className="text-[10px] text-muted">{l.count} livre{l.count !== 1 ? "s" : ""}</p>
                   </div>
                   <span className="shrink-0 text-muted">›</span>
                 </Link>

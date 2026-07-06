@@ -1,11 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth-context";
-import { Cover } from "../../../components/ui";
 
 interface ListItem {
   id: string;
@@ -27,6 +26,19 @@ interface BookList {
   ownerAvatar: string | null;
 }
 
+interface MyBook {
+  id: number;
+  title: string;
+  author: string;
+  cover_url: string | null;
+  genre: string | null;
+  date_read: string | null;
+  rating: number | null;
+  status: string;
+}
+
+type SortKey = "title" | "date_read" | "rating";
+
 export default function ListePage() {
   const { id } = useParams() as { id: string };
   const { user } = useAuth();
@@ -34,12 +46,13 @@ export default function ListePage() {
   const [items, setItems] = useState<ListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Add book modal
+  // Add modal — multi-select
   const [showAdd, setShowAdd] = useState(false);
-  const [myBooks, setMyBooks] = useState<{ id: number; title: string; author: string; cover_url: string | null }[]>([]);
+  const [myBooks, setMyBooks] = useState<MyBook[]>([]);
   const [addSearch, setAddSearch] = useState("");
-  const [addNote, setAddNote] = useState("");
-  const [addSelected, setAddSelected] = useState<{ title: string; author: string; cover_url: string | null } | null>(null);
+  const [addGenre, setAddGenre] = useState("Tous");
+  const [addSort, setAddSort] = useState<SortKey>("date_read");
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [saving, setSaving] = useState(false);
 
   // Edit list modal
@@ -61,27 +74,75 @@ export default function ListePage() {
 
   const isOwner = user?.id === list?.user_id;
 
+  // Titres déjà dans la liste (pour les griser)
+  const alreadyInList = useMemo(() => new Set(items.map((i) => i.book_title.toLowerCase())), [items]);
+
   const openAdd = async () => {
     if (!user?.id) return;
-    const { data } = await supabase.from("books").select("id, title, author, cover_url").eq("user_id", user.id).order("title");
-    setMyBooks((data ?? []) as { id: number; title: string; author: string; cover_url: string | null }[]);
-    setAddSelected(null);
+    const { data } = await supabase
+      .from("books")
+      .select("id, title, author, cover_url, genre, date_read, rating, status")
+      .eq("user_id", user.id)
+      .order("title");
+    setMyBooks((data ?? []) as MyBook[]);
+    setSelectedIds(new Set());
     setAddSearch("");
-    setAddNote("");
+    setAddGenre("Tous");
+    setAddSort("date_read");
     setShowAdd(true);
   };
 
-  const addItem = async () => {
-    if (!addSelected || !user?.id) return;
-    setSaving(true);
-    await supabase.from("book_list_items").insert({
-      list_id: id,
-      book_title: addSelected.title,
-      book_author: addSelected.author,
-      book_cover_url: addSelected.cover_url,
-      position: items.length,
-      note: addNote.trim() || null,
+  // Genres uniques extraits de la bibliothèque
+  const allGenres = useMemo(() => {
+    const set = new Set<string>();
+    myBooks.forEach((b) => {
+      if (b.genre) b.genre.split(",").map((g) => g.trim()).filter(Boolean).forEach((g) => set.add(g));
     });
+    return ["Tous", ...Array.from(set).sort()];
+  }, [myBooks]);
+
+  // Filtrage + tri
+  const filteredBooks = useMemo(() => {
+    let result = myBooks.filter((b) => {
+      const matchSearch = !addSearch || b.title.toLowerCase().includes(addSearch.toLowerCase()) || b.author.toLowerCase().includes(addSearch.toLowerCase());
+      const matchGenre = addGenre === "Tous" || (b.genre ?? "").split(",").map((g) => g.trim()).includes(addGenre);
+      return matchSearch && matchGenre;
+    });
+    result = [...result].sort((a, b) => {
+      if (addSort === "title") return a.title.localeCompare(b.title, "fr");
+      if (addSort === "rating") return (b.rating ?? 0) - (a.rating ?? 0);
+      if (addSort === "date_read") {
+        const da = a.date_read ?? a.status === "reading" ? "9999" : "0000";
+        const db = b.date_read ?? b.status === "reading" ? "9999" : "0000";
+        return db.localeCompare(da);
+      }
+      return 0;
+    });
+    return result;
+  }, [myBooks, addSearch, addGenre, addSort]);
+
+  const toggleSelect = (bookId: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(bookId)) next.delete(bookId);
+      else next.add(bookId);
+      return next;
+    });
+  };
+
+  const addItems = async () => {
+    if (!selectedIds.size || !user?.id) return;
+    setSaving(true);
+    const toInsert = myBooks
+      .filter((b) => selectedIds.has(b.id))
+      .map((b, i) => ({
+        list_id: id,
+        book_title: b.title,
+        book_author: b.author,
+        book_cover_url: b.cover_url,
+        position: items.length + i,
+      }));
+    await supabase.from("book_list_items").insert(toInsert);
     await load();
     setSaving(false);
     setShowAdd(false);
@@ -99,10 +160,6 @@ export default function ListePage() {
     setShowEdit(false);
   };
 
-  const filteredBooks = myBooks.filter(
-    (b) => !addSearch || b.title.toLowerCase().includes(addSearch.toLowerCase()) || b.author.toLowerCase().includes(addSearch.toLowerCase())
-  );
-
   if (loading) return (
     <div className="flex min-h-screen items-center justify-center">
       <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-violet border-t-transparent" />
@@ -118,6 +175,13 @@ export default function ListePage() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-6">
+      {/* Retour */}
+      {list.user_id && (
+        <Link href={`/membre/${list.user_id}`} className="mb-4 flex w-fit items-center gap-1.5 text-[12px] font-medium text-muted hover:text-ink">
+          ← Retour au profil
+        </Link>
+      )}
+
       {/* Header */}
       <div className="mb-6 flex flex-col gap-3">
         <div className="flex items-start justify-between gap-3">
@@ -134,11 +198,9 @@ export default function ListePage() {
             </button>
           )}
         </div>
-        <Link href={`/membre/${list.user_id}`} className="flex items-center gap-2">
-          <span className="text-[12px] text-muted">
-            Liste de <span className="font-semibold text-ink">{list.ownerName}</span> · {items.length} livre{items.length !== 1 ? "s" : ""}
-          </span>
-        </Link>
+        <span className="text-[12px] text-muted">
+          Liste de <Link href={`/membre/${list.user_id}`} className="font-semibold text-ink">{list.ownerName}</Link> · {items.length} livre{items.length !== 1 ? "s" : ""}
+        </span>
       </div>
 
       {/* Livres */}
@@ -147,7 +209,7 @@ export default function ListePage() {
           <p className="text-sm text-muted">Aucun livre dans cette liste.</p>
           {isOwner && (
             <button onClick={openAdd} className="rounded-xl bg-violet px-4 py-2 text-sm font-bold text-cream">
-              Ajouter un livre
+              Ajouter des livres
             </button>
           )}
         </div>
@@ -172,57 +234,115 @@ export default function ListePage() {
           ))}
           {isOwner && (
             <button onClick={openAdd} className="mt-1 w-full rounded-2xl border border-dashed border-violet/40 py-3 text-sm font-semibold text-violet-deep hover:bg-violet-soft">
-              + Ajouter un livre
+              + Ajouter des livres
             </button>
           )}
         </div>
       )}
 
-      {/* Modal ajout livre */}
+      {/* ── Modal ajout multi-sélection ── */}
       {showAdd && (
         <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 md:items-center" onClick={() => setShowAdd(false)}>
-          <div className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4 max-h-[85dvh]" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h3 className="font-serif text-base font-semibold text-ink">Ajouter un livre</h3>
+          <div className="animate-slideUp w-full max-w-sm rounded-2xl bg-card flex flex-col max-h-[90dvh]" onClick={(e) => e.stopPropagation()}>
+
+            {/* Header fixe */}
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <h3 className="font-serif text-base font-semibold text-ink">Ajouter des livres</h3>
               <button onClick={() => setShowAdd(false)} className="text-sm text-muted">✕</button>
             </div>
-            <input
-              type="text"
-              placeholder="Chercher dans ta bibliothèque…"
-              value={addSearch}
-              onChange={(e) => { setAddSearch(e.target.value); if (addSelected) setAddSelected(null); }}
-              className="w-full rounded-xl border border-line bg-input px-3.5 py-2.5 text-sm text-ink outline-none focus:border-violet"
-              autoFocus
-            />
-            {!addSelected && (
-              <div className="flex flex-col gap-1.5 overflow-y-auto max-h-48">
-                {filteredBooks.slice(0, 20).map((b) => (
-                  <button key={b.id} onClick={() => setAddSelected(b)} className="flex items-center gap-3 rounded-xl border border-line px-3 py-2.5 text-left hover:border-violet/40 hover:bg-violet-soft">
-                    {b.cover_url ? <img src={b.cover_url} alt="" className="h-10 w-7 shrink-0 rounded object-cover" /> : <div className="h-10 w-7 shrink-0 rounded bg-violet-soft" />}
+
+            {/* Recherche */}
+            <div className="px-5 pb-2">
+              <input
+                type="text"
+                placeholder="Rechercher…"
+                value={addSearch}
+                onChange={(e) => setAddSearch(e.target.value)}
+                className="w-full rounded-xl border border-line bg-input px-3.5 py-2.5 text-sm text-ink outline-none focus:border-violet"
+                autoFocus
+              />
+            </div>
+
+            {/* Filtres genre */}
+            <div className="flex gap-2 overflow-x-auto px-5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {allGenres.map((g) => (
+                <button
+                  key={g}
+                  onClick={() => setAddGenre(g)}
+                  className={`shrink-0 rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${addGenre === g ? "bg-violet text-cream" : "bg-card border border-line text-muted"}`}
+                >
+                  {g}
+                </button>
+              ))}
+            </div>
+
+            {/* Tri */}
+            <div className="flex gap-2 px-5 pb-3">
+              {([
+                { key: "date_read", label: "Date de lecture" },
+                { key: "rating", label: "Note" },
+                { key: "title", label: "Titre" },
+              ] as { key: SortKey; label: string }[]).map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setAddSort(key)}
+                  className={`rounded-lg px-2.5 py-1 text-[10px] font-semibold transition-colors ${addSort === key ? "bg-violet-soft text-violet-deep" : "text-muted"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {/* Liste scrollable */}
+            <div className="flex-1 overflow-y-auto px-5 flex flex-col gap-1.5 pb-3">
+              {filteredBooks.length === 0 && (
+                <p className="py-6 text-center text-sm text-muted">Aucun livre trouvé.</p>
+              )}
+              {filteredBooks.map((b) => {
+                const inList = alreadyInList.has(b.title.toLowerCase());
+                const checked = selectedIds.has(b.id);
+                return (
+                  <button
+                    key={b.id}
+                    onClick={() => !inList && toggleSelect(b.id)}
+                    disabled={inList}
+                    className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                      inList ? "opacity-40 cursor-not-allowed border-line" :
+                      checked ? "border-violet bg-violet-soft" : "border-line hover:border-violet/40"
+                    }`}
+                  >
+                    {/* Checkbox */}
+                    <div className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2 transition-colors ${checked ? "border-violet bg-violet text-cream" : "border-line bg-card"}`}>
+                      {checked && <span className="text-[11px] font-bold">✓</span>}
+                    </div>
+                    {b.cover_url
+                      ? <img src={b.cover_url} alt="" className="h-11 w-7 shrink-0 rounded object-cover" />
+                      : <div className="h-11 w-7 shrink-0 rounded bg-violet-soft" />
+                    }
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] font-semibold text-ink">{b.title}</p>
                       <p className="truncate text-[11px] text-muted">{b.author}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {(b.rating ?? 0) > 0 && <span className="text-[10px] font-bold text-gold">★ {b.rating!.toFixed(1)}</span>}
+                        {b.date_read && <span className="text-[10px] text-muted">{new Date(b.date_read).toLocaleDateString("fr-FR", { month: "short", year: "numeric" })}</span>}
+                        {inList && <span className="text-[10px] font-semibold text-muted">déjà dans la liste</span>}
+                      </div>
                     </div>
                   </button>
-                ))}
-              </div>
-            )}
-            {addSelected && (
-              <>
-                <div className="flex items-center gap-3 rounded-xl border border-violet/40 bg-violet-soft px-3 py-2.5">
-                  {addSelected.cover_url ? <img src={addSelected.cover_url} alt="" className="h-12 w-8 shrink-0 rounded object-cover shadow" /> : <div className="h-12 w-8 shrink-0 rounded bg-violet/20" />}
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[13px] font-semibold text-ink">{addSelected.title}</p>
-                    <p className="truncate text-[11px] text-muted">{addSelected.author}</p>
-                  </div>
-                  <button onClick={() => setAddSelected(null)} className="shrink-0 text-xs text-muted">✕</button>
-                </div>
-                <textarea rows={2} placeholder="Note sur ce livre (optionnel)" value={addNote} onChange={(e) => setAddNote(e.target.value)} className="w-full rounded-xl border border-line bg-input px-3.5 py-2.5 text-sm text-ink outline-none focus:border-violet resize-none" />
-              </>
-            )}
-            <button disabled={!addSelected || saving} onClick={addItem} className="w-full rounded-2xl bg-violet py-3.5 text-[14px] font-bold text-cream disabled:opacity-40">
-              {saving ? "Ajout…" : "Ajouter à la liste"}
-            </button>
+                );
+              })}
+            </div>
+
+            {/* Footer fixe */}
+            <div className="border-t border-line px-5 py-4">
+              <button
+                disabled={selectedIds.size === 0 || saving}
+                onClick={addItems}
+                className="w-full rounded-2xl bg-violet py-3.5 text-[14px] font-bold text-cream disabled:opacity-40"
+              >
+                {saving ? "Ajout…" : selectedIds.size === 0 ? "Sélectionne des livres" : `Ajouter ${selectedIds.size} livre${selectedIds.size > 1 ? "s" : ""}`}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -779,6 +779,107 @@ function EnrichLibrary({ userId, onDone }: { userId: string; onDone: () => void 
   );
 }
 
+// ── Timeline Historique (aperçu compte) ────────────────────────────────────
+
+interface TLPreviewEvent {
+  id: string;
+  title: string;
+  start_year: number;
+  end_year: number | null;
+  book_cover_url: string | null;
+  book_title: string | null;
+}
+
+function fmtYear(y: number): string {
+  return y < 0 ? `${Math.abs(y)} av. J.-C.` : String(y);
+}
+function fmtPeriod(start: number, end: number | null): string {
+  return end != null ? `${fmtYear(start)} – ${fmtYear(end)}` : fmtYear(start);
+}
+
+const PREVIEW_COUNT = 3;
+
+function TimelineSection({ userId }: { userId: string }) {
+  const [events, setEvents] = useState<TLPreviewEvent[]>([]);
+  const [total,  setTotal]  = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setLoading(true);
+      let { data, count, error } = await supabase
+        .from("user_timeline_events")
+        .select("id, title, start_year, end_year, book_cover_url, book_title", { count: "exact" })
+        .eq("user_id", userId)
+        .order("start_year", { ascending: true })
+        .limit(PREVIEW_COUNT);
+      if (error) {
+        const res = await supabase
+          .from("user_timeline_events")
+          .select("id, title, start_year, end_year", { count: "exact" })
+          .eq("user_id", userId)
+          .order("start_year", { ascending: true })
+          .limit(PREVIEW_COUNT);
+        data = res.data as typeof data;
+        count = res.count;
+      }
+      if (cancelled) return;
+      setEvents((data ?? []) as TLPreviewEvent[]);
+      setTotal(count ?? 0);
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [userId]);
+
+  const extra = total - PREVIEW_COUNT;
+
+  return (
+    <Link
+      href="/frise"
+      className="block rounded-2xl border border-line bg-card p-4 transition-colors hover:border-violet/40"
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="font-serif text-[15px] font-medium text-ink">Ma Frise Historique</h3>
+          <p className="mt-0.5 text-[11px] text-muted">
+            {loading ? "Chargement…" : total === 0 ? "Aucun repère · commence sur la frise" : `${total} repère${total > 1 ? "s" : ""}`}
+          </p>
+        </div>
+        <span className="shrink-0 text-[13px] text-muted">›</span>
+      </div>
+
+      {!loading && events.length > 0 && (
+        <div className="mt-3 flex flex-col gap-2">
+          {events.map((ev) => (
+            <div key={ev.id} className="flex items-center gap-2.5">
+              <div className="h-1.5 w-1.5 shrink-0 rounded-full bg-violet/50" />
+              <span className="shrink-0 font-serif text-[10px] font-semibold text-violet-deep">
+                {fmtPeriod(ev.start_year, ev.end_year)}
+              </span>
+              <p className="flex-1 truncate text-[12px] font-medium text-ink">{ev.title}</p>
+              {ev.book_cover_url && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={ev.book_cover_url}
+                  alt={ev.book_title ?? ""}
+                  className="h-7 w-5 shrink-0 rounded object-cover opacity-80"
+                />
+              )}
+            </div>
+          ))}
+
+          {extra > 0 && (
+            <p className="mt-1 text-[11px] font-medium text-violet-deep">
+              + {extra} autre{extra > 1 ? "s" : ""} · voir la frise complète →
+            </p>
+          )}
+        </div>
+      )}
+    </Link>
+  );
+}
+
 // ── Main Page ───────────────────────────────────────────────────────────────
 
 export default function ComptePage() {
@@ -1336,6 +1437,9 @@ export default function ComptePage() {
               })}
             </div>
           </div>
+
+          {/* Frise historique */}
+          {userId && <TimelineSection userId={userId} />}
 
           {/* Enrichissement couvertures */}
           <div className="rounded-2xl border border-line bg-card p-4">
