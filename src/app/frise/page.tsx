@@ -451,12 +451,12 @@ export default function FrisePage() {
           onClick={() => setDetail(null)}
         >
           <div
-            className="w-full max-w-sm overflow-hidden rounded-t-3xl bg-paper sm:rounded-3xl"
+            className="flex w-full max-w-sm flex-col overflow-hidden rounded-t-3xl bg-paper sm:rounded-3xl max-h-[90dvh]"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header with book cover */}
             {detail.book_cover_url ? (
-              <div className="relative h-28 overflow-hidden bg-violet-soft">
+              <div className="relative h-28 shrink-0 overflow-hidden bg-violet-soft">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={detail.book_cover_url}
@@ -488,7 +488,7 @@ export default function FrisePage() {
               </div>
             )}
 
-            <div className="flex flex-col gap-3 p-5">
+            <div className="flex flex-col gap-3 overflow-y-auto p-5">
               {/* Period */}
               <p className="font-serif text-2xl font-semibold text-violet-deep">
                 {fmtPeriod(detail.start_year, detail.end_year)}
