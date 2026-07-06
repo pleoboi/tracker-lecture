@@ -1202,7 +1202,7 @@ export default function MembrePage() {
 
       {/* Créer une liste */}
       {showCreateList && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 md:items-center" onClick={() => setShowCreateList(false)}>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 pt-4 pb-24 [touch-action:none]" onClick={() => setShowCreateList(false)}>
           <div className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="font-serif text-base font-semibold text-ink">Nouvelle liste</h3>
@@ -1244,7 +1244,7 @@ export default function MembrePage() {
       {/* Créer un challenge */}
       {showCreateChallenge && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 md:items-center"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 pt-4 pb-24 [touch-action:none]"
           onClick={() => setShowCreateChallenge(false)}
         >
           <div
@@ -1352,7 +1352,7 @@ export default function MembrePage() {
 
       {/* Modal recommandation */}
       {showRecoModal && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 md:items-center" onClick={() => setShowRecoModal(false)}>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 pt-4 pb-24 [touch-action:none]" onClick={() => setShowRecoModal(false)}>
           <div className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4 max-h-[85dvh]" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="font-serif text-base font-semibold text-ink">Recommander à {profile?.display_name}</h3>
@@ -1452,7 +1452,7 @@ export default function MembrePage() {
       {/* Note / review modal */}
       {noteModal && (
         <div
-          className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 md:items-center"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 pt-4 pb-24 [touch-action:none]"
           onClick={() => setNoteModal(null)}
         >
           <div
@@ -1501,7 +1501,7 @@ export default function MembrePage() {
       {/* Abonnés / abonnements */}
       {followListType !== null && (
         <div
-          className="fixed inset-0 z-[80] flex items-end justify-center bg-ink/30 backdrop-blur-sm"
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-ink/30 px-4 pt-4 pb-24 backdrop-blur-sm [touch-action:none]"
           onClick={() => setFollowListType(null)}
         >
           <div

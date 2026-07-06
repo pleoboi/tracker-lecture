@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect } from "react";
 import { spineColor, initials } from "../lib/books";
@@ -158,7 +158,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/40 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4 pt-4 pb-24 [touch-action:none]"
       onClick={onClose}
     >
       <div
@@ -223,3 +223,4 @@ export function AvatarImg({
     </span>
   );
 }
+

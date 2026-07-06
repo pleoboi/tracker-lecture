@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import Link from "next/link";
@@ -769,7 +769,7 @@ function RecoDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/40 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4 pt-4 pb-24 [touch-action:none]"
       onClick={onClose}
     >
       <div
@@ -868,3 +868,4 @@ function RecoDetailModal({
     </div>
   );
 }
+

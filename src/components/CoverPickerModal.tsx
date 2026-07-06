@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect } from "react";
 
@@ -49,7 +49,7 @@ export default function CoverPickerModal({ title, author, currentCover, onPick, 
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/40 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4 pt-4 pb-24 [touch-action:none]"
       onClick={onClose}
     >
       <div
@@ -116,3 +116,4 @@ export default function CoverPickerModal({ title, author, currentCover, onPick, 
     </div>
   );
 }
+

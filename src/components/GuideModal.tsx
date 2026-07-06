@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { supabase } from "../lib/supabase";
@@ -160,7 +160,7 @@ export default function GuideModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center sm:items-center">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
@@ -231,3 +231,4 @@ export default function GuideModal({
     </div>
   );
 }
+

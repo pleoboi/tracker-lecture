@@ -1231,7 +1231,7 @@ export default function BookDetailPage() {
       {/* Modale review d'un membre */}
       {selectedMember && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 md:items-center"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 pt-4 pb-24 [touch-action:none]"
           onClick={() => setSelectedMember(null)}
         >
           <div
@@ -1317,7 +1317,7 @@ export default function BookDetailPage() {
 
       {/* Sélecteur de genre post-complétion */}
       {showGenrePicker && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 md:items-center">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 pt-4 pb-24 [touch-action:none]">
           <div className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4">
             <div className="text-center">
               <p className="text-3xl">📚</p>

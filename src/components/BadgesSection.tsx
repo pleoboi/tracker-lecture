@@ -338,7 +338,7 @@ function BadgeDetailSheet({ def, unlocked, unlockedAt, onClose }: {
     : null;
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-end justify-center bg-ink/50 backdrop-blur-sm sm:items-center"
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-ink/50 backdrop-blur-sm px-4 pt-4 pb-24 [touch-action:none]"
       onClick={onClose}>
       <div className="w-full max-w-sm overflow-hidden rounded-t-3xl bg-paper sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}>
@@ -836,3 +836,4 @@ export default function BadgesSection({ memberId, currentUserId }: {
     </>
   );
 }
+

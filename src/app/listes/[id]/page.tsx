@@ -242,7 +242,7 @@ export default function ListePage() {
 
       {/* ── Modal ajout multi-sélection ── */}
       {showAdd && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 md:items-center" onClick={() => setShowAdd(false)}>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 pt-4 pb-24 [touch-action:none]" onClick={() => setShowAdd(false)}>
           <div className="animate-slideUp w-full max-w-sm rounded-2xl bg-card flex flex-col max-h-[90dvh]" onClick={(e) => e.stopPropagation()}>
 
             {/* Header fixe */}
@@ -349,7 +349,7 @@ export default function ListePage() {
 
       {/* Modal édition liste */}
       {showEdit && (
-        <div className="fixed inset-0 z-[80] flex items-end justify-center bg-black/40 p-4 md:items-center" onClick={() => setShowEdit(false)}>
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 pt-4 pb-24 [touch-action:none]" onClick={() => setShowEdit(false)}>
           <div className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="font-serif text-base font-semibold text-ink">Modifier la liste</h3>

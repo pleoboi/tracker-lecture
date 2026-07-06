@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
@@ -550,7 +550,7 @@ function FavoriteBookPicker({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4 pt-4 pb-24 [touch-action:none]"
       onClick={onClose}
     >
       <div
@@ -1565,7 +1565,7 @@ export default function ComptePage() {
       {/* ── Modale suppression compte ── */}
       {showDeleteConfirm && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-ink/50 backdrop-blur-sm sm:items-center"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 backdrop-blur-sm px-4 pt-4 pb-24 [touch-action:none]"
           onClick={() => !deletingAccount && setShowDeleteConfirm(false)}
         >
           <div
@@ -1734,3 +1734,4 @@ function GridCard({ book }: { book: Book }) {
     </Link>
   );
 }
+

@@ -698,14 +698,15 @@ export default function AccueilPage() {
       {/* Mini-modale note / review (style Letterboxd) */}
       {noteModal && (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-4 md:items-center"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4 pt-4 pb-24 [touch-action:none]"
           onClick={() => setNoteModal(null)}
         >
           <div
-            className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-3 max-h-[80dvh] overflow-y-auto"
+            className="flex w-full max-w-sm flex-col overflow-hidden rounded-2xl bg-card max-h-full"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between">
+            {/* Header fixe */}
+            <div className="flex shrink-0 items-center justify-between px-5 pt-5 pb-3">
               <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
                 noteModal.type === "review"
                   ? "bg-[#fdf7e9] text-[#8a6400] dark:bg-[#2a2210] dark:text-[#e0b83d]"
@@ -722,36 +723,43 @@ export default function AccueilPage() {
                 )}
               </div>
             </div>
-            <p className="font-serif text-[14px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
-              « {noteModal.text} »
-            </p>
-            {noteModal.photoUrl && (
-              <a href={noteModal.photoUrl} target="_blank" rel="noopener noreferrer">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={noteModal.photoUrl} alt="" className="w-full rounded-xl object-cover max-h-48" />
-              </a>
-            )}
-            {/* Bouton like — masqué si c'est sa propre note */}
-            {noteModal.reviewerUserId !== userId && (
+
+            {/* Contenu scrollable */}
+            <div className="flex flex-col gap-3 overflow-y-auto px-5 pb-3 [touch-action:pan-y]">
+              <p className="font-serif text-[14px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
+                « {noteModal.text} »
+              </p>
+              {noteModal.photoUrl && (
+                <a href={noteModal.photoUrl} target="_blank" rel="noopener noreferrer">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={noteModal.photoUrl} alt="" className="w-full rounded-xl object-cover max-h-48" />
+                </a>
+              )}
+            </div>
+
+            {/* Footer fixe */}
+            <div className="flex shrink-0 flex-col gap-2 px-5 py-4">
+              {noteModal.reviewerUserId !== userId && (
+                <button
+                  onClick={toggleNoteLike}
+                  disabled={noteLikeLoading}
+                  className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-colors disabled:opacity-50 ${
+                    noteLiked
+                      ? "border-danger/30 bg-[#f6e7e1] dark:bg-[#2a1510] text-danger"
+                      : "border-line bg-card text-muted hover:border-danger/30 hover:text-danger"
+                  }`}
+                >
+                  <span className="text-sm">{noteLiked ? "♥" : "♡"}</span>
+                  {noteLikeCount > 0 ? `${noteLikeCount} j'aime` : "J'aime"}
+                </button>
+              )}
               <button
-                onClick={toggleNoteLike}
-                disabled={noteLikeLoading}
-                className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-colors disabled:opacity-50 ${
-                  noteLiked
-                    ? "border-danger/30 bg-[#f6e7e1] dark:bg-[#2a1510] text-danger"
-                    : "border-line bg-card text-muted hover:border-danger/30 hover:text-danger"
-                }`}
+                onClick={() => setNoteModal(null)}
+                className="w-full rounded-xl border border-line bg-card py-2.5 text-[12px] font-medium text-muted hover:text-ink"
               >
-                <span className="text-sm">{noteLiked ? "♥" : "♡"}</span>
-                {noteLikeCount > 0 ? `${noteLikeCount} j'aime` : "J'aime"}
+                Fermer
               </button>
-            )}
-            <button
-              onClick={() => setNoteModal(null)}
-              className="w-full rounded-xl border border-line bg-card py-2.5 text-[12px] font-medium text-muted hover:text-ink"
-            >
-              Fermer
-            </button>
+            </div>
           </div>
         </div>
       )}
