@@ -577,62 +577,72 @@ function AddModal({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm"
       onClick={onClose}
     >
       <div
-        className="flex w-full max-w-sm flex-col gap-3 overflow-hidden rounded-t-3xl bg-paper p-5 sm:rounded-3xl"
+        className="flex w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-paper max-h-[85dvh]"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between">
+        {/* Header fixe */}
+        <div className="flex shrink-0 items-center justify-between px-5 pt-5 pb-3">
           <h3 className="font-serif text-base font-semibold text-ink">Nouveau repère</h3>
           <button onClick={onClose} className="text-xl font-light text-muted">✕</button>
         </div>
-        <input
-          value={tlTitle}
-          onChange={(e) => setTlTitle(e.target.value)}
-          placeholder="Titre de l'événement"
-          autoFocus
-          className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-[13px] text-ink placeholder:text-muted outline-none focus:border-violet"
-        />
-        <div className="flex gap-2">
-          <div className="flex-1">
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">Année début</p>
-            <input
-              type="number"
-              value={tlStart}
-              onChange={(e) => setTlStart(e.target.value)}
-              placeholder="1154 ou -44"
-              className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-[13px] text-ink placeholder:text-muted outline-none focus:border-violet"
-            />
-          </div>
-          <div className="flex-1">
-            <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">Année fin</p>
-            <input
-              type="number"
-              value={tlEnd}
-              onChange={(e) => setTlEnd(e.target.value)}
-              placeholder="optionnel"
-              className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-[13px] text-ink placeholder:text-muted outline-none focus:border-violet"
-            />
-          </div>
-        </div>
-        <select
-          value={tlBookId}
-          onChange={(e) => setTlBookId(e.target.value)}
-          className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-[13px] text-ink outline-none focus:border-violet"
+
+        {/* Contenu scrollable */}
+        <div
+          className="flex flex-col gap-3 overflow-y-auto overscroll-contain px-5 pb-3"
+          onTouchMove={(e) => e.stopPropagation()}
         >
-          <option value="">Lier à un livre (optionnel)</option>
-          {myBooks.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
-        </select>
-        <textarea
-          value={tlDesc}
-          onChange={(e) => setTlDesc(e.target.value)}
-          rows={2}
-          placeholder="Description ou notes…"
-          className="w-full resize-none rounded-xl border border-line bg-input px-3 py-2.5 text-[13px] text-ink placeholder:text-muted outline-none focus:border-violet"
-        />
-        <div className="flex gap-2">
+          <input
+            value={tlTitle}
+            onChange={(e) => setTlTitle(e.target.value)}
+            placeholder="Titre de l'événement"
+            autoFocus
+            className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-[13px] text-ink placeholder:text-muted outline-none focus:border-violet"
+          />
+          <div className="flex gap-2">
+            <div className="flex-1">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">Année début</p>
+              <input
+                type="number"
+                value={tlStart}
+                onChange={(e) => setTlStart(e.target.value)}
+                placeholder="1154 ou -44"
+                className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-[13px] text-ink placeholder:text-muted outline-none focus:border-violet"
+              />
+            </div>
+            <div className="flex-1">
+              <p className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted">Année fin</p>
+              <input
+                type="number"
+                value={tlEnd}
+                onChange={(e) => setTlEnd(e.target.value)}
+                placeholder="optionnel"
+                className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-[13px] text-ink placeholder:text-muted outline-none focus:border-violet"
+              />
+            </div>
+          </div>
+          <select
+            value={tlBookId}
+            onChange={(e) => setTlBookId(e.target.value)}
+            className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-[13px] text-ink outline-none focus:border-violet"
+          >
+            <option value="">Lier à un livre (optionnel)</option>
+            {myBooks.map((b) => <option key={b.id} value={b.id}>{b.title}</option>)}
+          </select>
+          <textarea
+            value={tlDesc}
+            onChange={(e) => setTlDesc(e.target.value)}
+            rows={4}
+            placeholder="Description ou notes…"
+            className="w-full resize-none rounded-xl border border-line bg-input px-3 py-2.5 text-[13px] text-ink placeholder:text-muted outline-none focus:border-violet"
+          />
+        </div>
+
+        {/* Footer fixe */}
+        <div className="flex shrink-0 gap-2 px-5 py-4">
           <button
             onClick={onClose}
             className="flex-1 rounded-2xl border border-line py-3 text-[13px] font-semibold text-muted"

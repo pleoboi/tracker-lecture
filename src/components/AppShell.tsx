@@ -338,6 +338,15 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
 }
 
 function BottomNav({ pathname, onPlus }: { pathname: string; onPlus: () => void }) {
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const check = () => setKeyboardOpen(window.innerHeight - vv.height > 150);
+    vv.addEventListener("resize", check);
+    return () => vv.removeEventListener("resize", check);
+  }, []);
+  if (keyboardOpen) return null;
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-card/95 backdrop-blur-md md:hidden">
       <nav className="mx-auto flex max-w-md items-end pt-1.5 pb-[max(env(safe-area-inset-bottom),_1rem)]">
