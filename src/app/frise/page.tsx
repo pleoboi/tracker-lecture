@@ -125,14 +125,6 @@ export default function FrisePage() {
 
   useEffect(() => { if (userId) loadEvents(); }, [userId, loadEvents]);
 
-  // Block ALL touchmove on document when modal open (only working iOS fix)
-  useEffect(() => {
-    const open = detail !== null || showAdd;
-    if (!open) return;
-    const prevent = (e: TouchEvent) => e.preventDefault();
-    document.addEventListener("touchmove", prevent, { passive: false });
-    return () => document.removeEventListener("touchmove", prevent);
-  }, [detail, showAdd]);
 
   const openAdd = async () => {
     setShowAdd(true);
@@ -456,11 +448,11 @@ export default function FrisePage() {
       {/* ── Detail modal ──────────────────────────────────────────────────────── */}
       {detail && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 px-4 pt-4 pb-24 backdrop-blur-sm [touch-action:none]"
           onClick={() => setDetail(null)}
         >
           <div
-            className="flex w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-paper max-h-[85dvh]"
+            className="flex w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-paper max-h-full"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header with book cover */}
@@ -497,10 +489,7 @@ export default function FrisePage() {
               </div>
             )}
 
-            <div
-              className="flex flex-col gap-3 overflow-y-auto overscroll-contain p-5"
-              onTouchMove={(e) => e.stopPropagation()}
-            >
+            <div className="flex flex-col gap-3 overflow-y-auto p-5 [touch-action:pan-y]">
               {/* Period */}
               <p className="font-serif text-2xl font-semibold text-violet-deep">
                 {fmtPeriod(detail.start_year, detail.end_year)}
@@ -577,11 +566,11 @@ function AddModal({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 px-4 pt-4 pb-24 backdrop-blur-sm [touch-action:none]"
       onClick={onClose}
     >
       <div
-        className="flex w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-paper max-h-[85dvh]"
+        className="flex w-full max-w-sm flex-col overflow-hidden rounded-3xl bg-paper max-h-full"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header fixe */}
@@ -592,8 +581,7 @@ function AddModal({
 
         {/* Contenu scrollable */}
         <div
-          className="flex flex-col gap-3 overflow-y-auto overscroll-contain px-5 pb-3"
-          onTouchMove={(e) => e.stopPropagation()}
+          className="flex flex-col gap-3 overflow-y-auto px-5 pb-3 [touch-action:pan-y]"
         >
           <input
             value={tlTitle}
