@@ -125,6 +125,13 @@ export default function FrisePage() {
 
   useEffect(() => { if (userId) loadEvents(); }, [userId, loadEvents]);
 
+  // Lock body scroll when a modal is open (prevents iOS scroll-through)
+  useEffect(() => {
+    const open = detail !== null || showAdd;
+    document.body.style.overflow = open ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [detail, showAdd]);
+
   const openAdd = async () => {
     setShowAdd(true);
     if (!booksLoaded && userId) {
@@ -488,7 +495,7 @@ export default function FrisePage() {
               </div>
             )}
 
-            <div className="flex flex-col gap-3 overflow-y-auto p-5">
+            <div className="flex flex-col gap-3 overflow-y-auto overscroll-contain p-5">
               {/* Period */}
               <p className="font-serif text-2xl font-semibold text-violet-deep">
                 {fmtPeriod(detail.start_year, detail.end_year)}
