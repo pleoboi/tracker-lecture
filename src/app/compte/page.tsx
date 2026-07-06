@@ -799,7 +799,7 @@ function fmtPeriod(start: number, end: number | null): string {
 
 const PREVIEW_COUNT = 3;
 
-function TimelineSection({ userId }: { userId: string }) {
+function TimelineSection() {
   const [events, setEvents] = useState<TLPreviewEvent[]>([]);
   const [total,  setTotal]  = useState(0);
   const [loading, setLoading] = useState(true);
@@ -807,18 +807,19 @@ function TimelineSection({ userId }: { userId: string }) {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      setLoading(true);
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser || cancelled) { setLoading(false); return; }
       let { data, count, error } = await supabase
         .from("user_timeline_events")
         .select("id, title, start_year, end_year, book_cover_url, book_title", { count: "exact" })
-        .eq("user_id", userId)
+        .eq("user_id", authUser.id)
         .order("start_year", { ascending: true })
         .limit(PREVIEW_COUNT);
       if (error) {
         const res = await supabase
           .from("user_timeline_events")
           .select("id, title, start_year, end_year", { count: "exact" })
-          .eq("user_id", userId)
+          .eq("user_id", authUser.id)
           .order("start_year", { ascending: true })
           .limit(PREVIEW_COUNT);
         data = res.data as typeof data;
@@ -830,7 +831,7 @@ function TimelineSection({ userId }: { userId: string }) {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [userId]);
+  }, []);
 
   const extra = total - PREVIEW_COUNT;
 
@@ -1439,7 +1440,7 @@ export default function ComptePage() {
           </div>
 
           {/* Frise historique */}
-          {userId && <TimelineSection userId={userId} />}
+          <TimelineSection />
 
           {/* Enrichissement couvertures */}
           <div className="rounded-2xl border border-line bg-card p-4">
