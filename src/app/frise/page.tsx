@@ -291,7 +291,7 @@ export default function FrisePage() {
                 {/* Span bar for periods */}
                 {ev.end_year != null && (
                   <div
-                    className="absolute rounded-full transition-all duration-200"
+                    className="absolute cursor-pointer rounded-full transition-all duration-200"
                     style={{
                       left:       clampedDotX,
                       top:        AXIS_Y - 2,
@@ -300,6 +300,9 @@ export default function FrisePage() {
                       background: isHovered ? "var(--color-violet)" : "color-mix(in srgb, var(--color-violet) 30%, transparent)",
                       opacity:    isHovered ? 1 : 0.6,
                     }}
+                    onMouseEnter={() => setHoveredId(ev.id)}
+                    onMouseLeave={() => setHoveredId(null)}
+                    onClick={() => setDetail(ev)}
                   />
                 )}
 
