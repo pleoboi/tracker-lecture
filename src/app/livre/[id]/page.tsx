@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth-context";
 import type { Book, ReadingLog, ReadSession } from "../../../lib/types";
@@ -61,6 +62,88 @@ function Confetti() {
   );
 }
 
+/* ── Graphique évolution des notes ─────────────────────────────────── */
+interface RatingPoint { page: number; rating: number }
+
+function buildChartData(history: { page_at: number; rating: number }[], totalPages: number): RatingPoint[] {
+  const sorted = [...history].sort((a, b) => a.page_at - b.page_at);
+  const points: RatingPoint[] = sorted.map(h => ({ page: h.page_at, rating: h.rating }));
+  // Prolonge jusqu'à totalPages avec la dernière note connue (carry-forward)
+  const last = points[points.length - 1];
+  if (last && totalPages > last.page) {
+    points.push({ page: totalPages, rating: last.rating });
+  }
+  return points;
+}
+
+function RatingEvolutionChart({ history, totalPages }: { history: { page_at: number; rating: number }[]; totalPages: number }) {
+  if (!history.length) {
+    return (
+      <p className="text-[11px] italic text-muted">
+        Enregistrez vos notes au fil des chapitres pour voir votre graphique d'évolution.
+      </p>
+    );
+  }
+
+  const data = buildChartData(history, totalPages);
+
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: { payload: RatingPoint }[] }) => {
+    if (!active || !payload?.length) return null;
+    const d = payload[0].payload;
+    return (
+      <div className="rounded-xl border border-line bg-card px-2.5 py-1.5 shadow-sm">
+        <p className="text-[10px] text-muted">p. {d.page}</p>
+        <p className="font-serif text-[12px] font-semibold text-violet-deep">★ {Number(d.rating).toFixed(1)}/5</p>
+      </div>
+    );
+  };
+
+  return (
+    <div className="pt-1">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-muted">Évolution de ta note</p>
+      <ResponsiveContainer width="100%" height={108}>
+        <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: -26 }}>
+          <defs>
+            <linearGradient id="ratingGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--color-violet)" stopOpacity={0.28} />
+              <stop offset="100%" stopColor="var(--color-violet)" stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-line)" vertical={false} />
+          <XAxis
+            dataKey="page"
+            type="number"
+            domain={[0, totalPages || "auto"]}
+            tickCount={4}
+            tickFormatter={(v: number) => `${v}`}
+            tick={{ fontSize: 9, fill: "var(--color-muted)" }}
+            tickLine={false}
+            axisLine={false}
+          />
+          <YAxis
+            domain={[0, 5]}
+            ticks={[1, 2, 3, 4, 5]}
+            tick={{ fontSize: 9, fill: "var(--color-muted)" }}
+            tickLine={false}
+            axisLine={false}
+          />
+          <Tooltip content={<CustomTooltip />} cursor={{ stroke: "var(--color-violet)", strokeWidth: 1, strokeDasharray: "4 2" }} />
+          <Area
+            type="stepAfter"
+            dataKey="rating"
+            stroke="var(--color-violet)"
+            strokeWidth={1.5}
+            fill="url(#ratingGrad)"
+            dot={{ fill: "var(--color-violet)", r: 3, strokeWidth: 0 }}
+            activeDot={{ r: 5, fill: "var(--color-violet)", strokeWidth: 0 }}
+            isAnimationActive={false}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 /* ── Page principale ───────────────────────────────────────────────── */
 export default function BookDetailPage() {
   const params = useParams();
@@ -109,6 +192,9 @@ export default function BookDetailPage() {
 
   // Mark as read (no date)
   const [markingRead, setMarkingRead] = useState(false);
+
+  // Historique des notes intermédiaires (graphique)
+  const [ratingHistory, setRatingHistory] = useState<{ page_at: number; rating: number }[]>([]);
 
   // Correction inline de la progression
   const [editingProgress, setEditingProgress] = useState(false);
@@ -187,6 +273,16 @@ export default function BookDetailPage() {
     ]);
     setLogs((l as ReadingLog[]) || []);
     setReadSessions((sess as ReadSession[]) || []);
+
+    // Étape C2 : historique des notes intermédiaires
+    const { data: rh } = await supabase
+      .from("book_ratings_history")
+      .select("page_at, rating")
+      .eq("book_id", ownId)
+      .eq("user_id", userId)
+      .not("page_at", "is", null)
+      .order("page_at", { ascending: true });
+    setRatingHistory((rh ?? []) as { page_at: number; rating: number }[]);
 
     // Étape D : activité des autres membres
     const { data: otherBooks } = await supabase
@@ -892,6 +988,11 @@ export default function BookDetailPage() {
               )}
             </div>
           )}
+
+          {/* Graphique évolution des notes */}
+          <div className="border-t border-line pt-3">
+            <RatingEvolutionChart history={ratingHistory} totalPages={activeBook!.pages} />
+          </div>
 
           {/* Historique des relectures */}
           {done && (activeBook!.date_started || activeBook!.date_read || readSessions.length > 0) && (
