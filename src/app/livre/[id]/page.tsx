@@ -65,18 +65,25 @@ function Confetti() {
 /* ── Graphique évolution des notes ─────────────────────────────────── */
 interface RatingPoint { page: number; rating: number }
 
-function buildChartData(history: { page_at: number; rating: number }[], totalPages: number): RatingPoint[] {
+function buildChartData(history: { page_at: number; rating: number }[], currentProgress: number): RatingPoint[] {
+  if (!history.length) return [];
   const sorted = [...history].sort((a, b) => a.page_at - b.page_at);
-  const points: RatingPoint[] = sorted.map(h => ({ page: h.page_at, rating: h.rating }));
-  // Prolonge jusqu'à totalPages avec la dernière note connue (carry-forward)
-  const last = points[points.length - 1];
-  if (last && totalPages > last.page) {
-    points.push({ page: totalPages, rating: last.rating });
+  const firstRating = sorted[0].rating;
+  const points: RatingPoint[] = [{ page: 0, rating: firstRating }];
+  for (const h of sorted) {
+    if (h.page_at <= currentProgress) {
+      points.push({ page: h.page_at, rating: h.rating });
+    }
+  }
+  const lastInRange = [...sorted].filter(h => h.page_at <= currentProgress).at(-1);
+  const lastRating = lastInRange?.rating ?? firstRating;
+  if (points[points.length - 1].page < currentProgress) {
+    points.push({ page: currentProgress, rating: lastRating });
   }
   return points;
 }
 
-function RatingEvolutionChart({ history, totalPages }: { history: { page_at: number; rating: number }[]; totalPages: number }) {
+function RatingEvolutionChart({ history, currentProgress }: { history: { page_at: number; rating: number }[]; currentProgress: number }) {
   if (!history.length) {
     return (
       <p className="text-[11px] italic text-muted">
@@ -85,7 +92,7 @@ function RatingEvolutionChart({ history, totalPages }: { history: { page_at: num
     );
   }
 
-  const data = buildChartData(history, totalPages);
+  const data = buildChartData(history, currentProgress);
 
   const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: { payload: RatingPoint }[] }) => {
     if (!active || !payload?.length) return null;
@@ -113,7 +120,7 @@ function RatingEvolutionChart({ history, totalPages }: { history: { page_at: num
           <XAxis
             dataKey="page"
             type="number"
-            domain={[0, totalPages || "auto"]}
+            domain={[0, currentProgress || "auto"]}
             tickCount={4}
             tickFormatter={(v: number) => `${v}`}
             tick={{ fontSize: 9, fill: "var(--color-muted)" }}
@@ -991,7 +998,7 @@ export default function BookDetailPage() {
 
           {/* Graphique évolution des notes */}
           <div className="border-t border-line pt-3">
-            <RatingEvolutionChart history={ratingHistory} totalPages={activeBook!.pages} />
+            <RatingEvolutionChart history={ratingHistory} currentProgress={activeBook!.progress} />
           </div>
 
           {/* Historique des relectures */}
