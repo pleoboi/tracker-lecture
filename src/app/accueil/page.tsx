@@ -437,6 +437,23 @@ export default function AccueilPage() {
     return () => window.removeEventListener("books-updated", onUpdate);
   }, [load]);
 
+  // IntersectionObserver — révélation des éléments .reveal au scroll
+  useEffect(() => {
+    const els = document.querySelectorAll<HTMLElement>(".reveal");
+    if (!els.length) return;
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.classList.add("visible");
+          io.unobserve(e.target);
+        }
+      }),
+      { threshold: 0.08, rootMargin: "0px 0px -20px 0px" }
+    );
+    els.forEach((el) => io.observe(el));
+    return () => io.disconnect();
+  }, [loading, activityLoading]);
+
   const showToast = (m: string) => {
     setToast(m);
     setTimeout(() => setToast(null), 3500);
@@ -492,12 +509,12 @@ export default function AccueilPage() {
   const hasMore = reading.length > 3;
 
   return (
-    <div className="animate-fadeIn flex flex-col gap-6 pt-4">
+    <div className="flex flex-col gap-7 pt-4">
       {/* Header */}
-      <header className="flex items-start justify-between">
-        <div className="flex flex-col gap-1">
-          <p className="text-xs font-medium uppercase tracking-wider text-muted">{today}</p>
-          <h1 className="font-serif text-3xl font-black text-ink">
+      <header className="reveal flex items-start justify-between" style={{ "--delay": "0s" } as React.CSSProperties}>
+        <div className="flex flex-col gap-1.5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">{today}</p>
+          <h1 className="font-serif text-[2rem] font-black leading-tight text-ink">
             {greeting()}{displayName ? `, ${displayName}` : ""}
           </h1>
         </div>
@@ -520,11 +537,11 @@ export default function AccueilPage() {
 
       {/* En cours */}
       {loading ? (
-        <div className="py-20 text-center text-xs font-medium uppercase tracking-wider text-muted">
+        <div className="reveal py-20 text-center text-xs font-medium uppercase tracking-wider text-muted" style={{ "--delay": "0.08s" } as React.CSSProperties}>
           Chargement…
         </div>
       ) : reading.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-line bg-card p-8 text-center">
+        <div className="reveal rounded-2xl border border-dashed border-line bg-card p-8 text-center" style={{ "--delay": "0.08s" } as React.CSSProperties}>
           <p className="font-serif text-lg text-ink">Aucune lecture en cours</p>
           <p className="mt-1 text-sm text-muted">Ajoute ton premier livre pour démarrer.</p>
           <Button onClick={() => setShowAdd(true)} className="mt-4">
@@ -532,19 +549,21 @@ export default function AccueilPage() {
           </Button>
         </div>
       ) : (
-        <section className="flex flex-col gap-3">
+        <section className="reveal flex flex-col gap-3" style={{ "--delay": "0.08s" } as React.CSSProperties}>
           <div className="flex items-center justify-between">
-            <h2 className="font-serif text-lg font-medium text-ink">
-              En cours
-              <span className="ml-2 font-sans text-sm font-normal text-muted">({reading.length})</span>
-            </h2>
-            <Link href="/compte" className="text-xs font-medium text-violet-deep">
+            <div className="flex items-center gap-2">
+              <h2 className="font-serif text-lg font-semibold text-ink">En cours</h2>
+              <span className="font-sans text-sm text-muted">({reading.length})</span>
+            </div>
+            <Link href="/compte" className="text-[11px] font-semibold text-violet-deep transition-opacity hover:opacity-70">
               Bibliothèque →
             </Link>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {displayedReading.map((b) => (
-              <BookCard key={b.id} book={b} />
+            {displayedReading.map((b, i) => (
+              <div key={b.id} className="reveal" style={{ "--delay": `${0.05 * i}s` } as React.CSSProperties}>
+                <BookCard book={b} />
+              </div>
             ))}
           </div>
           {hasMore && (
@@ -561,8 +580,8 @@ export default function AccueilPage() {
       )}
 
       {/* Activité du club */}
-      <section className="flex flex-col gap-3">
-        <h2 className="font-serif text-lg font-medium text-ink">Activité du club</h2>
+      <section className="reveal flex flex-col gap-3" style={{ "--delay": "0.16s" } as React.CSSProperties}>
+        <h2 className="font-serif text-lg font-semibold text-ink">Activité du club</h2>
 
         {/* Champion du jour */}
         {todayChampion && (
@@ -635,8 +654,8 @@ export default function AccueilPage() {
 
       {/* Challenges actifs */}
       {activeChallenges.length > 0 && (
-        <section className="flex flex-col gap-3">
-          <h2 className="font-serif text-lg font-medium text-ink">Challenges actifs</h2>
+        <section className="reveal flex flex-col gap-3" style={{ "--delay": "0.24s" } as React.CSSProperties}>
+          <h2 className="font-serif text-lg font-semibold text-ink">Challenges actifs</h2>
           <div className="flex gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             {activeChallenges.map((c) => {
               const daysLeft = Math.max(0, Math.ceil((new Date(c.end_date).getTime() - Date.now()) / 86400000));
@@ -771,27 +790,26 @@ export default function AccueilPage() {
 function BookCard({ book }: { book: Book }) {
   const p = pct(book);
   return (
-    <Link
-      href={`/livre/${book.id}`}
-      className="flex items-center gap-3.5 rounded-2xl border border-line bg-card p-3 transition-colors hover:border-violet/50"
-    >
-      <Cover
-        id={book.id}
-        title={book.title}
-        coverUrl={book.cover_url}
-        className="h-[80px] w-[56px] shrink-0"
-        rounded="rounded-md"
-      />
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <div>
-          <h3 className="truncate font-serif text-[15px] font-medium text-ink">{book.title}</h3>
-          <p className="truncate text-[11.5px] text-muted">{book.author}</p>
+    <Link href={`/livre/${book.id}`} className="card-lift bezel block">
+      <div className="bezel-inner flex items-center gap-3.5 p-3">
+        <Cover
+          id={book.id}
+          title={book.title}
+          coverUrl={book.cover_url}
+          className="h-[80px] w-[56px] shrink-0"
+          rounded="rounded-md"
+        />
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <div>
+            <h3 className="truncate font-serif text-[15px] font-semibold text-ink">{book.title}</h3>
+            <p className="truncate text-[11.5px] text-muted">{book.author}</p>
+          </div>
+          <div className="nums flex items-center justify-between text-[11px]">
+            <span className="font-medium text-ink-2">p. {book.progress} / {book.pages}</span>
+            <span className="font-bold text-violet-deep">{p}%</span>
+          </div>
+          <ProgressBar value={p / 100} className="h-1.5" />
         </div>
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="font-medium text-ink-2">p. {book.progress} / {book.pages}</span>
-          <span className="font-semibold text-violet-deep">{p}%</span>
-        </div>
-        <ProgressBar value={p / 100} className="h-1.5" />
       </div>
     </Link>
   );
@@ -891,7 +909,7 @@ function ActivityCarouselItem({
       {/* Couverture cliquable */}
       <Link
         href={`/livre/${log.book_id}`}
-        className="group relative block overflow-hidden rounded-xl shadow-sm transition-transform active:scale-[0.97] hover:scale-[1.03]"
+        className="group relative block overflow-hidden rounded-xl shadow-sm transition-[transform,box-shadow] duration-[220ms] [transition-timing-function:cubic-bezier(0.32,0.72,0,1)] active:scale-[0.96] hover:scale-[1.04] hover:shadow-[0_8px_20px_color-mix(in_srgb,var(--color-violet)_20%,transparent)]"
       >
         <Cover
           id={log.book_id}

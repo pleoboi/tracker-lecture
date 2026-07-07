@@ -101,7 +101,7 @@ export function Button({
   variant?: "primary" | "ghost";
 }) {
   const base =
-    "inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-[13px] font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+    "inline-flex items-center justify-center gap-2 rounded-2xl px-4 py-3 text-[13px] font-semibold transition-[colors,transform] duration-[180ms] [transition-timing-function:cubic-bezier(0.32,0.72,0,1)] active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed";
   const styles =
     variant === "primary"
       ? "bg-violet text-cream hover:bg-violet-deep"

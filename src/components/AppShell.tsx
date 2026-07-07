@@ -270,11 +270,16 @@ function TopBar({
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium transition-colors ${
-                  active ? "bg-violet-soft font-semibold text-violet-deep" : "text-ink-2 hover:bg-card"
-                }`}
+                className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium"
+                style={{
+                  background: active ? "color-mix(in srgb, var(--color-violet) 12%, transparent)" : "transparent",
+                  color: active ? "var(--color-violet-deep)" : "var(--color-ink-2)",
+                  fontWeight: active ? 600 : 500,
+                  boxShadow: active ? "0 0 0 1px color-mix(in srgb, var(--color-violet) 20%, transparent)" : "none",
+                  transition: "background 0.2s cubic-bezier(0.32,0.72,0,1), color 0.2s cubic-bezier(0.32,0.72,0,1), box-shadow 0.2s cubic-bezier(0.32,0.72,0,1)",
+                }}
               >
-                <span className={`[&>svg]:h-[18px] [&>svg]:w-[18px] ${active ? "text-violet-deep" : "text-muted"}`}>
+                <span style={{ color: active ? "var(--color-violet-deep)" : "var(--color-muted)" }} className="[&>svg]:h-[17px] [&>svg]:w-[17px]">
                   {item.icon}
                 </span>
                 {item.name}
@@ -322,15 +327,33 @@ function TopBar({
 function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
   const active = isActive(pathname, item.href);
   return (
-    <Link href={item.href} className="flex flex-1 flex-col items-center gap-0.5 py-1.5">
+    <Link
+      href={item.href}
+      className="flex flex-1 flex-col items-center gap-0.5 py-1"
+      style={{ transition: "opacity 0.18s cubic-bezier(0.32,0.72,0,1)" }}
+    >
       <span
-        className={`flex h-8 w-8 items-center justify-center rounded-xl transition-colors [&>svg]:h-[19px] [&>svg]:w-[19px] ${
-          active ? "bg-violet-soft text-violet-deep" : "text-muted"
-        }`}
+        className={`flex h-9 w-9 items-center justify-center rounded-2xl [&>svg]:h-[20px] [&>svg]:w-[20px]`}
+        style={{
+          background: active
+            ? "color-mix(in srgb, var(--color-violet) 14%, transparent)"
+            : "transparent",
+          color: active ? "var(--color-violet-deep)" : "var(--color-muted)",
+          transition: "background 0.22s cubic-bezier(0.32,0.72,0,1), color 0.22s cubic-bezier(0.32,0.72,0,1)",
+          boxShadow: active
+            ? "0 0 0 1px color-mix(in srgb, var(--color-violet) 22%, transparent)"
+            : "none",
+        }}
       >
         {item.icon}
       </span>
-      <span className={`text-[9px] font-medium ${active ? "text-violet-deep" : "text-muted"}`}>
+      <span
+        className="text-[9px] font-semibold tracking-wide"
+        style={{
+          color: active ? "var(--color-violet-deep)" : "var(--color-muted)",
+          transition: "color 0.22s cubic-bezier(0.32,0.72,0,1)",
+        }}
+      >
         {item.name}
       </span>
     </Link>
@@ -348,8 +371,26 @@ function BottomNav({ pathname, onPlus }: { pathname: string; onPlus: () => void 
   }, []);
   if (keyboardOpen) return null;
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-card/95 backdrop-blur-md md:hidden">
-      <nav className="mx-auto flex max-w-md items-end pt-1.5 pb-[max(env(safe-area-inset-bottom),_1rem)]">
+    <div
+      className="fixed inset-x-0 bottom-0 z-50 md:hidden"
+      style={{ paddingBottom: "max(env(safe-area-inset-bottom), 8px)" }}
+    >
+      {/* Fond avec dégradé de masque vers le bas */}
+      <div
+        className="absolute inset-x-0 bottom-0 top-[-20px] pointer-events-none"
+        style={{
+          background: "linear-gradient(to top, color-mix(in srgb, var(--color-paper) 92%, transparent) 60%, transparent)",
+        }}
+      />
+      <nav
+        className="relative mx-auto flex max-w-[340px] items-end rounded-[24px] border border-line px-2 pt-1.5 pb-2"
+        style={{
+          background: "color-mix(in srgb, var(--color-card) 92%, transparent)",
+          backdropFilter: "blur(20px) saturate(1.4)",
+          WebkitBackdropFilter: "blur(20px) saturate(1.4)",
+          boxShadow: "0 8px 32px color-mix(in srgb, var(--color-ink) 10%, transparent), 0 1px 0 color-mix(in srgb, var(--color-violet) 8%, transparent) inset",
+        }}
+      >
         {mobileNavLeft.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} />
         ))}
@@ -359,9 +400,17 @@ function BottomNav({ pathname, onPlus }: { pathname: string; onPlus: () => void 
           <button
             onClick={onPlus}
             aria-label="Actions rapides"
-            className="-mt-5 flex h-14 w-14 items-center justify-center rounded-full bg-violet shadow-[0_4px_16px_rgba(108,75,163,0.45)] transition-transform active:scale-95"
+            className="-mt-6 flex h-[52px] w-[52px] items-center justify-center rounded-full bg-violet"
+            style={{
+              boxShadow: "0 6px 20px color-mix(in srgb, var(--color-violet) 55%, transparent), 0 2px 6px color-mix(in srgb, var(--color-violet) 30%, transparent)",
+              transition: "transform 0.14s cubic-bezier(0.32,0.72,0,1), box-shadow 0.14s cubic-bezier(0.32,0.72,0,1)",
+            }}
+            onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.07)")}
+            onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")}
+            onMouseDown={e => (e.currentTarget.style.transform = "scale(0.93)")}
+            onMouseUp={e => (e.currentTarget.style.transform = "scale(1)")}
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" className="h-7 w-7">
+            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.4" className="h-6 w-6">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
             </svg>
           </button>
