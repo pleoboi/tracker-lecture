@@ -19,6 +19,7 @@ import {
   CriticalDivergence,
   PublicationTimeline,
 } from "../../../components/AdvancedStats";
+import { notifyUser } from "../../../lib/push.client";
 
 const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 const VIOLET = "var(--color-violet)";
@@ -456,6 +457,12 @@ export default function MembrePage() {
         book_id: noteModal.bookId,
         book_title: noteModal.bookTitle ?? "",
       });
+      const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
+      notifyUser(
+        noteModal.reviewerUserId,
+        "Swena",
+        `${senderName} a aimé ta note sur "${noteModal.bookTitle || "ton livre"}"`,
+      );
     }
     setNoteLikeLoading(false);
   };
@@ -472,6 +479,8 @@ export default function MembrePage() {
       await supabase.from("user_follows").insert({ follower_id: user.id, following_id: memberId });
       setIsFollowing(true);
       setFollowersCount((n) => n + 1);
+      const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
+      notifyUser(memberId, "Swena", `${senderName} a commencé à te suivre`);
     }
     setLoadingFollow(false);
   };
@@ -561,6 +570,10 @@ export default function MembrePage() {
             challenge_id: challengeId,
             book_title: challengeForm.title.trim(),
           }))
+        );
+        const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
+        inviteIds.forEach((uid) =>
+          notifyUser(uid, "Challenge", `${senderName} t'invite à rejoindre le challenge "${challengeForm.title.trim()}"`),
         );
       }
     }

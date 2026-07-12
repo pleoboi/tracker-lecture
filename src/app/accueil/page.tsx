@@ -10,6 +10,7 @@ import { Cover, ProgressBar, Button, AvatarImg } from "../../components/ui";
 import AddBookModal from "../../components/AddBookModal";
 import LogReadingModal from "../../components/LogReadingModal";
 import PodiumModal from "../../components/PodiumModal";
+import { notifyUser } from "../../lib/push.client";
 
 const today = new Intl.DateTimeFormat("fr-FR", {
   weekday: "long",
@@ -371,6 +372,7 @@ export default function AccueilPage() {
           book_id: log.bookId,
           book_title: log.bookTitle,
         });
+        notifyUser(log.user_id, "Swena", `${displayName} a liké ta session de lecture`);
       }
     }
   }, [userId, likeMap]);
@@ -500,6 +502,11 @@ export default function AccueilPage() {
         book_id: noteModal.bookId,
         book_title: noteModal.bookTitle,
       });
+      notifyUser(
+        noteModal.reviewerUserId,
+        "Swena",
+        `${displayName} a aimé ta note sur "${noteModal.bookTitle || "ton livre"}"`,
+      );
     }
     setNoteLikeLoading(false);
   };
