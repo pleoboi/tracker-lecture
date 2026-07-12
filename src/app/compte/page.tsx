@@ -902,6 +902,78 @@ export default function ComptePage() {
     else { document.documentElement.classList.remove("dark"); localStorage.setItem("theme", "light"); }
   };
 
+  // Notifications push
+  const [notifStatus, setNotifStatus] = useState<"granted" | "default" | "denied" | null>(null);
+  const [notifEnabled, setNotifEnabled] = useState(false);
+  const [notifLoading, setNotifLoading] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    const perm = Notification.permission as "granted" | "default" | "denied";
+    setNotifStatus(perm);
+    if (perm === "granted" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.ready.then(async (reg) => {
+        const sub = await reg.pushManager.getSubscription();
+        setNotifEnabled(!!sub);
+      });
+    }
+  }, []);
+
+  function urlBase64ToUint8Array(b64: string): ArrayBuffer {
+    const padding = "=".repeat((4 - (b64.length % 4)) % 4);
+    const base64 = (b64 + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    const arr = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+    return arr.buffer as ArrayBuffer;
+  }
+
+  const handleToggleNotif = async () => {
+    if (notifLoading || notifStatus === "denied" || !("serviceWorker" in navigator)) return;
+    setNotifLoading(true);
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (notifEnabled) {
+        const sub = await reg.pushManager.getSubscription();
+        if (sub) {
+          const endpoint = sub.endpoint;
+          await sub.unsubscribe();
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            await fetch("/api/push/subscribe", {
+              method: "DELETE",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+              body: JSON.stringify({ endpoint }),
+            });
+          }
+        }
+        setNotifEnabled(false);
+      } else {
+        const permission = await Notification.requestPermission();
+        setNotifStatus(permission as "granted" | "default" | "denied");
+        if (permission === "granted") {
+          const existing = await reg.pushManager.getSubscription();
+          const sub = existing ?? await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
+          });
+          const { keys } = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            await fetch("/api/push/subscribe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+              body: JSON.stringify({ endpoint: sub.endpoint, p256dh: keys.p256dh, auth: keys.auth }),
+            });
+          }
+          setNotifEnabled(true);
+          localStorage.removeItem("swena_push_dismissed");
+        }
+      }
+    } catch { /* permission refusée ou erreur SW */ }
+    setNotifLoading(false);
+  };
+
   // Profile
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [editingAvatar, setEditingAvatar] = useState(false);
@@ -1544,6 +1616,34 @@ export default function ComptePage() {
               <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-cream shadow transition-transform ${darkMode ? "translate-x-5" : "translate-x-0.5"}`} />
             </div>
           </button>
+
+          {/* Toggle notifications */}
+          {notifStatus !== null && (
+            <button
+              onClick={handleToggleNotif}
+              disabled={notifLoading || notifStatus === "denied"}
+              className="flex w-full items-center justify-between rounded-2xl border border-line bg-card p-4 transition-colors hover:border-violet/40 disabled:opacity-60"
+            >
+              <div className="flex items-center gap-3">
+                <span className="text-lg">🔔</span>
+                <div>
+                  <p className="text-left font-serif text-[15px] font-medium text-ink">Notifications</p>
+                  <p className="text-left text-xs text-muted">
+                    {notifStatus === "denied"
+                      ? "Bloquées dans les réglages du navigateur"
+                      : notifEnabled
+                      ? "Activées"
+                      : "Désactivées"}
+                  </p>
+                </div>
+              </div>
+              {notifStatus !== "denied" && (
+                <div className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${notifEnabled ? "bg-violet" : "bg-line"}`}>
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-cream shadow transition-transform ${notifEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
+                </div>
+              )}
+            </button>
+          )}
 
           <Button
             variant="ghost"

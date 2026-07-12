@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
@@ -515,8 +515,73 @@ export default function AccueilPage() {
   const displayedReading = showAllReading ? reading : reading.slice(0, 3);
   const hasMore = reading.length > 3;
 
+  // ── Pull-to-refresh ─────────────────────────────────────────────────────────
+  const touchStartY = useRef(0);
+  const [pullProgress, setPullProgress] = useState(0);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const PULL_THRESHOLD = 72;
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    if (window.scrollY === 0) touchStartY.current = e.touches[0].clientY;
+    else touchStartY.current = 0;
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartY.current) return;
+    const delta = e.touches[0].clientY - touchStartY.current;
+    if (delta > 0) setPullProgress(Math.min(delta / PULL_THRESHOLD, 1.3));
+    else { touchStartY.current = 0; setPullProgress(0); }
+  };
+
+  const onTouchEnd = async () => {
+    if (pullProgress >= 1 && !isRefreshing) {
+      setIsRefreshing(true);
+      setPullProgress(0);
+      touchStartY.current = 0;
+      await Promise.all([load(), loadClub()]);
+      setIsRefreshing(false);
+    } else {
+      setPullProgress(0);
+      touchStartY.current = 0;
+    }
+  };
+
   return (
-    <div className="flex flex-col gap-7 pt-4">
+    <div
+      className="flex flex-col gap-7 pt-4"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* Pull-to-refresh indicator */}
+      <div
+        className="flex items-center justify-center -mt-4 overflow-hidden"
+        style={{
+          height: isRefreshing ? 36 : pullProgress > 0 ? Math.min(pullProgress, 1) * 36 : 0,
+          transition: pullProgress === 0 ? "height 0.25s ease" : "none",
+          marginBottom: isRefreshing || pullProgress > 0 ? -16 : -36,
+        }}
+      >
+        <div
+          className="flex items-center gap-2 text-muted text-[11px]"
+          style={{ opacity: isRefreshing ? 1 : Math.min(pullProgress, 1) }}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
+            style={{ transform: isRefreshing ? "none" : `rotate(${pullProgress * 360}deg)` }}
+          >
+            <path d="M23 4v6h-6M1 20v-6h6" />
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+          </svg>
+          <span>{isRefreshing ? "Actualisation…" : pullProgress >= 1 ? "Relâcher" : "Actualiser"}</span>
+        </div>
+      </div>
       {/* Header */}
       <header className="reveal flex items-start justify-between" style={{ "--delay": "0s" } as React.CSSProperties}>
         <div className="flex flex-col gap-1.5">

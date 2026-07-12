@@ -1,5 +1,5 @@
-// Swena — Service Worker v1
-// Gère les notifications push et les clics sur notification
+// Swena — Service Worker v2
+// tag/renotify/badge supprimés : certains mobiles remplacent silencieusement les notifs avec ces options
 
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => e.waitUntil(clients.claim()));
@@ -15,9 +15,6 @@ self.addEventListener("push", (event) => {
   const options = {
     body: data.body || "",
     icon: "/apple-touch-icon.png",
-    badge: "/icon.png",
-    tag: data.tag || "swena-notif",
-    renotify: true,
     data: { url: data.url || "/accueil" },
   };
   event.waitUntil(self.registration.showNotification(data.title || "Swena", options));
