@@ -4,6 +4,8 @@ import "./globals.css";
 import AppShell from "../components/AppShell";
 import { AuthProvider } from "../lib/auth-context";
 import GlobalBadgeChecker from "../components/GlobalBadgeChecker";
+import PushPermissionPrompt from "../components/PushPermissionPrompt";
+import ServiceWorkerRegistrar from "../components/ServiceWorkerRegistrar";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -62,6 +64,8 @@ export default function RootLayout({
         <AuthProvider>
           <AppShell>{children}</AppShell>
           <GlobalBadgeChecker />
+          <PushPermissionPrompt />
+          <ServiceWorkerRegistrar />
         </AuthProvider>
       </body>
     </html>
