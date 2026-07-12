@@ -2,7 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS user_push_subscriptions (
   id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id    uuid REFERENCES profiles(id) ON DELETE CASCADE NOT NULL,
+  user_id    uuid REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   endpoint   text UNIQUE NOT NULL,
   p256dh     text NOT NULL,
   auth       text NOT NULL,
@@ -21,6 +21,4 @@ CREATE POLICY "push_insert_own" ON user_push_subscriptions
 CREATE POLICY "push_delete_own" ON user_push_subscriptions
   FOR DELETE USING (auth.uid() = user_id);
 
--- Le service role peut tout lire (pour l'envoi côté serveur)
-CREATE POLICY "push_service_role_select" ON user_push_subscriptions
-  FOR SELECT USING (true);
+-- Le service role bypass RLS nativement — pas besoin de policy dédiée
