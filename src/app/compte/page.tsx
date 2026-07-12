@@ -906,6 +906,7 @@ export default function ComptePage() {
   const [notifStatus, setNotifStatus] = useState<"granted" | "default" | "denied" | null>(null);
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [notifLoading, setNotifLoading] = useState(false);
+  const [notifTestResult, setNotifTestResult] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
@@ -972,6 +973,23 @@ export default function ComptePage() {
       }
     } catch { /* permission refusée ou erreur SW */ }
     setNotifLoading(false);
+  };
+
+  const handleTestNotif = async () => {
+    setNotifTestResult(null);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setNotifTestResult("Non connecté"); return; }
+    const res = await fetch("/api/push/test", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const json = await res.json();
+    if (!res.ok) {
+      setNotifTestResult(`Erreur : ${json.error}`);
+    } else {
+      setNotifTestResult(`Envoyé (${json.sent}/${json.subscriptions} souscription${json.subscriptions > 1 ? "s" : ""})`);
+    }
+    setTimeout(() => setNotifTestResult(null), 4000);
   };
 
   // Profile
@@ -1619,30 +1637,40 @@ export default function ComptePage() {
 
           {/* Toggle notifications */}
           {notifStatus !== null && (
-            <button
-              onClick={handleToggleNotif}
-              disabled={notifLoading || notifStatus === "denied"}
-              className="flex w-full items-center justify-between rounded-2xl border border-line bg-card p-4 transition-colors hover:border-violet/40 disabled:opacity-60"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-lg">🔔</span>
-                <div>
-                  <p className="text-left font-serif text-[15px] font-medium text-ink">Notifications</p>
-                  <p className="text-left text-xs text-muted">
-                    {notifStatus === "denied"
-                      ? "Bloquées dans les réglages du navigateur"
-                      : notifEnabled
-                      ? "Activées"
-                      : "Désactivées"}
-                  </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleToggleNotif}
+                disabled={notifLoading || notifStatus === "denied"}
+                className="flex w-full items-center justify-between rounded-2xl border border-line bg-card p-4 transition-colors hover:border-violet/40 disabled:opacity-60"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-lg">🔔</span>
+                  <div>
+                    <p className="text-left font-serif text-[15px] font-medium text-ink">Notifications</p>
+                    <p className="text-left text-xs text-muted">
+                      {notifStatus === "denied"
+                        ? "Bloquées dans les réglages du navigateur"
+                        : notifEnabled
+                        ? "Activées"
+                        : "Désactivées"}
+                    </p>
+                  </div>
                 </div>
-              </div>
-              {notifStatus !== "denied" && (
-                <div className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${notifEnabled ? "bg-violet" : "bg-line"}`}>
-                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-cream shadow transition-transform ${notifEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
-                </div>
+                {notifStatus !== "denied" && (
+                  <div className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${notifEnabled ? "bg-violet" : "bg-line"}`}>
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-cream shadow transition-transform ${notifEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
+                  </div>
+                )}
+              </button>
+              {notifEnabled && (
+                <button
+                  onClick={handleTestNotif}
+                  className="rounded-2xl border border-line bg-card px-4 py-2.5 text-left text-[12px] font-medium text-muted transition-colors hover:border-violet/40 hover:text-violet-deep"
+                >
+                  {notifTestResult ?? "Envoyer une notification test"}
+                </button>
               )}
-            </button>
+            </div>
           )}
 
           <Button
