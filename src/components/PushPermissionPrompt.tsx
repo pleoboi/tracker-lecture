@@ -60,11 +60,11 @@ export default function PushPermissionPrompt() {
   };
 
   const accept = async () => {
+    dismiss(); // Ferme le popup immédiatement
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
-      await registerAndSubscribe();
+      registerAndSubscribe().catch(() => {}); // En arrière-plan, silencieux
     }
-    dismiss();
   };
 
   if (!visible) return null;
