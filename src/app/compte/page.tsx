@@ -906,6 +906,7 @@ export default function ComptePage() {
   const [notifStatus, setNotifStatus] = useState<"granted" | "default" | "denied" | null>(null);
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [notifLoading, setNotifLoading] = useState(false);
+  const [notifError, setNotifError] = useState<string | null>(null);
   const [notifTestResult, setNotifTestResult] = useState<string | null>(null);
 
   useEffect(() => {
@@ -932,6 +933,7 @@ export default function ComptePage() {
   const handleToggleNotif = async () => {
     if (notifLoading || notifStatus === "denied" || !("serviceWorker" in navigator)) return;
     setNotifLoading(true);
+    setNotifError(null);
     try {
       const reg = await navigator.serviceWorker.ready;
       if (notifEnabled) {
@@ -950,46 +952,66 @@ export default function ComptePage() {
         }
         setNotifEnabled(false);
       } else {
+        const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+        if (!vapidKey) {
+          setNotifError("Clé VAPID manquante — vérifie les variables d'environnement Vercel (Production)");
+          setNotifLoading(false);
+          return;
+        }
         const permission = await Notification.requestPermission();
         setNotifStatus(permission as "granted" | "default" | "denied");
         if (permission === "granted") {
           const existing = await reg.pushManager.getSubscription();
           const sub = existing ?? await reg.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
+            applicationServerKey: urlBase64ToUint8Array(vapidKey),
           });
           const { keys } = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
           const { data: { session } } = await supabase.auth.getSession();
           if (session) {
-            await fetch("/api/push/subscribe", {
+            const res = await fetch("/api/push/subscribe", {
               method: "POST",
               headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
               body: JSON.stringify({ endpoint: sub.endpoint, p256dh: keys.p256dh, auth: keys.auth }),
             });
+            if (!res.ok) {
+              const json = await res.json();
+              setNotifError(`Erreur sauvegarde : ${json.error}`);
+            }
           }
           setNotifEnabled(true);
           localStorage.removeItem("swena_push_dismissed");
+        } else if (permission === "denied") {
+          setNotifError("Permission refusée — autorise les notifications dans les réglages de ton navigateur");
         }
       }
-    } catch { /* permission refusée ou erreur SW */ }
+    } catch (err) {
+      setNotifError((err as Error).message || "Erreur lors de l'activation");
+    }
     setNotifLoading(false);
   };
 
   const handleTestNotif = async () => {
-    setNotifTestResult(null);
+    setNotifTestResult("Envoi en cours…");
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { setNotifTestResult("Non connecté"); return; }
-    const res = await fetch("/api/push/test", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${session.access_token}` },
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setNotifTestResult(`Erreur : ${json.error}`);
-    } else {
-      setNotifTestResult(`Envoyé (${json.sent}/${json.subscriptions} souscription${json.subscriptions > 1 ? "s" : ""})`);
+    try {
+      const res = await fetch("/api/push/test", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setNotifTestResult(`Erreur : ${json.error}`);
+      } else if (json.sent === 0) {
+        setNotifTestResult("Aucune souscription — réactive les notifications");
+      } else {
+        setNotifTestResult("Notification envoyée !");
+      }
+    } catch {
+      setNotifTestResult("Erreur réseau");
     }
-    setTimeout(() => setNotifTestResult(null), 4000);
+    setTimeout(() => setNotifTestResult(null), 5000);
   };
 
   // Profile
@@ -1644,28 +1666,35 @@ export default function ComptePage() {
                 className="flex w-full items-center justify-between rounded-2xl border border-line bg-card p-4 transition-colors hover:border-violet/40 disabled:opacity-60"
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-lg">🔔</span>
+                  <span className="text-lg">{notifLoading ? "⏳" : "🔔"}</span>
                   <div>
                     <p className="text-left font-serif text-[15px] font-medium text-ink">Notifications</p>
                     <p className="text-left text-xs text-muted">
                       {notifStatus === "denied"
-                        ? "Bloquées dans les réglages du navigateur"
+                        ? "Bloquées — autorise dans les réglages"
                         : notifEnabled
                         ? "Activées"
-                        : "Désactivées"}
+                        : notifLoading
+                        ? "Activation…"
+                        : "Désactivées — appuie pour activer"}
                     </p>
                   </div>
                 </div>
                 {notifStatus !== "denied" && (
-                  <div className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${notifEnabled ? "bg-violet" : "bg-line"}`}>
-                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-cream shadow transition-transform ${notifEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
+                  <div className={`relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200 ${notifEnabled ? "bg-violet" : "bg-line"}`}>
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-cream shadow transition-transform duration-200 ${notifEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
                   </div>
                 )}
               </button>
-              {notifEnabled && (
+              {notifError && (
+                <p className="rounded-xl border border-danger/20 bg-[#f6e7e1] px-3 py-2 text-[11px] text-danger">
+                  {notifError}
+                </p>
+              )}
+              {notifStatus === "granted" && (
                 <button
                   onClick={handleTestNotif}
-                  className="rounded-2xl border border-line bg-card px-4 py-2.5 text-left text-[12px] font-medium text-muted transition-colors hover:border-violet/40 hover:text-violet-deep"
+                  className="rounded-2xl border border-line bg-card px-4 py-2.5 text-left text-[12px] text-muted transition-colors hover:border-violet/40 hover:text-violet-deep"
                 >
                   {notifTestResult ?? "Envoyer une notification test"}
                 </button>
