@@ -2,17 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
+import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from "../lib/push.client";
 
 const STORAGE_KEY = "swena_push_dismissed";
 
-function urlBase64ToUint8Array(base64String: string): ArrayBuffer {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(base64);
-  const arr = new Uint8Array(raw.length);
-  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
-  return arr.buffer as ArrayBuffer;
-}
 
 async function registerAndSubscribe(): Promise<boolean> {
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
@@ -21,7 +14,7 @@ async function registerAndSubscribe(): Promise<boolean> {
   const existing = await reg.pushManager.getSubscription();
   const sub = existing ?? await reg.pushManager.subscribe({
     userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!),
+    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
   });
 
   const { keys } = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };

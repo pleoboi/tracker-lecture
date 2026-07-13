@@ -9,6 +9,7 @@ import type { Book } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
 import { Cover, ProgressBar, Button } from "../../components/ui";
 import { searchBooks, fetchOpenLibraryCover, isFrench } from "../../lib/googleBooks";
+import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from "../../lib/push.client";
 
 type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes" | "recents" | "envie";
 type Sort = "ajout" | "titre" | "auteur" | "note";
@@ -921,15 +922,6 @@ export default function ComptePage() {
     }
   }, []);
 
-  function urlBase64ToUint8Array(b64: string): ArrayBuffer {
-    const padding = "=".repeat((4 - (b64.length % 4)) % 4);
-    const base64 = (b64 + padding).replace(/-/g, "+").replace(/_/g, "/");
-    const raw = atob(base64);
-    const arr = new Uint8Array(raw.length);
-    for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
-    return arr.buffer as ArrayBuffer;
-  }
-
   const handleToggleNotif = async () => {
     if (notifLoading || notifStatus === "denied" || !("serviceWorker" in navigator)) return;
     setNotifLoading(true);
@@ -952,19 +944,13 @@ export default function ComptePage() {
         }
         setNotifEnabled(false);
       } else {
-        const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-        if (!vapidKey) {
-          setNotifError("Clé VAPID manquante — vérifie les variables d'environnement Vercel (Production)");
-          setNotifLoading(false);
-          return;
-        }
         const permission = await Notification.requestPermission();
         setNotifStatus(permission as "granted" | "default" | "denied");
         if (permission === "granted") {
           const existing = await reg.pushManager.getSubscription();
           const sub = existing ?? await reg.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(vapidKey),
+            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
           });
           const { keys } = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
           const { data: { session } } = await supabase.auth.getSession();
