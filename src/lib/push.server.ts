@@ -11,7 +11,7 @@ export async function sendPushToUser(
   payload: { title: string; body: string; url?: string },
 ): Promise<{ sent: number; skipped: number }> {
   webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT!,
+    "mailto:ricard.leo07@gmail.com",
     "BOmWqI1xyCWcT-WCq5jklsWt_9PsB4YrUdiUtHj6KSeue-hBtmdDSnKb3KZzO98oA5xVt9wUbBzH0A8HoyHxIkQ",
     process.env.VAPID_PRIVATE_KEY!,
   );
