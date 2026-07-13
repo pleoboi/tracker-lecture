@@ -20,6 +20,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Paramètres manquants" }, { status: 400 });
   }
 
-  await sendPushToUser(targetUserId, { title, body, url });
+  try {
+    await sendPushToUser(targetUserId, { title, body, url });
+  } catch (err) {
+    console.error("[push/notify] error:", err);
+  }
   return NextResponse.json({ ok: true });
 }

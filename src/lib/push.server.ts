@@ -12,7 +12,7 @@ export async function sendPushToUser(
 ): Promise<{ sent: number; skipped: number }> {
   webpush.setVapidDetails(
     process.env.VAPID_SUBJECT!,
-    process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!,
+    "BOmWqI1xyCWcT-WCq5jklsWt_9PsB4YrUdiUtHj6KSeue-hBtmdDSnKb3KZzO98oA5xVt9wUbBzH0A8HoyHxIkQ",
     process.env.VAPID_PRIVATE_KEY!,
   );
 

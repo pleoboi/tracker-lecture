@@ -24,11 +24,15 @@ export async function POST(req: NextRequest) {
   if (subErr) return NextResponse.json({ error: subErr.message }, { status: 500 });
   if (!subs?.length) return NextResponse.json({ error: "Aucune souscription trouvée pour cet utilisateur" }, { status: 404 });
 
-  const result = await sendPushToUser(user.id, {
-    title: "Test Swena",
-    body: "Les notifications fonctionnent sur cet appareil !",
-    url: "/accueil",
-  });
-
-  return NextResponse.json({ ...result, subscriptions: subs.length });
+  try {
+    const result = await sendPushToUser(user.id, {
+      title: "Test Swena",
+      body: "Les notifications fonctionnent sur cet appareil !",
+      url: "/accueil",
+    });
+    return NextResponse.json({ ...result, subscriptions: subs.length });
+  } catch (err) {
+    console.error("[push/test] error:", err);
+    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+  }
 }
