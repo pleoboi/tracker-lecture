@@ -12,6 +12,7 @@ import { Cover, ProgressBar, Pill, Button, AvatarImg } from "../../../components
 import LogReadingModal from "../../../components/LogReadingModal";
 import AddToLibraryModal from "../../../components/AddToLibraryModal";
 import CoverPickerModal from "../../../components/CoverPickerModal";
+import RichTextEditor from "../../../components/RichTextEditor";
 
 const GENRES = [
   "Roman", "Fiction", "Non-Fiction", "Classique", "Nouvelle",
@@ -481,6 +482,18 @@ export default function BookDetailPage() {
     router.push("/");
   };
 
+  const pause = async () => {
+    if (!activeBook) return;
+    await supabase.from("books").update({ status: "paused" }).eq("id", activeBook.id);
+    updateActiveBook({ ...activeBook, status: "paused" });
+  };
+
+  const resume = async () => {
+    if (!activeBook) return;
+    await supabase.from("books").update({ status: "reading" }).eq("id", activeBook.id);
+    updateActiveBook({ ...activeBook, status: "reading" });
+  };
+
   const remove = async () => {
     if (!activeBook) return;
     if (!confirm(`Supprimer « ${book?.title} » et son historique ?`)) return;
@@ -628,6 +641,7 @@ export default function BookDetailPage() {
   const p = activeBook ? pct(activeBook) : 0;
   const done = activeBook ? isCompleted(activeBook) : false;
   const abandoned = activeBook ? isAbandoned(activeBook) : false;
+  const isPaused = activeBook?.status === "paused";
   const stats = activeBook ? readingStats(activeBook, logs) : { startDate: null, endDate: null, durationDays: null, pagesPerDay: null };
   const rating = activeBook?.rating || 0;
 
@@ -662,7 +676,7 @@ export default function BookDetailPage() {
             ‹
           </button>
           <div className="flex items-center gap-2">
-            {isOwner && !done && !abandoned && (
+            {isOwner && !done && !abandoned && !isPaused && (
               <>
                 <button
                   onClick={markAsReadNoDate}
@@ -670,6 +684,28 @@ export default function BookDetailPage() {
                   className="flex h-9 items-center justify-center rounded-xl border border-[#cfe0cf] dark:border-success/30 bg-[#eaf1ea] dark:bg-[#162516] px-3 text-xs font-semibold text-success"
                 >
                   {markingRead ? "…" : "✓ Lu"}
+                </button>
+                <button
+                  onClick={pause}
+                  className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-muted"
+                >
+                  ⏸ Pause
+                </button>
+                <button
+                  onClick={abandon}
+                  className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-muted"
+                >
+                  Abandonner
+                </button>
+              </>
+            )}
+            {isOwner && isPaused && (
+              <>
+                <button
+                  onClick={resume}
+                  className="flex h-9 items-center justify-center rounded-xl border border-violet/40 bg-violet-soft px-3 text-xs font-semibold text-violet-deep"
+                >
+                  ▶ Reprendre
                 </button>
                 <button
                   onClick={abandon}
@@ -1208,12 +1244,10 @@ export default function BookDetailPage() {
           </div>
           {editingNotes ? (
             <div className="flex flex-col gap-2">
-              <textarea
+              <RichTextEditor
                 value={notesDraft}
-                onChange={(e) => setNotesDraft(e.target.value)}
-                rows={4}
+                onChange={setNotesDraft}
                 placeholder="Ta critique globale du livre, tes citations préférées… (visible par les membres du club)"
-                className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-sm text-ink outline-none focus:border-violet"
                 autoFocus
               />
               <div className="flex gap-2">
@@ -1228,9 +1262,16 @@ export default function BookDetailPage() {
               </div>
             </div>
           ) : activeBook!.notes ? (
-            <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
-              « {activeBook!.notes} »
-            </p>
+            activeBook!.notes.startsWith("<") ? (
+              <div
+                className="prose-review font-serif text-[13.5px] leading-relaxed text-ink-2"
+                dangerouslySetInnerHTML={{ __html: activeBook!.notes }}
+              />
+            ) : (
+              <p className="font-serif text-[13.5px] leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
+                {activeBook!.notes}
+              </p>
+            )
           ) : (
             <p className="text-[13px] text-ink-2">Aucune review pour le moment.</p>
           )}

@@ -460,7 +460,7 @@ export default function MembrePage() {
       const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
       notifyUser(
         noteModal.reviewerUserId,
-        "Swena",
+        "Nouvelle réaction",
         `${senderName} a aimé ta note sur "${noteModal.bookTitle || "ton livre"}"`,
       );
     }
@@ -480,7 +480,7 @@ export default function MembrePage() {
       setIsFollowing(true);
       setFollowersCount((n) => n + 1);
       const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
-      notifyUser(memberId, "Swena", `${senderName} a commencé à te suivre`);
+      notifyUser(memberId, "Nouveau follower", `${senderName} a commencé à te suivre`);
     }
     setLoadingFollow(false);
   };
@@ -1484,9 +1484,13 @@ export default function MembrePage() {
                 <p className="text-[11px] font-semibold text-ink truncate max-w-[55%] text-right">{noteModal.bookTitle}</p>
               )}
             </div>
-            <p className="font-serif text-[14px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
-              « {noteModal.text} »
-            </p>
+            <div
+              className="font-serif text-[14px] leading-relaxed text-ink prose-review"
+              style={{ whiteSpace: "pre-line" }}
+              dangerouslySetInnerHTML={noteModal.text?.startsWith("<") ? { __html: noteModal.text } : undefined}
+            >
+              {!noteModal.text?.startsWith("<") ? noteModal.text : undefined}
+            </div>
             {noteModal.reviewerUserId !== user?.id && (
               <button
                 onClick={toggleNoteLike}

@@ -11,7 +11,7 @@ import { Cover, ProgressBar, Button } from "../../components/ui";
 import { searchBooks, fetchOpenLibraryCover, isFrench } from "../../lib/googleBooks";
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from "../../lib/push.client";
 
-type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes" | "recents" | "envie";
+type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes" | "recents" | "envie" | "en-pause";
 type Sort = "ajout" | "titre" | "auteur" | "note";
 
 const FILTERS: { key: Filter; label: string }[] = [
@@ -20,10 +20,11 @@ const FILTERS: { key: Filter; label: string }[] = [
   { key: "recents", label: "Derniers lus" },
   { key: "termines", label: "Terminés" },
   { key: "abandonnes", label: "Abandonné" },
+  { key: "en-pause", label: "En pause" },
   { key: "notes", label: "★ Top notes" },
   { key: "envie", label: "Envie de lire" },
 ];
-const VALID_FILTERS: Filter[] = ["tous", "encours", "termines", "abandonnes", "notes", "recents", "envie"];
+const VALID_FILTERS: Filter[] = ["tous", "encours", "termines", "abandonnes", "notes", "recents", "envie", "en-pause"];
 const VALID_SORTS: Sort[] = ["ajout", "titre", "auteur", "note"];
 
 // ── CSV Goodreads parser ────────────────────────────────────────────────────
@@ -1250,6 +1251,7 @@ export default function ComptePage() {
     if (filter === "termines") return isCompleted(b);
     if (filter === "recents") return isCompleted(b);
     if (filter === "abandonnes") return b.status === "abandoned";
+    if (filter === "en-pause") return b.status === "paused";
     if (filter === "notes") return (b.rating || 0) > 0;
     if (filter === "envie") return b.status === "to-read";
     if (filter === "tous") return b.status !== "to-read";

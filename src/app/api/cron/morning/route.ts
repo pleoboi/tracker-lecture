@@ -4,8 +4,8 @@ import { sendPushToUser, adminSupabase } from "../../../../lib/push.server";
 const MESSAGES = [
   { title: "Bonne journée", body: "Quelques pages ce matin pour bien commencer ?" },
   { title: "La journée commence", body: "Ton livre t'attend. Même 10 pages font la différence." },
-  { title: "Swena", body: "Prêt pour une nouvelle session ? C'est le bon moment." },
-  { title: "Swena", body: "Une petite session matinale pour avancer dans ta lecture ?" },
+  { title: "Matin de lecture", body: "Prêt pour une nouvelle session ? C'est le bon moment." },
+  { title: "Bonne lecture", body: "Une petite session matinale pour avancer dans ta lecture ?" },
 ];
 
 export async function GET(req: NextRequest) {

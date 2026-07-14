@@ -372,7 +372,7 @@ export default function AccueilPage() {
           book_id: log.bookId,
           book_title: log.bookTitle,
         });
-        notifyUser(log.user_id, "Swena", `${displayName} a liké ta session de lecture`);
+        notifyUser(log.user_id, "Nouveau like", `${displayName} a liké ta session de lecture`);
       }
     }
   }, [userId, likeMap]);
@@ -504,7 +504,7 @@ export default function AccueilPage() {
       });
       notifyUser(
         noteModal.reviewerUserId,
-        "Swena",
+        "Nouvelle réaction",
         `${displayName} a aimé ta note sur "${noteModal.bookTitle || "ton livre"}"`,
       );
     }

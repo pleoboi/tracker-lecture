@@ -9,16 +9,29 @@ import type { Book } from "../lib/types";
 import { Modal, Button, FieldLabel, inputClass, Cover } from "./ui";
 import CoverPickerModal from "./CoverPickerModal";
 
-type Status = "to-read" | "reading" | "completed";
+type Status = "to-read" | "reading" | "completed" | "paused";
 
 const STATUS_OPTIONS: { value: Status; label: string }[] = [
   { value: "to-read", label: "Envie de lire" },
   { value: "reading", label: "En cours" },
+  { value: "paused", label: "En pause" },
   { value: "completed", label: "Terminé ✓" },
 ];
 
 type Draft = { title: string; author: string; pages: string; genre: string; year: string };
 const emptyDraft: Draft = { title: "", author: "", pages: "", genre: "", year: "" };
+
+const GENRE_LIST = [
+  "Roman", "Fiction", "Non-Fiction", "Classique", "Nouvelle",
+  "Thriller", "Policier", "Crime", "Mystère",
+  "Fantasy", "Science-Fiction",
+  "Histoire", "Biographie", "Témoignage", "Jeunesse",
+  "BD / Roman graphique", "Manga", "Comics",
+  "Développement personnel", "Philosophie", "Poésie", "Psychologie",
+  "Économie", "Science", "Sciences humaines", "Sciences politiques",
+  "Essai", "Aventure", "Romance", "Humour", "Sport", "Cinéma",
+  "Musique", "Drame", "Suspense", "Théâtre", "Guerre",
+];
 
 type ClubSuggestion = BookSuggestion & { pages?: number; memberCount?: number };
 
@@ -53,7 +66,12 @@ export default function AddBookModal({
   const [showCoverPicker, setShowCoverPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
+  const [genreOpen, setGenreOpen] = useState(false);
+  const [coverSuggestions, setCoverSuggestions] = useState<string[]>([]);
+  const [selectedSuggestionCover, setSelectedSuggestionCover] = useState<string | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const coverDebounce = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     if (open) {
@@ -73,6 +91,10 @@ export default function AddBookModal({
       setError(null);
       setLocalCoverUrl(null);
       setShowCoverPicker(false);
+      setSelectedGenres([]);
+      setGenreOpen(false);
+      setCoverSuggestions([]);
+      setSelectedSuggestionCover(null);
     }
   }, [open]);
 
@@ -157,6 +179,30 @@ export default function AddBookModal({
     return () => clearTimeout(debounce.current);
   }, [query, open, selected, manual, user?.id]);
 
+  // Suggestions de couvertures en mode manuel
+  useEffect(() => {
+    if (!manual || !open) return;
+    clearTimeout(coverDebounce.current);
+    if (draft.title.trim().length < 3) { setCoverSuggestions([]); return; }
+    coverDebounce.current = setTimeout(async () => {
+      try {
+        const q = encodeURIComponent(`${draft.title} ${draft.author}`.trim());
+        const res = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${q}&maxResults=8&fields=items(volumeInfo(imageLinks))&langRestrict=fr`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const covers: string[] = (data.items || [])
+          .map((item: { volumeInfo?: { imageLinks?: { thumbnail?: string; smallThumbnail?: string } } }) =>
+            item.volumeInfo?.imageLinks?.thumbnail || item.volumeInfo?.imageLinks?.smallThumbnail
+          )
+          .filter(Boolean)
+          .map((url: string) => url.replace("http://", "https://").replace("&zoom=1", "&zoom=3"));
+        const unique = [...new Set(covers)] as string[];
+        setCoverSuggestions(unique.slice(0, 6));
+      } catch { /* silencieux */ }
+    }, 700);
+    return () => clearTimeout(coverDebounce.current);
+  }, [draft.title, draft.author, manual, open]);
+
   const insertBook = async (b: {
     title: string;
     author: string;
@@ -197,7 +243,7 @@ export default function AddBookModal({
       user_id: user.id,
     };
 
-    if (status === "reading" && startDate) bookData.date_started = startDate;
+    if ((status === "reading" || status === "paused") && startDate) bookData.date_started = startDate;
     if (status === "completed") {
       if (startDate) bookData.date_started = startDate;
       if (endDate) bookData.date_read = endDate;
@@ -236,6 +282,7 @@ export default function AddBookModal({
     const msgs: Record<Status, string> = {
       "to-read": `« ${b.title} » ajouté à ta liste Envie de lire.`,
       "reading": `« ${b.title} » ajouté à tes lectures en cours.`,
+      "paused": `« ${b.title} » ajouté en pause.`,
       "completed": `« ${b.title} » marqué comme terminé.`,
     };
     onAdded(msgs[status]);
@@ -255,13 +302,15 @@ export default function AddBookModal({
   };
 
   const handleAddManual = async () => {
-    const n = draft.pages ? Number(draft.pages) : 0;
+    const n = pages ? Number(pages) : 0;
     if (!draft.title.trim()) return setError("Le titre est obligatoire.");
+    const genreStr = selectedGenres.length > 0 ? selectedGenres.join(", ") : null;
     await insertBook({
       title: draft.title.trim(),
       author: draft.author.trim(),
       pages: n,
-      genre: draft.genre.trim() || null,
+      cover_url: selectedSuggestionCover || null,
+      genre: genreStr,
       year: draft.year ? Number(draft.year) : null,
     });
   };
@@ -326,8 +375,8 @@ export default function AddBookModal({
         </div>
       )}
 
-      {/* Page actuelle — En cours seulement */}
-      {status === "reading" && (
+      {/* Page actuelle — En cours et En pause */}
+      {(status === "reading" || status === "paused") && (
         <div>
           <FieldLabel>Page actuelle (optionnel)</FieldLabel>
           <input
@@ -341,8 +390,8 @@ export default function AddBookModal({
         </div>
       )}
 
-      {/* Date de début — En cours et Terminé */}
-      {(status === "reading" || status === "completed") && (
+      {/* Date de début — En cours, En pause et Terminé */}
+      {(status === "reading" || status === "paused" || status === "completed") && (
         <div>
           <FieldLabel>Date de début (optionnel)</FieldLabel>
           <input
@@ -381,7 +430,9 @@ export default function AddBookModal({
         ? "Ajouter à ma liste"
         : status === "reading"
           ? "Commencer la lecture"
-          : "Marquer comme terminé";
+          : status === "paused"
+            ? "Ajouter en pause"
+            : "Marquer comme terminé";
 
     return (
       <>
@@ -449,7 +500,9 @@ export default function AddBookModal({
         ? "Ajouter à ma liste"
         : status === "reading"
           ? "Commencer la lecture"
-          : "Marquer comme terminé";
+          : status === "paused"
+            ? "Ajouter en pause"
+            : "Marquer comme terminé";
 
     return (
       <Modal open={open} onClose={onClose} title="Ajouter un livre">
@@ -481,16 +534,67 @@ export default function AddBookModal({
                 className={inputClass}
               />
             </div>
-            <div className="flex-1">
+            <div className="relative flex-1">
               <FieldLabel>Genre</FieldLabel>
-              <input
-                value={draft.genre}
-                onChange={(e) => setDraft({ ...draft, genre: e.target.value })}
-                placeholder="Roman, Fantasy…"
-                className={inputClass}
-              />
+              <button
+                type="button"
+                onClick={() => setGenreOpen((o) => !o)}
+                className={`${inputClass} flex w-full items-center justify-between text-left`}
+              >
+                <span className={selectedGenres.length === 0 ? "text-muted" : "text-ink"}>
+                  {selectedGenres.length === 0
+                    ? "Choisir…"
+                    : selectedGenres.length === 1
+                      ? selectedGenres[0]
+                      : `${selectedGenres.length} genres`}
+                </span>
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" className="shrink-0 text-muted">
+                  <path d="M1 3l4 4 4-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+                </svg>
+              </button>
+              {genreOpen && (
+                <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-52 overflow-y-auto rounded-xl border border-line bg-card shadow-lg">
+                  {GENRE_LIST.map((g) => (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => {
+                        setSelectedGenres((prev) =>
+                          prev.includes(g) ? prev.filter((x) => x !== g) : [...prev, g]
+                        );
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-ink hover:bg-violet-soft"
+                    >
+                      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${selectedGenres.includes(g) ? "border-violet bg-violet text-cream" : "border-line"}`}>
+                        {selectedGenres.includes(g) && "✓"}
+                      </span>
+                      {g}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
+
+          {/* Suggestions de couverture */}
+          {coverSuggestions.length > 0 && (
+            <div>
+              <FieldLabel>Couverture (choisir ou ignorer)</FieldLabel>
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {coverSuggestions.map((url, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => setSelectedSuggestionCover(selectedSuggestionCover === url ? null : url)}
+                    className={`shrink-0 overflow-hidden rounded-lg border-2 transition-colors ${selectedSuggestionCover === url ? "border-violet" : "border-transparent"}`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" className="h-[72px] w-[50px] object-cover" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {renderStatusFields()}
 
