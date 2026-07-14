@@ -407,7 +407,7 @@ function BadgeDetailSheet({ def, unlocked, unlockedAt, onClose }: {
 }
 
 // ── Leaderboard ───────────────────────────────────────────────────────────────
-function LeaderboardView({ currentUserId }: { currentUserId?: string }) {
+function LeaderboardView({ currentUserId, limit }: { currentUserId?: string; limit?: number }) {
   const [entries, setEntries] = useState<
     { id: string; display_name: string; avatar_url: string | null; totalPoints: number; badgeCount: number }[]
   >([]);
@@ -436,44 +436,59 @@ function LeaderboardView({ currentUserId }: { currentUserId?: string }) {
     load();
   }, []);
 
-  if (!entries.length) return <p className="py-8 text-center text-sm text-muted">Aucun classement disponible.</p>;
+  if (!entries.length) return <p className="py-4 text-center text-sm text-muted">Aucun classement disponible.</p>;
+
+  const visible = limit ? entries.slice(0, limit) : entries;
+
+  // Find current user rank even if outside visible limit
+  const myRank = currentUserId ? entries.findIndex((e) => e.id === currentUserId) : -1;
+  const myEntry = myRank >= 0 ? entries[myRank] : null;
+  const myAbsent = limit && myRank >= limit && myEntry;
 
   const rankIcon = (r: number) => {
-    if (r === 1) return <span className="text-[#d4a017] text-xl">★</span>;
-    if (r === 2) return <span className="text-[#8a9ab5] text-xl">★</span>;
-    if (r === 3) return <span className="text-[#c97d41] text-xl">★</span>;
-    return <span className="text-[13px] font-bold text-muted">{r}</span>;
+    if (r === 1) return <span className="text-[#d4a017] text-base leading-none">★</span>;
+    if (r === 2) return <span className="text-[#8a9ab5] text-base leading-none">★</span>;
+    if (r === 3) return <span className="text-[#c97d41] text-base leading-none">★</span>;
+    return <span className="text-[12px] font-bold text-muted">{r}</span>;
+  };
+
+  const Row = ({ e, rank }: { e: typeof entries[0]; rank: number }) => {
+    const isMe = e.id === currentUserId;
+    return (
+      <div className={`flex items-center gap-3 rounded-2xl px-3 py-2.5 border ${
+        isMe ? "bg-violet-soft border-violet/30" : "bg-card border-line"
+      }`}>
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center">{rankIcon(rank)}</span>
+        {e.avatar_url
+          // eslint-disable-next-line @next/next/no-img-element
+          ? <img src={e.avatar_url} alt={e.display_name} className="h-7 w-7 shrink-0 rounded-full object-cover" />
+          : <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet font-serif text-[11px] font-bold text-cream">
+              {e.display_name[0]?.toUpperCase()}
+            </span>
+        }
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[12.5px] font-semibold text-ink">
+            {e.display_name}{isMe && <span className="ml-1.5 text-[10px] font-normal text-violet-deep">(toi)</span>}
+          </p>
+          <p className="text-[10px] text-muted">{e.badgeCount} marque-page{e.badgeCount !== 1 ? "s" : ""}</p>
+        </div>
+        <div className="shrink-0 text-right">
+          <p className="font-serif text-[15px] font-black text-ink">{e.totalPoints.toLocaleString("fr-FR")}</p>
+          <p className="text-[8.5px] font-medium uppercase tracking-widest text-muted">pts</p>
+        </div>
+      </div>
+    );
   };
 
   return (
     <div className="flex flex-col gap-2">
-      {entries.map((e, i) => {
-        const isMe = e.id === currentUserId;
-        return (
-          <div key={e.id} className={`flex items-center gap-3 rounded-2xl px-4 py-3 border ${
-            isMe ? "bg-violet-soft border-violet/30" : "bg-card border-line"
-          }`}>
-            <span className="flex h-7 w-7 shrink-0 items-center justify-center">{rankIcon(i + 1)}</span>
-            {e.avatar_url
-              // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={e.avatar_url} alt={e.display_name} className="h-8 w-8 shrink-0 rounded-full object-cover" />
-              : <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet font-serif text-xs font-bold text-cream">
-                  {e.display_name[0]?.toUpperCase()}
-                </span>
-            }
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold text-ink">
-                {e.display_name}{isMe && <span className="ml-1.5 text-[10px] font-normal text-violet-deep">(toi)</span>}
-              </p>
-              <p className="text-[11px] text-muted">{e.badgeCount} marque-page{e.badgeCount !== 1 ? "s" : ""}</p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="font-serif text-[17px] font-black text-ink">{e.totalPoints.toLocaleString("fr-FR")}</p>
-              <p className="text-[9px] font-medium uppercase tracking-widest text-muted">pts</p>
-            </div>
-          </div>
-        );
-      })}
+      {visible.map((e, i) => <Row key={e.id} e={e} rank={i + 1} />)}
+      {myAbsent && (
+        <>
+          <div className="flex items-center gap-2 px-2"><div className="flex-1 border-t border-dashed border-line" /><span className="text-[10px] text-muted">···</span><div className="flex-1 border-t border-dashed border-line" /></div>
+          <Row e={myEntry} rank={myRank + 1} />
+        </>
+      )}
     </div>
   );
 }
@@ -487,10 +502,15 @@ const TYPE_LABEL: Record<BadgeType, string> = {
 };
 
 // ── Badges Hub (full-screen, style Garmin) ────────────────────────────────────
+const TYPE_ORDER: BadgeType[] = [
+  "volume", "genre", "sessions", "review", "pages", "streak",
+  "performance", "time_of_day", "event", "social", "quiz",
+  "monthly_books", "monthly",
+];
+
 function BadgesHub({ memberId, currentUserId, onClose }: {
   memberId: string; currentUserId?: string; onClose: () => void;
 }) {
-  const [tab,           setTab]           = useState<"won" | "available" | "leaderboard">("won");
   const [loading,       setLoading]       = useState(true);
   const [profile,       setProfile]       = useState<{ display_name: string; avatar_url: string | null } | null>(null);
   const [unlocked,      setUnlocked]      = useState<{ badge_id: string; unlocked_at: string }[]>([]);
@@ -507,9 +527,7 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      // Attribution automatique + capture des nouveaux badges
       let newlyAwarded: BadgeDef[] = [];
-      // Toujours checker pour tout membre — awards silencieux si ce n'est pas son propre profil
       const res = await fetch("/api/badges/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -543,11 +561,64 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
     load();
   }, [memberId, currentUserId]);
 
-  const unlockedSet  = new Set(unlocked.map((u) => u.badge_id));
-  const totalPoints  = getTotalPoints(unlockedSet) + quizBonus + sprintBonus;
-  const lvl          = getLevelProgress(totalPoints);
-  const wonBadges    = BADGE_DEFS.filter((d) => unlockedSet.has(d.id));
-  const lockedBadges = BADGE_DEFS.filter((d) => !unlockedSet.has(d.id));
+  const unlockedSet = new Set(unlocked.map((u) => u.badge_id));
+  const totalPoints = getTotalPoints(unlockedSet) + quizBonus + sprintBonus;
+  const lvl         = getLevelProgress(totalPoints);
+
+  // ── Grille dédupliquée : une seule carte par famille, palier le plus haut en couleur ──
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Regroupe les defs par famille (même name+type → une famille)
+  // Exception : badges mensuels → chacun est sa propre famille
+  const familyMap = new Map<string, BadgeDef[]>();
+  for (const def of BADGE_DEFS) {
+    const isMonthly = def.type === "monthly" || def.type === "monthly_books";
+    if (isMonthly) {
+      const inPeriod = def.startDate && def.endDate && todayStr >= def.startDate && todayStr <= def.endDate;
+      if (!inPeriod && !unlockedSet.has(def.id)) continue; // cacher les mois hors période non obtenus
+    }
+    const key = isMonthly ? def.id : `${def.name}__${def.type}`;
+    const arr = familyMap.get(key) ?? [];
+    arr.push(def);
+    familyMap.set(key, arr);
+  }
+
+  type GridItem = { def: BadgeDef; isUnlocked: boolean; unlockedAt?: string };
+  const gridItems: GridItem[] = [];
+  for (const [, tiers] of familyMap) {
+    const sorted = [...tiers].sort((a, b) => a.tier - b.tier);
+    let bestIdx = -1;
+    for (let i = sorted.length - 1; i >= 0; i--) {
+      if (unlockedSet.has(sorted[i].id)) { bestIdx = i; break; }
+    }
+    if (bestIdx >= 0) {
+      // Affiche seulement le palier le plus élevé obtenu (en couleur)
+      const best = sorted[bestIdx];
+      gridItems.push({ def: best, isUnlocked: true, unlockedAt: unlocked.find((u) => u.badge_id === best.id)?.unlocked_at });
+      // + tous les paliers encore verrouillés au-dessus
+      for (let i = bestIdx + 1; i < sorted.length; i++) {
+        gridItems.push({ def: sorted[i], isUnlocked: false });
+      }
+    } else {
+      // Rien débloqué : affiche tous les paliers verrouillés
+      for (const def of sorted) {
+        gridItems.push({ def, isUnlocked: false });
+      }
+    }
+  }
+
+  // Regroupe par type pour l'affichage
+  const byType = new Map<BadgeType, GridItem[]>();
+  for (const item of gridItems) {
+    const arr = byType.get(item.def.type) ?? [];
+    arr.push(item);
+    byType.set(item.def.type, arr);
+  }
+
+  // Stats collection
+  const totalFamilies = familyMap.size;
+  const unlockedFamilies = [...familyMap.values()].filter((tiers) => tiers.some((d) => unlockedSet.has(d.id))).length;
+  const collectionPct = totalFamilies > 0 ? Math.round((unlockedFamilies / totalFamilies) * 100) : 0;
 
   return (
     <div className="fixed inset-0 z-[80] flex flex-col bg-paper">
@@ -570,165 +641,155 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
           <p className="text-sm text-muted">Chargement…</p>
         </div>
       ) : (
-        <>
-          {/* Avatar + Level progress */}
-          <div className="flex items-center gap-4 border-b border-line px-5 py-4">
-            <div className="relative shrink-0">
-              {profile?.avatar_url
-                // eslint-disable-next-line @next/next/no-img-element
-                ? <img src={profile.avatar_url} alt={profile.display_name}
-                    className="h-14 w-14 rounded-full object-cover ring-2 ring-violet/30" />
-                : <span className="flex h-14 w-14 items-center justify-center rounded-full bg-violet
-                    font-serif text-xl font-bold text-cream ring-2 ring-violet/30">
-                    {profile?.display_name?.[0]?.toUpperCase()}
-                  </span>
-              }
-              <span className="absolute -bottom-1 -right-1 flex h-[22px] w-[22px] items-center justify-center
-                rounded-full bg-violet font-mono text-[11px] font-black text-cream ring-2 ring-paper">
-                {lvl.level}
-              </span>
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                <p className="truncate text-[13px] font-semibold text-ink">{profile?.display_name}</p>
-                <span className="shrink-0 rounded-full bg-violet-soft px-2 py-0.5 text-[9.5px] font-bold text-violet-deep">
-                  {lvl.title}
+        <div className="flex-1 overflow-y-auto pb-8">
+
+          {/* ── Section 1 : Tableau de bord ── */}
+          <div className="border-b border-line px-5 py-4">
+            <div className="flex items-center gap-4">
+              {/* Avatar + niveau */}
+              <div className="relative shrink-0">
+                {profile?.avatar_url
+                  // eslint-disable-next-line @next/next/no-img-element
+                  ? <img src={profile.avatar_url} alt={profile.display_name ?? ""}
+                      className="h-14 w-14 rounded-full object-cover ring-2 ring-violet/30" />
+                  : <span className="flex h-14 w-14 items-center justify-center rounded-full bg-violet
+                      font-serif text-xl font-bold text-cream ring-2 ring-violet/30">
+                      {profile?.display_name?.[0]?.toUpperCase()}
+                    </span>
+                }
+                <span className="absolute -bottom-1 -right-1 flex h-[22px] w-[22px] items-center justify-center
+                  rounded-full bg-violet font-mono text-[11px] font-black text-cream ring-2 ring-paper">
+                  {lvl.level}
                 </span>
               </div>
+
+              {/* Progression XP */}
+              <div className="min-w-0 flex-1">
+                <div className="mb-1 flex flex-wrap items-center gap-1.5">
+                  <p className="truncate text-[13px] font-semibold text-ink">{profile?.display_name}</p>
+                  <span className="shrink-0 rounded-full bg-violet-soft px-2 py-0.5 text-[9.5px] font-bold text-violet-deep">
+                    {lvl.title}
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-input">
+                  <div className="h-full rounded-full bg-gradient-to-r from-violet to-violet-deep transition-all duration-700"
+                    style={{ width: `${lvl.pct}%` }} />
+                </div>
+                <p className="mt-0.5 text-[10px] text-muted">
+                  {lvl.toNext > 0
+                    ? <>{lvl.toNext} pts avant <span className="font-semibold text-ink">{lvl.nextTitle}</span></>
+                    : <span className="font-semibold text-violet-deep">Niveau maximum</span>
+                  }
+                </p>
+              </div>
+
+              {/* Score de prestige */}
+              <div className="shrink-0 text-right">
+                <p className="font-serif text-[22px] font-black leading-none text-ink">{totalPoints.toLocaleString("fr-FR")}</p>
+                <p className="text-[8.5px] font-semibold uppercase tracking-widest text-muted">prestige</p>
+              </div>
+            </div>
+
+            {/* Barre de complétion collection */}
+            <div className="mt-3 rounded-2xl border border-line bg-card px-4 py-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <p className="text-[11px] font-semibold text-ink">Collection</p>
+                <p className="text-[11px] font-bold text-violet-deep">{unlockedFamilies} / {totalFamilies}</p>
+              </div>
               <div className="h-2 overflow-hidden rounded-full bg-input">
-                <div className="h-full rounded-full bg-gradient-to-r from-violet to-violet-deep transition-all duration-700"
-                  style={{ width: `${lvl.pct}%` }} />
+                <div className="h-full rounded-full bg-gradient-to-r from-violet-soft to-violet transition-all duration-700"
+                  style={{ width: `${collectionPct}%` }} />
               </div>
-              <p className="mt-1 text-[10.5px] text-muted">
-                {lvl.toNext > 0
-                  ? <>{lvl.toNext} pts avant <span className="font-semibold text-ink">{lvl.nextTitle}</span></>
-                  : <span className="font-semibold text-violet-deep">Niveau maximum atteint</span>
-                }
-              </p>
-            </div>
-            <div className="shrink-0 text-right">
-              <p className="font-serif text-xl font-black text-ink">{totalPoints.toLocaleString("fr-FR")}</p>
-              <p className="text-[9px] font-medium uppercase tracking-widest text-muted">pts</p>
+              <p className="mt-1 text-[9.5px] text-muted">{collectionPct}% de la collection débloquée</p>
             </div>
           </div>
 
-          {/* Tabs */}
-          <div className="flex border-b border-line">
-            {([["won", `Gagnés (${wonBadges.length})`], ["available", "Disponible"], ["leaderboard", "Leaders"]] as const).map(
-              ([key, label]) => (
-                <button key={key} onClick={() => setTab(key)}
-                  className={`flex-1 py-3 text-[12.5px] font-semibold transition-colors ${
-                    tab === key ? "border-b-2 border-violet text-violet" : "text-muted"
-                  }`}>
-                  {label}
-                </button>
-              )
-            )}
+          {/* ── Section 2 : Classement du club ── */}
+          <div className="border-b border-line px-5 py-4">
+            <p className="mb-3 text-[10.5px] font-semibold uppercase tracking-wider text-muted">Classement du club</p>
+            <LeaderboardView currentUserId={currentUserId} limit={5} />
           </div>
 
-          {/* Notice date butoir — discret */}
-          <p className="px-5 py-2 text-[10.5px] text-zinc-400 dark:text-zinc-500">
-            Progression calculée depuis le 20 juin 2026 uniquement.
-          </p>
+          {/* ── Section 3 : Grille des marque-pages ── */}
+          <div className="px-4 pt-4">
+            <p className="mb-4 text-[10.5px] font-semibold uppercase tracking-wider text-muted">
+              Ma collection
+            </p>
+            <p className="mb-3 text-[9.5px] text-muted">
+              Progression calculée depuis le 20 juin 2026.
+            </p>
 
-          {/* Contenu */}
-          <div className="flex-1 overflow-y-auto px-4 pb-6">
-            {tab === "won" ? (
-              wonBadges.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 py-16 text-center">
-                  <p className="font-serif text-base text-ink">Aucun marque-page encore</p>
-                  <p className="text-sm text-muted">Commence à lire pour en débloquer !</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 gap-4">
-                  {wonBadges.map((def) => {
-                    const ub = unlocked.find((u) => u.badge_id === def.id);
-                    const isSansFaute    = def.id === "sans-faute";
-                    const isSprintEclair = def.id === "sprint-eclair";
-                    const cumulCount = isSansFaute ? quizPassCount : isSprintEclair ? sprintCount : 0;
-                    return (
-                      <button key={def.id} onClick={() => setSelected(def)}
-                        className="group flex flex-col items-center gap-1.5 focus:outline-none">
-                        <div className="relative transition-transform group-hover:scale-105">
-                          <BookmarkBadge def={def} unlocked unlockedAt={ub?.unlocked_at} size={76} />
-                          {cumulCount > 1 && (
-                            <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center
-                              rounded-full bg-amber-500 font-mono text-[9px] font-black text-white ring-2 ring-paper">
-                              {cumulCount}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-center text-[10.5px] font-semibold leading-tight text-ink">
-                          {def.name}{cumulCount > 1 ? ` × ${cumulCount}` : ""}
-                        </p>
-                        <p className={`text-[9.5px] font-bold ${TIER_META[def.tier as BadgeTier].textClass}`}>
-                          {TIER_META[def.tier as BadgeTier].label}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-              )
-            ) : tab === "available" ? (
-              <div className="flex flex-col gap-5">
-                {(Object.keys(TYPE_LABEL) as BadgeType[]).map((type) => {
-                  const todayStr = new Date().toISOString().slice(0, 10);
-                  // Badge mensuel visible uniquement pendant sa période (startDate → endDate)
-                  const isMonthlyVisible = (d: BadgeDef) => {
-                    if (!d.startDate || !d.endDate) return false;
-                    return todayStr >= d.startDate && todayStr <= d.endDate;
-                  };
-                  const group = lockedBadges.filter((d) => {
-                    if (d.type !== type) return false;
-                    if (d.type === "monthly_books" || d.type === "monthly") return isMonthlyVisible(d);
-                    return true;
-                  });
-                  if (!group.length) return null;
-                  return (
-                    <div key={type}>
-                      <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">
-                        {TYPE_LABEL[type]}
-                      </p>
-                      <div className="grid grid-cols-3 gap-4">
-                        {group.map((def) => {
-                          const statVal = stats ? getStatValue(def, stats) : -1;
-                          const isNumeric = statVal >= 0;
-                          const pct = isNumeric ? Math.min(100, (statVal / def.targetValue) * 100) : 0;
-                          return (
-                            <button key={def.id} onClick={() => setSelected(def)}
-                              className="group flex flex-col items-center gap-1.5 focus:outline-none">
-                              <div className="opacity-35 grayscale transition-all group-hover:opacity-45">
-                                <BookmarkBadge def={def} unlocked={false} size={76} />
-                              </div>
-                              <p className="text-center text-[10.5px] font-semibold leading-tight text-ink">{def.name}</p>
-                              {isNumeric ? (
-                                <div className="w-full px-1">
-                                  <div className="h-1 overflow-hidden rounded-full bg-line">
-                                    <div className="h-full rounded-full bg-violet transition-all" style={{ width: `${pct}%` }} />
-                                  </div>
-                                  <p className="mt-0.5 text-center text-[9px] text-muted">
-                                    {statVal.toLocaleString("fr-FR")} / {def.targetValue.toLocaleString("fr-FR")}
-                                  </p>
+            <div className="flex flex-col gap-6">
+              {TYPE_ORDER.map((type) => {
+                const items = byType.get(type);
+                if (!items?.length) return null;
+                return (
+                  <div key={type}>
+                    <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted">
+                      {TYPE_LABEL[type]}
+                    </p>
+                    <div className="grid grid-cols-3 gap-3">
+                      {items.map(({ def, isUnlocked, unlockedAt: ubAt }) => {
+                        const isSansFaute    = def.id === "sans-faute";
+                        const isSprintEclair = def.id === "sprint-eclair";
+                        const cumulCount = isSansFaute ? quizPassCount : isSprintEclair ? sprintCount : 0;
+                        const statVal = stats && !isUnlocked ? getStatValue(def, stats) : -1;
+                        const isNumeric = statVal >= 0;
+                        const pct = isNumeric ? Math.min(100, (statVal / def.targetValue) * 100) : 0;
+
+                        return (
+                          <button key={def.id} onClick={() => setSelected(def)}
+                            className="group flex flex-col items-center gap-1 focus:outline-none">
+                            <div className={`relative transition-transform group-hover:scale-105 ${!isUnlocked ? "opacity-30 grayscale" : ""}`}>
+                              <BookmarkBadge def={def} unlocked={isUnlocked} unlockedAt={ubAt} size={72} />
+                              {!isUnlocked && (
+                                <div className="absolute inset-0 flex items-end justify-center pb-3">
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-4 w-4 text-ink">
+                                    <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                                  </svg>
                                 </div>
-                              ) : (
-                                <p className="text-center text-[9px] leading-tight text-muted px-1">{def.description}</p>
                               )}
-                            </button>
-                          );
-                        })}
-                      </div>
+                              {isUnlocked && cumulCount > 1 && (
+                                <span className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center
+                                  rounded-full bg-amber-500 font-mono text-[9px] font-black text-white ring-2 ring-paper">
+                                  {cumulCount}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-center text-[10px] font-semibold leading-tight text-ink">
+                              {def.name}{isUnlocked && cumulCount > 1 ? ` × ${cumulCount}` : ""}
+                            </p>
+                            {isUnlocked ? (
+                              <p className={`text-[9px] font-bold ${TIER_META[def.tier as BadgeTier].textClass}`}>
+                                {TIER_META[def.tier as BadgeTier].label}
+                              </p>
+                            ) : isNumeric ? (
+                              <div className="w-full px-0.5">
+                                <div className="h-[3px] overflow-hidden rounded-full bg-line">
+                                  <div className="h-full rounded-full bg-violet/60" style={{ width: `${pct}%` }} />
+                                </div>
+                                <p className="mt-0.5 text-center text-[8.5px] text-muted">
+                                  {statVal.toLocaleString("fr-FR")} / {def.targetValue.toLocaleString("fr-FR")}
+                                </p>
+                              </div>
+                            ) : (
+                              <p className="line-clamp-2 text-center text-[8.5px] leading-tight text-muted px-0.5">
+                                {def.description}
+                              </p>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <LeaderboardView currentUserId={currentUserId} />
-            )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        </>
+        </div>
       )}
 
-      {/* Badge detail */}
+      {/* Badge detail sheet */}
       {selected && (
         <BadgeDetailSheet
           def={selected}
