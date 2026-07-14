@@ -6,6 +6,7 @@ import { useAuth } from "../lib/auth-context";
 import type { Book } from "../lib/types";
 import { todayISO } from "../lib/books";
 import { Modal, Button, FieldLabel, inputClass, Cover } from "./ui";
+import RichTextEditor from "./RichTextEditor";
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
@@ -649,12 +650,10 @@ export default function LogReadingModal({
 
               <div>
                 <FieldLabel>Note de session (optionnel)</FieldLabel>
-                <textarea
+                <RichTextEditor
                   value={sessionNotes}
-                  onChange={(e) => setSessionNotes(e.target.value)}
-                  rows={3}
+                  onChange={setSessionNotes}
                   placeholder="Impressions, citations, contexte de lecture…"
-                  className="w-full rounded-xl border border-line bg-input px-3 py-2.5 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
                 />
               </div>
               <div>

@@ -1308,9 +1308,13 @@ export default function BookDetailPage() {
                     </div>
                   </div>
                   {log.extraNotes.map((note, ni) => (
-                    <p key={ni} className="rounded-xl bg-violet-soft px-3 py-2 font-serif text-[12.5px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
-                      « {note} »
-                    </p>
+                    note.startsWith("<") ? (
+                      <div key={ni} className="prose-review rounded-xl bg-violet-soft px-3 py-2 font-serif text-[12.5px] leading-relaxed text-ink" dangerouslySetInnerHTML={{ __html: note }} />
+                    ) : (
+                      <p key={ni} className="rounded-xl bg-violet-soft px-3 py-2 font-serif text-[12.5px] leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
+                        {note}
+                      </p>
+                    )
                   ))}
                   {log.extraPhotos.map((url, pi) => (
                     <a key={pi} href={url} target="_blank" rel="noopener noreferrer">
@@ -1443,9 +1447,13 @@ export default function BookDetailPage() {
                 {selectedMemberSessionNotes.map((note, i) => (
                   <div key={i} className="rounded-xl bg-violet-soft p-3">
                     <p className="mb-1 text-[10px] font-medium text-muted">{formatDate(note.date)}</p>
-                    <p className="font-serif text-[13px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
-                      « {note.session_notes} »
-                    </p>
+                    {note.session_notes?.startsWith("<") ? (
+                      <div className="prose-review font-serif text-[13px] leading-relaxed text-ink-2" dangerouslySetInnerHTML={{ __html: note.session_notes }} />
+                    ) : (
+                      <p className="font-serif text-[13px] leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
+                        {note.session_notes}
+                      </p>
+                    )}
                     {note.session_photo_url && (
                       <a href={note.session_photo_url} target="_blank" rel="noopener noreferrer">
                         {/* eslint-disable-next-line @next/next/no-img-element */}

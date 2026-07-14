@@ -817,9 +817,13 @@ export default function AccueilPage() {
 
             {/* Contenu scrollable */}
             <div className="flex flex-col gap-3 overflow-y-auto px-5 pb-3 [touch-action:pan-y]">
-              <p className="font-serif text-[14px] italic leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
-                « {noteModal.text} »
-              </p>
+              {noteModal.text?.startsWith("<") ? (
+                <div className="prose-review font-serif text-[14px] leading-relaxed text-ink" dangerouslySetInnerHTML={{ __html: noteModal.text }} />
+              ) : (
+                <p className="font-serif text-[14px] leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
+                  {noteModal.text}
+                </p>
+              )}
               {noteModal.photoUrl && (
                 <a href={noteModal.photoUrl} target="_blank" rel="noopener noreferrer">
                   {/* eslint-disable-next-line @next/next/no-img-element */}

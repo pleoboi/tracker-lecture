@@ -317,18 +317,20 @@ export default function JournalPage() {
               </div>
 
               {e.notes.map((note, i) => (
-                <p
-                  key={i}
-                  className="rounded-xl bg-violet-soft px-3 py-2.5 font-serif text-[12.5px] italic leading-relaxed text-ink"
-                  style={{ whiteSpace: "pre-line" }}
-                >
+                <div key={i} className="rounded-xl bg-violet-soft px-3 py-2.5">
                   {e.notes.length > 1 && (
-                    <span className="not-italic text-[9.5px] font-semibold uppercase tracking-wide text-violet-deep block mb-1">
+                    <span className="mb-1 block text-[9.5px] font-semibold uppercase tracking-wide text-violet-deep">
                       Note {i + 1}
                     </span>
                   )}
-                  « {note} »
-                </p>
+                  {note.startsWith("<") ? (
+                    <div className="prose-review font-serif text-[12.5px] leading-relaxed text-ink" dangerouslySetInnerHTML={{ __html: note }} />
+                  ) : (
+                    <p className="font-serif text-[12.5px] leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
+                      {note}
+                    </p>
+                  )}
+                </div>
               ))}
 
               {e.photos.map((url, i) => (
