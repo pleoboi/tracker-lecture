@@ -290,7 +290,7 @@ export default function JournalPage() {
               <div className="flex gap-2.5">
                 <div
                   className={`flex-1 rounded-xl px-3 py-2.5 ${
-                    e.goalReached ? "bg-[#eaf1ea] dark:bg-[#162516]" : "bg-violet-soft"
+                    e.goalReached ? "bg-success-soft" : "bg-violet-soft"
                   }`}
                 >
                   <p

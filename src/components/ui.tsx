@@ -67,9 +67,9 @@ const PILL_TONES: Record<string, string> = {
   violet: "bg-violet-soft text-violet-deep",
   sage: "bg-[#eaede2] text-sage",
   neutral: "bg-card text-ink-2 border border-line",
-  success: "bg-[#eaf1ea] text-success",
-  danger: "bg-[#f6e7e1] text-danger",
-  gold: "bg-[#f7eccf] text-[#9a7320]",
+  success: "bg-success-soft text-success",
+  danger: "bg-danger-soft text-danger",
+  gold: "bg-amber-soft text-amber-label",
 };
 
 export function Pill({

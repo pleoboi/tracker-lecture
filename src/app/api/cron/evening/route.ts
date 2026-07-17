@@ -1,6 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendPushToUser, adminSupabase } from "../../../../lib/push.server";
 
+const PROGRESS_MESSAGES = (remaining: number, pagesRead: number): string[] => [
+  `Il te reste ${remaining} pages pour atteindre ton objectif du jour.`,
+  `Tu es à ${pagesRead} pages aujourd'hui — encore ${remaining} pour finir la journée en beauté.`,
+  `${remaining} pages et tu boucles ton objectif. Ce soir, c'est possible !`,
+  `Tu es si proche. Plus que ${remaining} pages pour ton objectif quotidien.`,
+];
+
+const NO_READ_MESSAGES = [
+  "Pas encore ouvert ton livre aujourd'hui ? Il est encore temps ce soir !",
+  "Ton livre te manque, non ? Il est là, il attend.",
+  "Les meilleures soirées commencent par quelques pages. Lance-toi !",
+  "Même 10 pages ce soir font la différence. Tu peux le faire !",
+  "Juste quelques pages avant de dormir ? Ton objectif t'attend.",
+  "Ta série de lectures a besoin de toi ce soir.",
+  "Un livre ouvert ce soir, et ta journée est complète.",
+  "Ce soir, le meilleur moment pour lire commence maintenant.",
+];
+
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization")?.replace("Bearer ", "")
     ?? req.nextUrl.searchParams.get("secret");
@@ -45,17 +63,28 @@ export async function GET(req: NextRequest) {
   let sent = 0;
   await Promise.all(
     userIds.map(async (uid) => {
-      const pagesYear = goalsMap.get(uid);
-      if (!pagesYear) return;
-      const dailyGoal = Math.ceil(pagesYear / 365);
       const pagesRead = todayMap.get(uid) ?? 0;
-      if (pagesRead >= dailyGoal) return;
-      const remaining = dailyGoal - pagesRead;
-      await sendPushToUser(uid, {
-        title: "Objectif du jour",
-        body: `Il te reste ${remaining} pages pour atteindre ton objectif quotidien. Tu peux le faire !`,
-      });
-      sent++;
+      const pagesYear = goalsMap.get(uid);
+
+      if (pagesYear) {
+        const dailyGoal = Math.ceil(pagesYear / 365);
+        if (pagesRead >= dailyGoal) return; // objectif atteint, pas de notification
+        if (pagesRead > 0) {
+          const remaining = dailyGoal - pagesRead;
+          const msgs = PROGRESS_MESSAGES(remaining, pagesRead);
+          const body = msgs[Math.floor(Math.random() * msgs.length)];
+          await sendPushToUser(uid, { title: "Swena", body });
+          sent++;
+          return;
+        }
+      }
+
+      // Aucune page lue aujourd'hui
+      if (pagesRead === 0) {
+        const body = NO_READ_MESSAGES[Math.floor(Math.random() * NO_READ_MESSAGES.length)];
+        await sendPushToUser(uid, { title: "Swena", body });
+        sent++;
+      }
     }),
   );
 

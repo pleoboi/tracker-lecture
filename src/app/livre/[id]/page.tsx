@@ -681,15 +681,19 @@ export default function BookDetailPage() {
                 <button
                   onClick={markAsReadNoDate}
                   disabled={markingRead}
-                  className="flex h-9 items-center justify-center rounded-xl border border-[#cfe0cf] dark:border-success/30 bg-[#eaf1ea] dark:bg-[#162516] px-3 text-xs font-semibold text-success"
+                  className="flex h-9 items-center justify-center rounded-xl border border-success-soft bg-success-soft px-3 text-xs font-semibold text-success"
                 >
                   {markingRead ? "…" : "✓ Lu"}
                 </button>
                 <button
                   onClick={pause}
-                  className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-muted"
+                  className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-line bg-card px-3 text-xs font-medium text-muted"
                 >
-                  ⏸ Pause
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
+                    <rect x="6" y="5" width="4" height="14" rx="1.5"/>
+                    <rect x="14" y="5" width="4" height="14" rx="1.5"/>
+                  </svg>
+                  Pause
                 </button>
                 <button
                   onClick={abandon}
@@ -703,9 +707,12 @@ export default function BookDetailPage() {
               <>
                 <button
                   onClick={resume}
-                  className="flex h-9 items-center justify-center rounded-xl border border-violet/40 bg-violet-soft px-3 text-xs font-semibold text-violet-deep"
+                  className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-violet/40 bg-violet-soft px-3 text-xs font-semibold text-violet-deep"
                 >
-                  ▶ Reprendre
+                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
+                    <path d="M6 4.75C6 4.03 6.84 3.6 7.43 4.02l12 7.25a1 1 0 0 1 0 1.46l-12 7.25C6.84 20.4 6 19.97 6 19.25V4.75z"/>
+                  </svg>
+                  Reprendre
                 </button>
                 <button
                   onClick={abandon}
@@ -716,7 +723,7 @@ export default function BookDetailPage() {
               </>
             )}
             {isOwner && abandoned && (
-              <span className="rounded-xl border border-[#e7c7bd] dark:border-danger/30 bg-[#f6e7e1] dark:bg-[#2a1510] px-3 py-1.5 text-xs font-semibold text-danger">
+              <span className="rounded-xl border border-danger-soft bg-danger-soft px-3 py-1.5 text-xs font-semibold text-danger">
                 Abandonné
               </span>
             )}
@@ -1233,11 +1240,11 @@ export default function BookDetailPage() {
         )}
 
         {/* Ma review (visible uniquement par le propriétaire) */}
-        {isOwner && <div className="flex flex-col gap-2 rounded-2xl border border-[#e4c97e]/50 dark:border-[#5a3d0a]/50 bg-[#fdf7e9] dark:bg-[#2a2210] p-4">
+        {isOwner && <div className="flex flex-col gap-2 rounded-2xl border border-amber-soft bg-amber-soft p-4">
           <div className="flex items-center justify-between">
             <h2 className="font-serif text-[15px] font-medium text-ink">Ma review</h2>
             {!editingNotes && (
-              <button onClick={() => setEditingNotes(true)} className="text-xs font-medium text-[#8a6400] dark:text-[#e0b83d]">
+              <button onClick={() => setEditingNotes(true)} className="text-xs font-medium text-amber-label">
                 {activeBook!.notes ? "Modifier" : "Ajouter"}
               </button>
             )}
@@ -1411,8 +1418,8 @@ export default function BookDetailPage() {
             </div>
 
             {/* Review globale — bloc ambre */}
-            <div className="rounded-xl border border-[#e4c97e]/50 dark:border-[#5a3d0a]/50 bg-[#fdf7e9] dark:bg-[#2a2210] p-3.5">
-              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-[#8a6400] dark:text-[#e0b83d]">Review globale</p>
+            <div className="rounded-xl border border-amber-soft bg-amber-soft p-3.5">
+              <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-label">Review globale</p>
               {selectedMember.review ? (
                 <>
                   <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
@@ -1424,7 +1431,7 @@ export default function BookDetailPage() {
                       disabled={likeLoading}
                       className={`mt-3 flex items-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-semibold transition-colors ${
                         reviewLiked
-                          ? "border-danger/30 bg-[#f6e7e1] dark:bg-[#2a1510] text-danger"
+                          ? "border-danger/30 bg-danger-soft text-danger"
                           : "border-line bg-paper text-muted hover:border-danger/30 hover:text-danger"
                       }`}
                     >

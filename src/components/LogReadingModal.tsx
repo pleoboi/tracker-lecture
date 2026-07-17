@@ -473,24 +473,24 @@ export default function LogReadingModal({
           )}
 
           {quizPhase === "passed" && (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-center dark:border-emerald-900 dark:bg-emerald-950/40">
+            <div className="rounded-2xl border border-success-soft bg-success-soft px-4 py-4 text-center">
               <div className="mb-1 flex items-center justify-center gap-1.5">
-                <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 text-emerald-600" stroke="currentColor" strokeWidth="2.2">
+                <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 text-success shrink-0" stroke="currentColor" strokeWidth="2.2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
                 </svg>
-                <p className="text-[12.5px] font-semibold text-emerald-700 dark:text-emerald-400">
+                <p className="text-[12.5px] font-semibold text-success">
                   Bonne réponse — Sans Faute !
                 </p>
               </div>
-              <p className="text-[11px] text-emerald-600 dark:text-emerald-500">
+              <p className="text-[11px] text-success/80">
                 +30 pts ajoutés à ton score
               </p>
             </div>
           )}
 
           {quizPhase === "wrong" && (
-            <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-center dark:border-orange-900 dark:bg-orange-950/30">
-              <p className="text-[12.5px] font-semibold text-orange-700 dark:text-orange-400">
+            <div className="rounded-2xl border border-danger-soft bg-danger-soft px-4 py-3 text-center">
+              <p className="text-[12.5px] font-semibold text-danger">
                 Mauvaise réponse — mais la lecture compte !
               </p>
             </div>
@@ -617,7 +617,7 @@ export default function LogReadingModal({
           {validNumber && diff !== 0 && (
             <div
               className={`flex items-center justify-between rounded-xl px-3.5 py-3 ${
-                diff > 0 ? "bg-violet-soft" : "bg-[#f6e7e1] dark:bg-[#2a1510]"
+                diff > 0 ? "bg-violet-soft" : "bg-danger-soft"
               }`}
             >
               <span className={`text-xs font-medium ${diff > 0 ? "text-violet-deep" : "text-danger"}`}>

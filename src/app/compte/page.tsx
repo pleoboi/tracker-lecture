@@ -351,7 +351,7 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
 
   if (result) {
     return (
-      <div className="rounded-2xl border border-[#cfe0cf] bg-[#eaf1ea] p-4">
+      <div className="rounded-2xl border border-success-soft bg-success-soft p-4">
         <p className="font-serif text-[15px] font-semibold text-success">Import terminé !</p>
         <p className="mt-1 text-[13px] text-ink-2">
           <span className="font-semibold">{result.inserted}</span> livre{result.inserted > 1 ? "s" : ""} importé{result.inserted > 1 ? "s" : ""}
@@ -978,6 +978,11 @@ export default function ComptePage() {
     setNotifLoading(false);
   };
 
+  const [notifDiag, setNotifDiag] = useState<{
+    vapidKey: string; subsCount: number; totalSubs: number; subsError: string | null;
+  } | null>(null);
+  const [notifDiagLoading, setNotifDiagLoading] = useState(false);
+
   const handleTestNotif = async () => {
     setNotifTestResult("Envoi en cours…");
     const { data: { session } } = await supabase.auth.getSession();
@@ -991,14 +996,36 @@ export default function ComptePage() {
       if (!res.ok) {
         setNotifTestResult(`Erreur : ${json.error}`);
       } else if (json.sent === 0) {
-        setNotifTestResult("Aucune souscription — réactive les notifications");
+        setNotifTestResult("Aucune souscription trouvée — réactive les notifications");
       } else {
-        setNotifTestResult("Notification envoyée !");
+        setNotifTestResult(`Envoyée (${json.sent} appareils)`);
       }
     } catch {
       setNotifTestResult("Erreur réseau");
     }
-    setTimeout(() => setNotifTestResult(null), 5000);
+    setTimeout(() => setNotifTestResult(null), 6000);
+  };
+
+  const handleDiagnostic = async () => {
+    setNotifDiagLoading(true);
+    setNotifDiag(null);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) { setNotifDiagLoading(false); return; }
+    try {
+      const res = await fetch("/api/push/diagnostic", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await res.json();
+      setNotifDiag({
+        vapidKey: json.env?.vapidPrivateKey ?? "inconnue",
+        subsCount: json.subscriptions?.forUserCount ?? 0,
+        totalSubs: json.subscriptions?.totalInDB ?? 0,
+        subsError: json.subscriptions?.error ?? null,
+      });
+    } catch {
+      setNotifDiag({ vapidKey: "erreur réseau", subsCount: 0, totalSubs: 0, subsError: "réseau" });
+    }
+    setNotifDiagLoading(false);
   };
 
   // Profile
@@ -1680,12 +1707,37 @@ export default function ComptePage() {
                 </p>
               )}
               {notifStatus === "granted" && (
-                <button
-                  onClick={handleTestNotif}
-                  className="rounded-2xl border border-line bg-card px-4 py-2.5 text-left text-[12px] text-muted transition-colors hover:border-violet/40 hover:text-violet-deep"
-                >
-                  {notifTestResult ?? "Envoyer une notification test"}
-                </button>
+                <div className="flex flex-col gap-2">
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleTestNotif}
+                      className="flex-1 rounded-2xl border border-violet/40 bg-violet-soft px-3 py-2.5 text-[12px] font-semibold text-violet-deep transition-colors hover:border-violet"
+                    >
+                      {notifTestResult ?? "Envoyer une notif test"}
+                    </button>
+                    <button
+                      onClick={handleDiagnostic}
+                      disabled={notifDiagLoading}
+                      className="rounded-2xl border border-line bg-card px-3 py-2.5 text-[12px] text-muted transition-colors hover:border-violet/40 hover:text-ink disabled:opacity-50"
+                    >
+                      {notifDiagLoading ? "…" : "Diagnostic"}
+                    </button>
+                  </div>
+                  {notifDiag && (
+                    <div className="rounded-2xl border border-line bg-input px-4 py-3 text-[11.5px] leading-relaxed text-ink">
+                      <p className={notifDiag.vapidKey.startsWith("présente") ? "text-success" : "text-danger"}>
+                        Clé VAPID : {notifDiag.vapidKey}
+                      </p>
+                      <p className={notifDiag.subsCount > 0 ? "text-success" : "text-danger"}>
+                        Souscriptions pour toi : {notifDiag.subsCount}
+                      </p>
+                      <p className="text-muted">Total en base : {notifDiag.totalSubs}</p>
+                      {notifDiag.subsError && (
+                        <p className="text-danger">Erreur DB : {notifDiag.subsError}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -1693,7 +1745,7 @@ export default function ComptePage() {
           <Button
             variant="ghost"
             onClick={handleLogout}
-            className="w-full border-danger/30 text-danger hover:bg-[#f6e7e1]"
+            className="w-full border-danger/30 text-danger hover:bg-danger-soft"
           >
             Se déconnecter
           </Button>

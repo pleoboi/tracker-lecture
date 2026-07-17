@@ -460,8 +460,8 @@ export default function MembrePage() {
       const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
       notifyUser(
         noteModal.reviewerUserId,
-        "Nouvelle réaction",
-        `${senderName} a aimé ta note sur "${noteModal.bookTitle || "ton livre"}"`,
+        "Swena",
+        `${senderName} a aimé ta review sur «${noteModal.bookTitle || "ton livre"}»`,
       );
     }
     setNoteLikeLoading(false);
@@ -480,7 +480,7 @@ export default function MembrePage() {
       setIsFollowing(true);
       setFollowersCount((n) => n + 1);
       const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
-      notifyUser(memberId, "Nouveau follower", `${senderName} a commencé à te suivre`);
+      notifyUser(memberId, "Swena", `${senderName} s'est abonné à toi`);
     }
     setLoadingFollow(false);
   };
@@ -573,7 +573,7 @@ export default function MembrePage() {
         );
         const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
         inviteIds.forEach((uid) =>
-          notifyUser(uid, "Challenge", `${senderName} t'invite à rejoindre le challenge "${challengeForm.title.trim()}"`),
+          notifyUser(uid, "Swena", `${senderName} t'invite à rejoindre le challenge «${challengeForm.title.trim()}»`),
         );
       }
     }
@@ -719,7 +719,7 @@ export default function MembrePage() {
                 </button>
                 <div className="mx-3 h-px bg-line" />
                 <button onClick={handleLogout}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-sm text-danger transition-colors hover:bg-[#f6e7e1] dark:hover:bg-[#2a1510]">
+                  className="flex w-full items-center gap-3 px-4 py-3 text-sm text-danger transition-colors hover:bg-danger-soft">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />
                   </svg>
@@ -887,7 +887,12 @@ export default function MembrePage() {
         {TABS.map(({ id, label }) => (
           <button
             key={id}
-            onClick={() => setActiveTab(id)}
+            onClick={() => {
+              setActiveTab(id);
+              window.scrollTo(0, 0);
+              document.documentElement.scrollTop = 0;
+              document.body.scrollTop = 0;
+            }}
             className="flex-1 whitespace-nowrap rounded-xl px-3 py-2 text-[12px] font-semibold transition-all"
             style={activeTab === id
               ? { background: "#7c3aed", color: "#ffffff" }
@@ -1451,6 +1456,11 @@ export default function MembrePage() {
                   book_title: recoSelected.title,
                   message: recoMessage.trim() || null,
                 });
+                const senderNameReco = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
+                const recoBody = recoMessage.trim()
+                  ? `${senderNameReco} te recommande «${recoSelected.title}» : ${recoMessage.trim()}`
+                  : `${senderNameReco} te recommande «${recoSelected.title}»`;
+                notifyUser(memberId, "Swena", recoBody);
                 setSendingReco(false);
                 setShowRecoModal(false);
               }}
@@ -1475,7 +1485,7 @@ export default function MembrePage() {
             <div className="flex items-center justify-between">
               <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
                 noteModal.type === "review"
-                  ? "bg-[#fdf7e9] text-[#8a6400] dark:bg-[#2a2210] dark:text-[#e0b83d]"
+                  ? "bg-amber-soft text-amber-label"
                   : "bg-violet-soft text-violet-deep"
               }`}>
                 {noteModal.type === "review" ? "Review globale" : "Note de session"}
@@ -1497,7 +1507,7 @@ export default function MembrePage() {
                 disabled={noteLikeLoading}
                 className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-colors disabled:opacity-50 ${
                   noteLiked
-                    ? "border-danger/30 bg-[#f6e7e1] dark:bg-[#2a1510] text-danger"
+                    ? "border-danger/30 bg-danger-soft text-danger"
                     : "border-line bg-card text-muted hover:border-danger/30 hover:text-danger"
                 }`}
               >

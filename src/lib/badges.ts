@@ -34,12 +34,12 @@ export interface UserBadgeStats {
 
 // ── Couleurs par palier ───────────────────────────────────────────────────────
 export const TIER_META: Record<BadgeTier, {
-  label: string; stroke: string; bg: string; bgDark: string; textClass: string; borderClass: string;
+  label: string; stroke: string; bg: string; bgDark: string; bgClass: string; textClass: string; borderClass: string;
 }> = {
-  1: { label:"Bronze",  stroke:"#c97d41", bg:"bg-[#fdf0e0]",  bgDark:"dark:bg-[#2a1a0a]",  textClass:"text-[#c97d41]",   borderClass:"border-[#c97d41]"  },
-  2: { label:"Argent",  stroke:"#8a9ab5", bg:"bg-[#f0f2f6]",  bgDark:"dark:bg-[#141c28]",  textClass:"text-[#8a9ab5]",   borderClass:"border-[#8a9ab5]"  },
-  3: { label:"Or",      stroke:"#c8961a", bg:"bg-[#fdf6d3]",  bgDark:"dark:bg-[#261e00]",  textClass:"text-[#c8961a]",   borderClass:"border-[#c8961a]"  },
-  4: { label:"Platine", stroke:"#7c5bbf", bg:"bg-violet-soft", bgDark:"dark:bg-violet/10", textClass:"text-violet-deep", borderClass:"border-violet"     },
+  1: { label:"Bronze",  stroke:"#c97d41", bg:"bg-[#fdf0e0]",  bgDark:"dark:bg-[#2a1a0a]",  bgClass:"tier-bg-1", textClass:"text-[#c97d41]",   borderClass:"border-[#c97d41]"  },
+  2: { label:"Argent",  stroke:"#8a9ab5", bg:"bg-[#f0f2f6]",  bgDark:"dark:bg-[#141c28]",  bgClass:"tier-bg-2", textClass:"text-[#8a9ab5]",   borderClass:"border-[#8a9ab5]"  },
+  3: { label:"Or",      stroke:"#c8961a", bg:"bg-[#fdf6d3]",  bgDark:"dark:bg-[#261e00]",  bgClass:"tier-bg-3", textClass:"text-[#c8961a]",   borderClass:"border-[#c8961a]"  },
+  4: { label:"Platine", stroke:"#7c5bbf", bg:"bg-violet-soft", bgDark:"dark:bg-violet/10", bgClass:"tier-bg-4", textClass:"text-violet-deep", borderClass:"border-violet"     },
 };
 
 // ── Définitions des badges ────────────────────────────────────────────────────

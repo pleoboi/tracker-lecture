@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from "../lib/push.client";
 
-const STORAGE_KEY = "swena_push_dismissed";
+const SESSION_KEY = "swena_push_dismissed_session";
 
 
 async function registerAndSubscribe(): Promise<boolean> {
@@ -40,7 +40,7 @@ export default function PushPermissionPrompt() {
     if (typeof window === "undefined") return;
     if (!("Notification" in window)) return;
     if (Notification.permission !== "default") return;
-    if (localStorage.getItem(STORAGE_KEY)) return;
+    if (sessionStorage.getItem(SESSION_KEY)) return;
 
     // Délai léger pour ne pas bloquer le chargement initial
     const t = setTimeout(() => setVisible(true), 1800);
@@ -48,7 +48,7 @@ export default function PushPermissionPrompt() {
   }, []);
 
   const dismiss = () => {
-    localStorage.setItem(STORAGE_KEY, "1");
+    sessionStorage.setItem(SESSION_KEY, "1");
     setVisible(false);
   };
 

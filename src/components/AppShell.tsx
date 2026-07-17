@@ -914,7 +914,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         onClick={() => setShowNotif(false)}
                         className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-violet-soft"
                       >
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#f6e7e1] dark:bg-[#2a1510] text-sm">♥</span>
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-danger-soft text-sm text-danger">♥</span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[12.5px] font-semibold text-ink">
                             {(item as typeof likeNotifs[0] & { _type: "like" }).from_name}{" "}

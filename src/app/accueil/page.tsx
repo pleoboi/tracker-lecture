@@ -372,7 +372,7 @@ export default function AccueilPage() {
           book_id: log.bookId,
           book_title: log.bookTitle,
         });
-        notifyUser(log.user_id, "Nouveau like", `${displayName} a liké ta session de lecture`);
+        notifyUser(log.user_id, "Swena", `${displayName} a aimé ton activité sur «${log.bookTitle || "ton livre"}»`);
       }
     }
   }, [userId, likeMap]);
@@ -504,8 +504,8 @@ export default function AccueilPage() {
       });
       notifyUser(
         noteModal.reviewerUserId,
-        "Nouvelle réaction",
-        `${displayName} a aimé ta note sur "${noteModal.bookTitle || "ton livre"}"`,
+        "Swena",
+        `${displayName} a aimé ta review sur «${noteModal.bookTitle || "ton livre"}»`,
       );
     }
     setNoteLikeLoading(false);
@@ -602,7 +602,7 @@ export default function AccueilPage() {
       </header>
 
       {toast && (
-        <div className="rounded-xl border border-[#cfe0cf] dark:border-success/30 bg-[#eaf1ea] dark:bg-[#162516] px-4 py-3 text-xs font-semibold text-success">
+        <div className="rounded-xl border border-success-soft bg-success-soft px-4 py-3 text-xs font-semibold text-success">
           {toast}
         </div>
       )}
@@ -800,7 +800,7 @@ export default function AccueilPage() {
             <div className="flex shrink-0 items-center justify-between px-5 pt-5 pb-3">
               <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
                 noteModal.type === "review"
-                  ? "bg-[#fdf7e9] text-[#8a6400] dark:bg-[#2a2210] dark:text-[#e0b83d]"
+                  ? "bg-amber-soft text-amber-label"
                   : "bg-violet-soft text-violet-deep"
               }`}>
                 {noteModal.type === "review" ? "Review globale" : "Note de session"}
@@ -840,7 +840,7 @@ export default function AccueilPage() {
                   disabled={noteLikeLoading}
                   className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-[12px] font-semibold transition-colors disabled:opacity-50 ${
                     noteLiked
-                      ? "border-danger/30 bg-[#f6e7e1] dark:bg-[#2a1510] text-danger"
+                      ? "border-danger/30 bg-danger-soft text-danger"
                       : "border-line bg-card text-muted hover:border-danger/30 hover:text-danger"
                   }`}
                 >

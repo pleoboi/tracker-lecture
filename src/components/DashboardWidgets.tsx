@@ -39,7 +39,7 @@ function PeriodRow({ name, period, unit, accent }: { name: string; period: Perio
         <span className="text-[12.5px] font-semibold text-ink">{name}</span>
         <span
           className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${
-            ok ? "bg-[#eaf1ea] dark:bg-[#162516] text-success" : "bg-[#f6e7e1] dark:bg-[#2a1510] text-danger"
+            ok ? "bg-success-soft text-success" : "bg-danger-soft text-danger"
           }`}
         >
           {ok ? "+" : "−"}

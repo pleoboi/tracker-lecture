@@ -230,6 +230,39 @@ h1, h2, h3, h4 {
   animation: slideOutLeft 0.24s ease-in forwards;
 }
 
+/* ── Fonds sémantiques adaptatifs (succès / danger / ambre) ────────────────── */
+/* Utilisation : classes directes au lieu de bg-[#hex] dark:bg-[#hex] */
+
+.bg-success-soft   { background-color: #eaf1ea; }
+.bg-danger-soft    { background-color: #f6e7e1; }
+.bg-amber-soft     { background-color: #fdf7e9; }
+
+html.dark .bg-success-soft  { background-color: #162516; }
+html.dark .bg-danger-soft   { background-color: #2a1510; }
+html.dark .bg-amber-soft    { background-color: #2a2210; }
+
+.border-success-soft { border-color: #cfe0cf; }
+.border-danger-soft  { border-color: #e7c7bd; }
+.border-amber-soft   { border-color: rgba(228, 201, 126, 0.4); }
+
+html.dark .border-success-soft { border-color: color-mix(in srgb, var(--color-success) 30%, transparent); }
+html.dark .border-danger-soft  { border-color: color-mix(in srgb, var(--color-danger)  30%, transparent); }
+html.dark .border-amber-soft   { border-color: color-mix(in srgb, var(--color-gold)    30%, transparent); }
+
+.text-amber-label  { color: #8a6400; }
+html.dark .text-amber-label { color: #e0b83d; }
+
+/* ── Fonds colorés par palier de marque-page (adaptés light/dark) ─────────── */
+.tier-bg-1 { background-color: #f5e8d4; }
+.tier-bg-2 { background-color: #eaecf2; }
+.tier-bg-3 { background-color: #f5f0d0; }
+.tier-bg-4 { background-color: var(--color-violet-soft); }
+
+html.dark .tier-bg-1 { background-color: #1e1209; }
+html.dark .tier-bg-2 { background-color: #111620; }
+html.dark .tier-bg-3 { background-color: #1c1800; }
+html.dark .tier-bg-4 { background-color: var(--color-violet-soft); }
+
 /* ── Mode sombre ─────────────────────────────────────────────────────────── */
 html.dark {
   --color-paper: #1a1720;

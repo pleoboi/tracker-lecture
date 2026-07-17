@@ -292,12 +292,12 @@ export function VictoryModal({ def, onClose }: { def: BadgeDef; onClose: () => v
       <div className={`w-full max-w-xs overflow-hidden rounded-3xl bg-paper shadow-2xl
         transition-all duration-500 ${visible ? "opacity-100 translate-y-0 scale-100" : "opacity-0 translate-y-10 scale-95"}`}>
         {/* Header coloré */}
-        <div className={`flex flex-col items-center gap-3 px-6 py-8 ${meta.bg} ${meta.bgDark}`}>
+        <div className={`flex flex-col items-center gap-3 px-6 py-8 ${meta.bgClass}`}>
           <BookmarkBadge def={def} unlocked size={96} />
           <div className="text-center">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted">Nouveau marque-page</p>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Nouveau marque-page</p>
             <p className="mt-1 font-serif text-2xl font-black text-ink">{def.name}</p>
-            <p className="mt-0.5 text-sm text-muted">{def.description}</p>
+            <p className="mt-0.5 text-sm text-ink-2">{def.description}</p>
           </div>
           <div className={`rounded-2xl border-2 px-6 py-2 ${meta.borderClass}`}>
             <p className={`font-serif text-xl font-black ${meta.textClass}`}>+{def.points} pts</p>
@@ -356,11 +356,11 @@ function BadgeDetailSheet({ def, unlocked, unlockedAt, onClose }: {
         </div>
         <div className="px-5 pb-3">
           {unlocked ? (
-            <div className="flex items-center gap-2 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2.5">
-              <svg viewBox="0 0 24 24" fill="none" stroke="#059669" strokeWidth="2.2" className="h-4 w-4 shrink-0">
+            <div className="flex items-center gap-2 rounded-xl border border-success/25 px-3 py-2.5" style={{ backgroundColor: "color-mix(in srgb, var(--color-success) 10%, var(--color-card))" }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" className="h-4 w-4 shrink-0 text-success">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
-              <p className="text-[12.5px] font-semibold text-emerald-800 dark:text-emerald-300">
+              <p className="text-[12.5px] font-semibold text-success">
                 Obtenu{dateStr && ` le ${dateStr}`}
               </p>
             </div>
@@ -511,6 +511,7 @@ const TYPE_ORDER: BadgeType[] = [
 function BadgesHub({ memberId, currentUserId, onClose }: {
   memberId: string; currentUserId?: string; onClose: () => void;
 }) {
+  const scrollRef = React.useRef<HTMLDivElement>(null);
   const [loading,       setLoading]       = useState(true);
   const [profile,       setProfile]       = useState<{ display_name: string; avatar_url: string | null } | null>(null);
   const [unlocked,      setUnlocked]      = useState<{ badge_id: string; unlocked_at: string }[]>([]);
@@ -522,7 +523,22 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
   const [sprintCount,     setSprintCount]     = useState(0);
   const [sprintBonus,     setSprintBonus]     = useState(0);
 
-  useEffect(() => { document.body.style.overflow = "hidden"; return () => { document.body.style.overflow = ""; }; }, []);
+  useEffect(() => {
+    const savedScroll = window.scrollY;
+    window.scrollTo({ top: 0, behavior: "instant" });
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = "";
+      window.scrollTo({ top: savedScroll, behavior: "instant" });
+    };
+  }, []);
+
+  // Remet le scroll interne au début une fois le contenu chargé
+  useEffect(() => {
+    if (!loading && scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [loading]);
 
   useEffect(() => {
     const load = async () => {
@@ -641,7 +657,7 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
           <p className="text-sm text-muted">Chargement…</p>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto pb-8">
+        <div ref={scrollRef} className="flex-1 overflow-y-auto pb-8">
 
           {/* ── Section 1 : Tableau de bord ── */}
           <div className="border-b border-line px-5 py-4">

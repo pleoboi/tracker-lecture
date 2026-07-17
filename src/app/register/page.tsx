@@ -134,7 +134,7 @@ export default function RegisterPage() {
           )}
 
           {error && (
-            <p className="rounded-xl border border-[#e7c7bd] bg-[#f6e7e1] px-3.5 py-2.5 text-xs font-medium text-danger">
+            <p className="rounded-xl border border-danger-soft bg-danger-soft px-3.5 py-2.5 text-xs font-medium text-danger">
               {error}
             </p>
           )}

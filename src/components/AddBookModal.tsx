@@ -643,7 +643,7 @@ export default function AddBookModal({
                   key={r.id}
                   href={`/livre/${r.id}`}
                   onClick={onClose}
-                  className="flex items-center gap-3 rounded-2xl border border-gold/40 bg-[#fdf7e9] p-3 transition-colors hover:border-gold"
+                  className="flex items-center gap-3 rounded-2xl border border-amber-soft bg-amber-soft p-3 transition-colors hover:border-gold"
                 >
                   <Cover id={r.id} title={r.title} coverUrl={null} className="h-[52px] w-[36px]" />
                   <div className="min-w-0 flex-1">
