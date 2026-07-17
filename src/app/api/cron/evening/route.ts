@@ -1,6 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendPushToUser, adminSupabase } from "../../../../lib/push.server";
 
+const GOAL_REACHED_MESSAGES = (pagesRead: number): string[] => [
+  `Objectif du jour bouclé avec ${pagesRead} pages. Et si tu allais encore plus loin ce soir ?`,
+  `Tu as dépassé ton quota aujourd'hui. La soirée est encore longue — quelques pages de plus ?`,
+  `${pagesRead} pages aujourd'hui, objectif atteint. Les meilleurs lecteurs ne s'arrêtent pas là.`,
+  `Bien joué, objectif atteint ! Tu peux t'arrêter là. Ou pas.`,
+  `Tu as cartonné aujourd'hui avec ${pagesRead} pages. Ton livre mérite encore quelques minutes.`,
+  `Objectif coché. Si tu continues ce soir, tu seras en avance sur toute la semaine.`,
+  `${pagesRead} pages, mission accomplie. Mais une dernière session ne ferait pas de mal.`,
+  `Tu as fini ton objectif avant même la fin de la journée. Impressionnant. Encore un chapitre ?`,
+];
+
 const PROGRESS_MESSAGES = (remaining: number, pagesRead: number): string[] => [
   `Il te reste ${remaining} pages pour atteindre ton objectif du jour.`,
   `Tu es à ${pagesRead} pages aujourd'hui — encore ${remaining} pour finir la journée en beauté.`,
@@ -68,7 +79,13 @@ export async function GET(req: NextRequest) {
 
       if (pagesYear) {
         const dailyGoal = Math.ceil(pagesYear / 365);
-        if (pagesRead >= dailyGoal) return; // objectif atteint, pas de notification
+        if (pagesRead >= dailyGoal) {
+          const msgs = GOAL_REACHED_MESSAGES(pagesRead);
+          const body = msgs[Math.floor(Math.random() * msgs.length)];
+          await sendPushToUser(uid, { title: "Swena", body });
+          sent++;
+          return;
+        }
         if (pagesRead > 0) {
           const remaining = dailyGoal - pagesRead;
           const msgs = PROGRESS_MESSAGES(remaining, pagesRead);
