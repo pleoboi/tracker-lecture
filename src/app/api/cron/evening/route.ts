@@ -19,6 +19,23 @@ const PROGRESS_MESSAGES = (remaining: number, pagesRead: number): string[] => [
   `Tu es si proche. Plus que ${remaining} pages pour ton objectif quotidien.`,
 ];
 
+const NO_GOAL_MESSAGES = (pagesRead: number): string[] =>
+  pagesRead > 0
+    ? [
+        `Tu as lu ${pagesRead} pages aujourd'hui. Définis un objectif annuel pour aller encore plus loin.`,
+        `${pagesRead} pages ce soir, pas mal. Et si tu te fixais un cap pour cette année ?`,
+        `Bonne session aujourd'hui. Un objectif annuel te permettrait de voir ta progression sur la durée.`,
+        `Tu lis, c'est l'essentiel. Pense à renseigner ton objectif annuel pour suivre ton rythme.`,
+      ]
+    : [
+        "Pas encore de livre ouvert ce soir ? C'est le meilleur moment pour commencer.",
+        "La soirée commence. Quelques pages suffisent pour entretenir l'habitude.",
+        "Ton livre t'attend. Lance-toi, même 5 minutes comptent.",
+        "Ouvre ton application, choisis un livre, lis une page. Le reste vient tout seul.",
+        "Les grandes habitudes commencent par de petits gestes. Ce soir, c'est une page.",
+        "Tu n'as pas encore de lecture en cours ? C'est le bon moment pour en commencer une.",
+      ];
+
 const NO_READ_MESSAGES = [
   "Pas encore ouvert ton livre aujourd'hui ? Il est encore temps ce soir !",
   "Ton livre te manque, non ? Il est là, il attend.",
@@ -29,6 +46,10 @@ const NO_READ_MESSAGES = [
   "Un livre ouvert ce soir, et ta journée est complète.",
   "Ce soir, le meilleur moment pour lire commence maintenant.",
 ];
+
+function pick<T>(arr: T[]): T {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
 
 export async function GET(req: NextRequest) {
   const auth = req.headers.get("authorization")?.replace("Bearer ", "")
@@ -79,29 +100,29 @@ export async function GET(req: NextRequest) {
 
       if (pagesYear) {
         const dailyGoal = Math.ceil(pagesYear / 365);
+
         if (pagesRead >= dailyGoal) {
-          const msgs = GOAL_REACHED_MESSAGES(pagesRead);
-          const body = msgs[Math.floor(Math.random() * msgs.length)];
-          await sendPushToUser(uid, { title: "Swena", body });
+          await sendPushToUser(uid, { title: "Swena", body: pick(GOAL_REACHED_MESSAGES(pagesRead)) });
           sent++;
           return;
         }
+
         if (pagesRead > 0) {
           const remaining = dailyGoal - pagesRead;
-          const msgs = PROGRESS_MESSAGES(remaining, pagesRead);
-          const body = msgs[Math.floor(Math.random() * msgs.length)];
-          await sendPushToUser(uid, { title: "Swena", body });
+          await sendPushToUser(uid, { title: "Swena", body: pick(PROGRESS_MESSAGES(remaining, pagesRead)) });
           sent++;
           return;
         }
+
+        // objectif défini mais rien lu aujourd'hui
+        await sendPushToUser(uid, { title: "Swena", body: pick(NO_READ_MESSAGES) });
+        sent++;
+        return;
       }
 
-      // Aucune page lue aujourd'hui
-      if (pagesRead === 0) {
-        const body = NO_READ_MESSAGES[Math.floor(Math.random() * NO_READ_MESSAGES.length)];
-        await sendPushToUser(uid, { title: "Swena", body });
-        sent++;
-      }
+      // pas d'objectif annuel défini — motiver quand même
+      await sendPushToUser(uid, { title: "Swena", body: pick(NO_GOAL_MESSAGES(pagesRead)) });
+      sent++;
     }),
   );
 
