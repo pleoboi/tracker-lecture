@@ -970,13 +970,14 @@ export default function ComptePage() {
   const [notifDiagLoading, setNotifDiagLoading] = useState(false);
 
   const handleSyncNotif = async () => {
-    setNotifTestResult("Synchronisation…");
-    const result = await ensurePushSubscription();
+    setNotifTestResult("Renouvellement…");
+    // force=true : désabonne + réabonne pour garantir une souscription fraîche
+    const result = await ensurePushSubscription(true);
     if (result.ok) {
       setNotifEnabled(true);
-      setNotifTestResult("Synchronisé — tu peux tester l'envoi");
+      setNotifTestResult("Synchronisé — appuie sur Tester");
     } else {
-      setNotifTestResult(`Erreur sync : ${result.message}`);
+      setNotifTestResult(`Erreur : ${result.message}`);
     }
     setTimeout(() => setNotifTestResult(null), 5000);
   };
@@ -996,10 +997,12 @@ export default function ComptePage() {
       const json = await res.json();
       if (!res.ok) {
         setNotifTestResult(`Erreur : ${json.error}`);
+      } else if (json.sent === 0 && json.skipped > 0) {
+        setNotifTestResult("Souscription rejetée par le serveur — refais Synchroniser puis Tester");
       } else if (json.sent === 0) {
-        setNotifTestResult("Toujours aucune souscription — vérifie les réglages");
+        setNotifTestResult("Aucune souscription — refais Synchroniser");
       } else {
-        setNotifTestResult(`Envoyée (${json.sent} appareils)`);
+        setNotifTestResult(`Envoyée sur ${json.sent} appareil${json.sent > 1 ? "s" : ""}`);
       }
     } catch {
       setNotifTestResult("Erreur réseau");

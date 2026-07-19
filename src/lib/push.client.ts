@@ -46,7 +46,12 @@ export interface PushSyncResult {
  * Retourne un résultat exploitable par l'UI.
  * Safe à appeler sur chaque chargement de page — l'API fait un upsert.
  */
-export async function ensurePushSubscription(): Promise<PushSyncResult> {
+/**
+ * @param force Si true, désabonne puis réabonne pour forcer une souscription fraîche.
+ *              À utiliser depuis un geste utilisateur (clic bouton) pour contourner
+ *              les souscriptions expirées ou créées avec une ancienne clé VAPID.
+ */
+export async function ensurePushSubscription(force = false): Promise<PushSyncResult> {
   if (typeof window === "undefined") return { ok: false, message: "SSR" };
   if (!("serviceWorker" in navigator) || !("PushManager" in window))
     return { ok: false, message: "Push non supporté par ce navigateur" };
@@ -56,6 +61,12 @@ export async function ensurePushSubscription(): Promise<PushSyncResult> {
   try {
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
+
+    if (force && sub) {
+      // Désabonne pour forcer une nouvelle souscription fraîche
+      await sub.unsubscribe();
+      sub = null;
+    }
 
     if (!sub) {
       sub = await reg.pushManager.subscribe({

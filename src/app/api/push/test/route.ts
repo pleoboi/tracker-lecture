@@ -26,8 +26,8 @@ export async function POST(req: NextRequest) {
 
   try {
     const result = await sendPushToUser(user.id, {
-      title: "Notification test",
-      body: "Les notifications fonctionnent sur cet appareil !",
+      title: "Swena",
+      body: "Les notifications fonctionnent sur cet appareil.",
       url: "/accueil",
     });
     return NextResponse.json({ ...result, subscriptions: subs.length });
