@@ -6,21 +6,44 @@ export const adminSupabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
 
+const VAPID_PUBLIC = "BOmWqI1xyCWcT-WCq5jklsWt_9PsB4YrUdiUtHj6KSeue-hBtmdDSnKb3KZzO98oA5xVt9wUbBzH0A8HoyHxIkQ";
+const VAPID_MAILTO = "mailto:ricard.leo07@gmail.com";
+
+function initVapid(): boolean {
+  const priv = process.env.VAPID_PRIVATE_KEY;
+  if (!priv) {
+    console.error("[push] VAPID_PRIVATE_KEY manquant");
+    return false;
+  }
+  webpush.setVapidDetails(VAPID_MAILTO, VAPID_PUBLIC, priv);
+  return true;
+}
+
+/** Envoie directement à une souscription sans passer par la DB */
+export async function sendPushDirect(
+  sub: { endpoint: string; p256dh: string; auth: string },
+  payload: { title: string; body: string; url?: string },
+): Promise<{ sent: number; error?: string }> {
+  if (!initVapid()) return { sent: 0, error: "VAPID_PRIVATE_KEY manquant sur le serveur" };
+  try {
+    await webpush.sendNotification(
+      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+      JSON.stringify(payload),
+    );
+    return { sent: 1 };
+  } catch (err: unknown) {
+    const code = (err as { statusCode?: number }).statusCode;
+    const msg = (err as Error).message;
+    console.error("[push] sendPushDirect error:", code, msg);
+    return { sent: 0, error: `Rejeté par le serveur push (${code ?? "?"}) : ${msg}` };
+  }
+}
+
 export async function sendPushToUser(
   userId: string,
   payload: { title: string; body: string; url?: string },
 ): Promise<{ sent: number; skipped: number }> {
-  const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
-  if (!vapidPrivate) {
-    console.error("[push] VAPID_PRIVATE_KEY manquant — notifications désactivées");
-    return { sent: 0, skipped: 0 };
-  }
-
-  webpush.setVapidDetails(
-    "mailto:ricard.leo07@gmail.com",
-    "BOmWqI1xyCWcT-WCq5jklsWt_9PsB4YrUdiUtHj6KSeue-hBtmdDSnKb3KZzO98oA5xVt9wUbBzH0A8HoyHxIkQ",
-    vapidPrivate,
-  );
+  if (!initVapid()) return { sent: 0, skipped: 0 };
 
   const { data: subs, error: subsErr } = await adminSupabase
     .from("user_push_subscriptions")

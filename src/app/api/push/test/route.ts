@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
+import { sendPushDirect } from "../../../../lib/push.server";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Données souscription manquantes" }, { status: 400 });
   }
 
-  // Sauvegarder en DB (update-then-insert, pas de contrainte unique requise)
+  // Sauvegarder en DB
   const { data: existing } = await admin
     .from("user_push_subscriptions")
     .select("id")
@@ -39,37 +39,15 @@ export async function POST(req: NextRequest) {
       .insert({ user_id: user.id, endpoint, p256dh, auth });
   }
 
-  // Envoi DIRECT à cette souscription (bypass du lookup en DB)
-  const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
-  if (!vapidPrivate) {
-    console.error("[push/test] VAPID_PRIVATE_KEY manquant");
-    return NextResponse.json({ error: "Configuration serveur manquante (VAPID)" }, { status: 500 });
-  }
-
-  webpush.setVapidDetails(
-    "mailto:ricard.leo07@gmail.com",
-    "BOmWqI1xyCWcT-WCq5jklsWt_9PsB4YrUdiUtHj6KSeue-hBtmdDSnKb3KZzO98oA5xVt9wUbBzH0A8HoyHxIkQ",
-    vapidPrivate,
+  // Envoi direct via push.server.ts (VAPID initialisé là-dedans)
+  const result = await sendPushDirect(
+    { endpoint, p256dh, auth },
+    { title: "Swena", body: "Les notifications fonctionnent.", url: "/accueil" },
   );
 
-  try {
-    await webpush.sendNotification(
-      { endpoint, keys: { p256dh, auth } },
-      JSON.stringify({ title: "Swena", body: "Les notifications fonctionnent.", url: "/accueil" }),
-    );
-    return NextResponse.json({ sent: 1 });
-  } catch (err: unknown) {
-    const statusCode = (err as { statusCode?: number }).statusCode;
-    const message = (err as Error).message;
-    console.error("[push/test] sendNotification error:", statusCode, message);
-
-    if (statusCode === 410 || statusCode === 404) {
-      await admin.from("user_push_subscriptions").delete().eq("endpoint", endpoint);
-    }
-
-    return NextResponse.json({
-      error: `Rejeté par le serveur push (${statusCode ?? "?"}) : ${message}`,
-      sent: 0,
-    }, { status: 502 });
+  if (result.sent === 0) {
+    return NextResponse.json({ error: result.error, sent: 0 }, { status: 502 });
   }
+
+  return NextResponse.json({ sent: 1 });
 }
