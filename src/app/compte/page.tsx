@@ -9,7 +9,7 @@ import type { Book } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
 import { Cover, ProgressBar, Button } from "../../components/ui";
 import { searchBooks, fetchOpenLibraryCover, isFrench } from "../../lib/googleBooks";
-import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from "../../lib/push.client";
+import { ensurePushSubscription } from "../../lib/push.client";
 
 type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes" | "recents" | "envie" | "en-pause";
 type Sort = "ajout" | "titre" | "auteur" | "note";
@@ -948,26 +948,12 @@ export default function ComptePage() {
         const permission = await Notification.requestPermission();
         setNotifStatus(permission as "granted" | "default" | "denied");
         if (permission === "granted") {
-          const existing = await reg.pushManager.getSubscription();
-          const sub = existing ?? await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-          });
-          const { keys } = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            const res = await fetch("/api/push/subscribe", {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-              body: JSON.stringify({ endpoint: sub.endpoint, p256dh: keys.p256dh, auth: keys.auth }),
-            });
-            if (!res.ok) {
-              const json = await res.json();
-              setNotifError(`Erreur sauvegarde : ${json.error}`);
-            }
-          }
+          const result = await ensurePushSubscription();
           setNotifEnabled(true);
-          localStorage.removeItem("swena_push_dismissed");
+          sessionStorage.removeItem("swena_push_dismissed_session");
+          if (!result.ok) {
+            setNotifError(`Activation partielle : ${result.message}`);
+          }
         } else if (permission === "denied") {
           setNotifError("Permission refusée — autorise les notifications dans les réglages de ton navigateur");
         }
@@ -983,7 +969,22 @@ export default function ComptePage() {
   } | null>(null);
   const [notifDiagLoading, setNotifDiagLoading] = useState(false);
 
+  const handleSyncNotif = async () => {
+    setNotifTestResult("Synchronisation…");
+    const result = await ensurePushSubscription();
+    if (result.ok) {
+      setNotifEnabled(true);
+      setNotifTestResult("Synchronisé — tu peux tester l'envoi");
+    } else {
+      setNotifTestResult(`Erreur sync : ${result.message}`);
+    }
+    setTimeout(() => setNotifTestResult(null), 5000);
+  };
+
   const handleTestNotif = async () => {
+    setNotifTestResult("Synchronisation…");
+    // Resync l'abonnement en DB avant d'envoyer — corrige le cas mobile
+    await ensurePushSubscription();
     setNotifTestResult("Envoi en cours…");
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { setNotifTestResult("Non connecté"); return; }
@@ -996,7 +997,7 @@ export default function ComptePage() {
       if (!res.ok) {
         setNotifTestResult(`Erreur : ${json.error}`);
       } else if (json.sent === 0) {
-        setNotifTestResult("Aucune souscription trouvée — réactive les notifications");
+        setNotifTestResult("Toujours aucune souscription — vérifie les réglages");
       } else {
         setNotifTestResult(`Envoyée (${json.sent} appareils)`);
       }
@@ -1710,10 +1711,16 @@ export default function ComptePage() {
                 <div className="flex flex-col gap-2">
                   <div className="flex gap-2">
                     <button
+                      onClick={handleSyncNotif}
+                      className="flex-1 rounded-2xl border border-line bg-card px-3 py-2.5 text-[12px] font-semibold text-ink transition-colors hover:border-violet/40"
+                    >
+                      Synchroniser
+                    </button>
+                    <button
                       onClick={handleTestNotif}
                       className="flex-1 rounded-2xl border border-violet/40 bg-violet-soft px-3 py-2.5 text-[12px] font-semibold text-violet-deep transition-colors hover:border-violet"
                     >
-                      {notifTestResult ?? "Envoyer une notif test"}
+                      Tester
                     </button>
                     <button
                       onClick={handleDiagnostic}
@@ -1723,6 +1730,9 @@ export default function ComptePage() {
                       {notifDiagLoading ? "…" : "Diagnostic"}
                     </button>
                   </div>
+                  {notifTestResult && (
+                    <p className="text-center text-[11.5px] text-muted">{notifTestResult}</p>
+                  )}
                   {notifDiag && (
                     <div className="rounded-2xl border border-line bg-input px-4 py-3 text-[11.5px] leading-relaxed text-ink">
                       <p className={notifDiag.vapidKey.startsWith("présente") ? "text-success" : "text-danger"}>

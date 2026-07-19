@@ -1,6 +1,5 @@
 import { supabase } from "./supabase";
 
-// Clé publique VAPID — publique par nature, peut être dans le source
 export const VAPID_PUBLIC_KEY = "BOmWqI1xyCWcT-WCq5jklsWt_9PsB4YrUdiUtHj6KSeue-hBtmdDSnKb3KZzO98oA5xVt9wUbBzH0A8HoyHxIkQ";
 
 export function urlBase64ToUint8Array(b64: string): ArrayBuffer {
@@ -37,11 +36,22 @@ export function notifyUser(targetUserId: string, title: string, body: string, ur
   });
 }
 
-/** Réabonnement silencieux — appelé au démarrage si la permission est déjà accordée */
-export async function ensurePushSubscription(): Promise<void> {
-  if (typeof window === "undefined") return;
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-  if (Notification.permission !== "granted") return;
+export interface PushSyncResult {
+  ok: boolean;
+  message: string;
+}
+
+/**
+ * Crée ou resynchronise l'abonnement push du navigateur courant en base.
+ * Retourne un résultat exploitable par l'UI.
+ * Safe à appeler sur chaque chargement de page — l'API fait un upsert.
+ */
+export async function ensurePushSubscription(): Promise<PushSyncResult> {
+  if (typeof window === "undefined") return { ok: false, message: "SSR" };
+  if (!("serviceWorker" in navigator) || !("PushManager" in window))
+    return { ok: false, message: "Push non supporté par ce navigateur" };
+  if (Notification.permission !== "granted")
+    return { ok: false, message: "Permission non accordée" };
 
   try {
     const reg = await navigator.serviceWorker.ready;
@@ -54,14 +64,19 @@ export async function ensurePushSubscription(): Promise<void> {
       });
     }
 
-    const json = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
-    if (!json.keys?.p256dh || !json.keys?.auth) {
-      console.warn("[push] ensurePushSubscription: clés manquantes dans la souscription");
-      return;
+    const json = sub.toJSON() as { endpoint: string; keys?: { p256dh: string; auth: string } };
+    const p256dh = json.keys?.p256dh;
+    const auth = json.keys?.auth;
+    if (!p256dh || !auth) {
+      console.error("[push] ensurePushSubscription: clés manquantes dans la souscription", json);
+      return { ok: false, message: "Clés de souscription manquantes — réinstalle l'app" };
     }
 
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return;
+    if (!session) {
+      console.warn("[push] ensurePushSubscription: session non disponible");
+      return { ok: false, message: "Session non disponible" };
+    }
 
     const res = await fetch("/api/push/subscribe", {
       method: "POST",
@@ -69,13 +84,18 @@ export async function ensurePushSubscription(): Promise<void> {
         "Content-Type": "application/json",
         Authorization: `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ endpoint: sub.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth }),
+      body: JSON.stringify({ endpoint: sub.endpoint, p256dh, auth }),
     });
+
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({}));
       console.warn("[push] ensurePushSubscription: échec sauvegarde", res.status, errBody);
+      return { ok: false, message: `Erreur sauvegarde (${res.status})` };
     }
+
+    return { ok: true, message: "Souscription synchronisée" };
   } catch (err) {
-    console.warn("[push] ensurePushSubscription: erreur", err);
+    console.error("[push] ensurePushSubscription: erreur", err);
+    return { ok: false, message: (err as Error).message || "Erreur inconnue" };
   }
 }

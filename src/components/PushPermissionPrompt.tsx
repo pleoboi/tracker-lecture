@@ -2,36 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
-import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from "../lib/push.client";
+import { ensurePushSubscription } from "../lib/push.client";
 
 const SESSION_KEY = "swena_push_dismissed_session";
-
-
-async function registerAndSubscribe(): Promise<boolean> {
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) return false;
-
-  const reg = await navigator.serviceWorker.ready;
-  const existing = await reg.pushManager.getSubscription();
-  const sub = existing ?? await reg.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-  });
-
-  const { keys } = sub.toJSON() as { endpoint: string; keys: { p256dh: string; auth: string } };
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return false;
-
-  const res = await fetch("/api/push/subscribe", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${session.access_token}`,
-    },
-    body: JSON.stringify({ endpoint: sub.endpoint, p256dh: keys.p256dh, auth: keys.auth }),
-  });
-
-  return res.ok;
-}
 
 export default function PushPermissionPrompt() {
   const [visible, setVisible] = useState(false);
@@ -42,7 +15,6 @@ export default function PushPermissionPrompt() {
     if (Notification.permission !== "default") return;
     if (sessionStorage.getItem(SESSION_KEY)) return;
 
-    // Délai léger pour ne pas bloquer le chargement initial
     const t = setTimeout(() => setVisible(true), 1800);
     return () => clearTimeout(t);
   }, []);
@@ -53,10 +25,13 @@ export default function PushPermissionPrompt() {
   };
 
   const accept = async () => {
-    dismiss(); // Ferme le popup immédiatement
+    dismiss();
     const permission = await Notification.requestPermission();
     if (permission === "granted") {
-      registerAndSubscribe().catch(() => {}); // En arrière-plan, silencieux
+      const result = await ensurePushSubscription();
+      if (!result.ok) {
+        console.error("[push] PushPermissionPrompt: activation échouée —", result.message);
+      }
     }
   };
 
@@ -77,7 +52,7 @@ export default function PushPermissionPrompt() {
           <div className="min-w-0 flex-1">
             <p className="font-serif text-[15px] font-semibold text-ink">Rester dans la boucle</p>
             <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
-              Reçois une notification quand un membre like ta session ou t&apos;invite à un challenge.
+              Reçois une notification quand un membre like ta session ou te recommande un livre.
             </p>
           </div>
         </div>
