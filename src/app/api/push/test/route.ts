@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
-import { sendPushToUser, adminSupabase } from "../../../../lib/push.server";
 
 const admin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -8,31 +8,68 @@ const admin = createClient(
 );
 
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get("authorization");
-  const token = authHeader?.replace("Bearer ", "");
+  const token = req.headers.get("authorization")?.replace("Bearer ", "");
   if (!token) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
   const { data: { user } } = await admin.auth.getUser(token);
   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-  // Vérifier que la souscription existe
-  const { data: subs, error: subErr } = await adminSupabase
-    .from("user_push_subscriptions")
-    .select("id, endpoint")
-    .eq("user_id", user.id);
+  const body = await req.json().catch(() => ({}));
+  const { endpoint, p256dh, auth } = body as {
+    endpoint?: string; p256dh?: string; auth?: string;
+  };
 
-  if (subErr) return NextResponse.json({ error: subErr.message }, { status: 500 });
-  if (!subs?.length) return NextResponse.json({ error: "Aucune souscription trouvée pour cet utilisateur" }, { status: 404 });
+  if (!endpoint || !p256dh || !auth) {
+    return NextResponse.json({ error: "Données souscription manquantes" }, { status: 400 });
+  }
+
+  // Sauvegarder en DB (update-then-insert, pas de contrainte unique requise)
+  const { data: existing } = await admin
+    .from("user_push_subscriptions")
+    .select("id")
+    .eq("endpoint", endpoint)
+    .maybeSingle();
+
+  if (existing?.id) {
+    await admin.from("user_push_subscriptions")
+      .update({ p256dh, auth, user_id: user.id })
+      .eq("id", existing.id);
+  } else {
+    await admin.from("user_push_subscriptions")
+      .insert({ user_id: user.id, endpoint, p256dh, auth });
+  }
+
+  // Envoi DIRECT à cette souscription (bypass du lookup en DB)
+  const vapidPrivate = process.env.VAPID_PRIVATE_KEY;
+  if (!vapidPrivate) {
+    console.error("[push/test] VAPID_PRIVATE_KEY manquant");
+    return NextResponse.json({ error: "Configuration serveur manquante (VAPID)" }, { status: 500 });
+  }
+
+  webpush.setVapidDetails(
+    "mailto:ricard.leo07@gmail.com",
+    "BOmWqI1xyCWcT-WCq5jklsWt_9PsB4YrUdiUtHj6KSeue-hBtmdDSnKb3KZzO98oA5xVt9wUbBzH0A8HoyHxIkQ",
+    vapidPrivate,
+  );
 
   try {
-    const result = await sendPushToUser(user.id, {
-      title: "Swena",
-      body: "Les notifications fonctionnent sur cet appareil.",
-      url: "/accueil",
-    });
-    return NextResponse.json({ ...result, subscriptions: subs.length });
-  } catch (err) {
-    console.error("[push/test] error:", err);
-    return NextResponse.json({ error: (err as Error).message }, { status: 500 });
+    await webpush.sendNotification(
+      { endpoint, keys: { p256dh, auth } },
+      JSON.stringify({ title: "Swena", body: "Les notifications fonctionnent.", url: "/accueil" }),
+    );
+    return NextResponse.json({ sent: 1 });
+  } catch (err: unknown) {
+    const statusCode = (err as { statusCode?: number }).statusCode;
+    const message = (err as Error).message;
+    console.error("[push/test] sendNotification error:", statusCode, message);
+
+    if (statusCode === 410 || statusCode === 404) {
+      await admin.from("user_push_subscriptions").delete().eq("endpoint", endpoint);
+    }
+
+    return NextResponse.json({
+      error: `Rejeté par le serveur push (${statusCode ?? "?"}) : ${message}`,
+      sent: 0,
+    }, { status: 502 });
   }
 }

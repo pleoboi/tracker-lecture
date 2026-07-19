@@ -9,7 +9,7 @@ import type { Book } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
 import { Cover, ProgressBar, Button } from "../../components/ui";
 import { searchBooks, fetchOpenLibraryCover, isFrench } from "../../lib/googleBooks";
-import { ensurePushSubscription } from "../../lib/push.client";
+import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array, ensurePushSubscription } from "../../lib/push.client";
 
 type Filter = "tous" | "encours" | "termines" | "abandonnes" | "notes" | "recents" | "envie" | "en-pause";
 type Sort = "ajout" | "titre" | "auteur" | "note";
@@ -983,29 +983,51 @@ export default function ComptePage() {
   };
 
   const handleTestNotif = async () => {
-    setNotifTestResult("Synchronisation…");
-    // Resync l'abonnement en DB avant d'envoyer — corrige le cas mobile
-    await ensurePushSubscription();
-    setNotifTestResult("Envoi en cours…");
+    setNotifTestResult("Préparation…");
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setNotifTestResult("Push non supporté sur cet appareil");
+      return;
+    }
+    if (Notification.permission !== "granted") {
+      setNotifTestResult("Notifications non autorisées");
+      return;
+    }
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) { setNotifTestResult("Non connecté"); return; }
     try {
+      const reg = await navigator.serviceWorker.ready;
+      // Obtenir ou créer la souscription directement depuis le navigateur
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+        });
+      }
+      const subJson = sub.toJSON();
+      const p256dh = subJson.keys?.p256dh;
+      const auth = subJson.keys?.auth;
+      if (!p256dh || !auth) {
+        setNotifTestResult("Impossible de lire les clés de souscription");
+        return;
+      }
+      setNotifTestResult("Envoi en cours…");
       const res = await fetch("/api/push/test", {
         method: "POST",
-        headers: { Authorization: `Bearer ${session.access_token}` },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ endpoint: sub.endpoint, p256dh, auth }),
       });
       const json = await res.json();
       if (!res.ok) {
-        setNotifTestResult(`Erreur : ${json.error}`);
-      } else if (json.sent === 0 && json.skipped > 0) {
-        setNotifTestResult("Souscription rejetée par le serveur — refais Synchroniser puis Tester");
-      } else if (json.sent === 0) {
-        setNotifTestResult("Aucune souscription — refais Synchroniser");
+        setNotifTestResult(`Échec : ${json.error}`);
       } else {
-        setNotifTestResult(`Envoyée sur ${json.sent} appareil${json.sent > 1 ? "s" : ""}`);
+        setNotifTestResult("Envoyée — vérifie tes notifications");
       }
-    } catch {
-      setNotifTestResult("Erreur réseau");
+    } catch (err) {
+      setNotifTestResult("Erreur : " + (err as Error).message);
     }
     setTimeout(() => setNotifTestResult(null), 6000);
   };
