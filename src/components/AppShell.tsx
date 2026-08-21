@@ -85,7 +85,7 @@ const allNavItems: NavItem[] = [
 
 const desktopNavItems = allNavItems.slice(0, 6);
 const mobileNavLeft  = [allNavItems[0], allNavItems[2]];  // Accueil, Journal
-const mobileNavRight = [allNavItems[3], allNavItems[4]];  // Découverte, Statistiques
+const mobileNavRight = [allNavItems[1], allNavItems[4]];  // Bibliothèque, Statistiques
 
 const NO_SHELL_PATHS = ["/login", "/register", "/", "/email-sent"];
 
