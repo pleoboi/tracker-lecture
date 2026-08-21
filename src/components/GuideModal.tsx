@@ -1,132 +1,152 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { supabase } from "../lib/supabase";
 
-/* ── Icônes SVG (Lucide-style, stroke currentColor) ─────────────────── */
+/* ── Mini-aperçus illustrant chaque étape ──────────────────────────────── */
 
-function IconBook() {
+function VisualWelcome() {
   return (
-    <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-      <line x1="12" y1="6" x2="16" y2="6" />
-      <line x1="12" y1="10" x2="16" y2="10" />
-    </svg>
+    <div className="flex items-end justify-center gap-2">
+      {[
+        { c: "#6b5b95", h: "72px" },
+        { c: "#4f46e5", h: "92px" },
+        { c: "#7c5e3b", h: "80px" },
+        { c: "#8b5a6b", h: "64px" },
+      ].map((b, i) => (
+        <div
+          key={i}
+          className="w-[26px] rounded-md shadow-sm"
+          style={{ backgroundColor: b.c, height: b.h }}
+        />
+      ))}
+    </div>
   );
 }
 
-function IconDownload() {
+function VisualAddBook() {
   return (
-    <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="7 10 12 15 17 10" />
-      <line x1="12" y1="15" x2="12" y2="3" />
-    </svg>
+    <div className="w-full max-w-[230px] rounded-xl border border-line bg-card p-2.5">
+      <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-input px-2 py-1.5">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="text-muted">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+        </svg>
+        <span className="text-[9.5px] text-muted">Germinal</span>
+      </div>
+      <div className="flex items-center gap-2 rounded-lg border border-violet/30 bg-violet-soft p-1.5">
+        <div className="h-[34px] w-[24px] shrink-0 rounded" style={{ backgroundColor: "#7c5e3b" }} />
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[9px] font-semibold text-ink">Germinal</p>
+          <p className="text-[8px] text-muted">Émile Zola · 1885</p>
+        </div>
+        <span className="shrink-0 rounded-md bg-violet px-1.5 py-0.5 text-[8px] font-bold text-cream">+</span>
+      </div>
+      <p className="mt-1.5 text-center text-[8px] text-muted">
+        Couverture, résumé et pages remplis tout seuls
+      </p>
+    </div>
   );
 }
 
-function IconLibrary() {
+function VisualSession() {
   return (
-    <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="5" height="18" rx="1" />
-      <rect x="10" y="3" width="5" height="18" rx="1" />
-      <path d="M17.3 3.6l3.8 14.6a1 1 0 0 1-.7 1.2l-1 .3a1 1 0 0 1-1.2-.7L14.4 4.5" />
-    </svg>
+    <div className="w-full max-w-[230px] rounded-xl border border-line bg-card p-3">
+      <p className="mb-2 text-[8.5px] font-semibold uppercase tracking-wide text-muted">Page d&apos;arrêt</p>
+      <div className="mb-2 flex items-baseline gap-1.5">
+        <span className="font-serif text-[26px] font-black text-ink">212</span>
+        <span className="text-[10px] text-muted">/ 448</span>
+      </div>
+      <div className="mb-2 h-[5px] w-full overflow-hidden rounded-full bg-line">
+        <div className="h-full w-1/2 rounded-full bg-violet" />
+      </div>
+      <div className="flex items-center justify-between rounded-lg bg-violet-soft px-2 py-1.5">
+        <span className="text-[9px] font-medium text-violet-deep">Lu aujourd&apos;hui</span>
+        <span className="text-[9.5px] font-bold text-violet-deep">+ 34 pages</span>
+      </div>
+    </div>
   );
 }
 
-function IconPen() {
+function VisualClub() {
   return (
-    <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 20h9" />
-      <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-      <line x1="3" y1="12" x2="9" y2="12" opacity="0.35" />
-      <line x1="3" y1="16" x2="7" y2="16" opacity="0.35" />
-    </svg>
+    <div className="flex w-full max-w-[230px] flex-col gap-1.5">
+      <div className="rounded-xl px-2.5 py-2" style={{ background: "linear-gradient(135deg,#7c3aed,#4f46e5)" }}>
+        <p className="text-[7.5px] font-semibold uppercase tracking-wider text-white/60">Champion du jour</p>
+        <div className="flex items-baseline justify-between">
+          <span className="font-serif text-[13px] font-black text-[#fde68a]">Céline</span>
+          <span className="text-[11px] font-bold text-white">64 p.</span>
+        </div>
+      </div>
+      {[
+        { n: "Sara", t: "a aimé ta note", i: "♥" },
+        { n: "Nicolas", t: "te recommande un livre", i: "📚" },
+      ].map((r) => (
+        <div key={r.n} className="flex items-center gap-2 rounded-xl border border-line bg-card px-2 py-1.5">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet text-[8px] font-bold text-cream">
+            {r.n[0]}
+          </span>
+          <p className="min-w-0 flex-1 truncate text-[9px] text-ink-2">
+            {r.n} {r.t}
+          </p>
+          <span className="text-[9px]">{r.i}</span>
+        </div>
+      ))}
+    </div>
   );
 }
 
-function IconClub() {
+function VisualInstall() {
   return (
-    <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-      <circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
-      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
+    <div className="relative w-[92px] rounded-2xl border-2 border-line bg-card p-1.5">
+      <div className="relative overflow-hidden rounded-xl bg-paper px-2 py-3">
+        <div className="absolute left-1/2 top-1 h-1.5 w-7 -translate-x-1/2 rounded-full bg-card" />
+        <div className="mt-2 flex flex-col items-center gap-1.5">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-soft">
+            <svg viewBox="0 0 100 76" className="h-4 w-4 text-violet" fill="currentColor">
+              <path d="M8,68 C2,68 0,64 0,60 C0,52 4,48 12,48 C10,38 16,32 26,32 C24,24 30,18 40,18 C50,18 56,24 58,32 C62,30 70,30 74,36 C82,32 92,38 90,48 C90,56 86,64 78,66 C78,68 76,68 70,68 Z" />
+            </svg>
+          </div>
+          <span className="font-serif text-[8px] font-bold text-ink">Swena</span>
+        </div>
+      </div>
+    </div>
   );
 }
 
-function IconChart() {
-  return (
-    <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="20" x2="18" y2="10" />
-      <line x1="12" y1="20" x2="12" y2="4" />
-      <line x1="6" y1="20" x2="6" y2="14" />
-      <line x1="2" y1="20" x2="22" y2="20" />
-      <polyline points="2 10 7 5 12 9 17 3" strokeWidth="1.5" />
-      <circle cx="17" cy="3" r="1.5" fill="currentColor" stroke="none" />
-    </svg>
-  );
-}
-
-function IconPhone() {
-  return (
-    <svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="5" y="2" width="14" height="20" rx="2" ry="2" />
-      <line x1="12" y1="18" x2="12.01" y2="18" strokeWidth="2" />
-      <polyline points="9 8 12 5 15 8" />
-      <line x1="12" y1="5" x2="12" y2="13" />
-    </svg>
-  );
-}
-
-const SLIDE_ICONS = [
-  <IconBook key="book" />,
-  <IconDownload key="dl" />,
-  <IconLibrary key="lib" />,
-  <IconPen key="pen" />,
-  <IconClub key="club" />,
-  <IconChart key="chart" />,
-  <IconPhone key="phone" />,
-];
+/* ── Étapes ────────────────────────────────────────────────────────────── */
 
 const SLIDES = [
   {
     label: "Bienvenue",
-    title: "Bienvenue au Club !",
-    body: "Un réseau social de lecture pensé pour toi et ton cercle.\n\nSuis tes lectures, partage ton activité et découvre ce que lisent les autres membres de ton club — au même endroit.",
+    title: "Bienvenue sur Swena",
+    body: "Ton carnet de lecture, en plus vivant. Tu notes ce que tu lis, tu vois ta progression, et tu partages tout ça avec tes amis.\n\nTrois écrans à retenir, c'est parti.",
+    visual: <VisualWelcome />,
   },
   {
-    label: "Import Goodreads",
-    title: "Importe ton historique",
-    body: "Tu as déjà beaucoup lu ? Rapatrie tout en un clic.\n\nVa dans Mon Compte → Import Goodreads, puis exporte ton CSV depuis le site Goodreads (Mon profil → Importer/Exporter) et charge le fichier ici.\n\n⚠ L'export Goodreads n'est possible que sur ordinateur — l'application mobile ne le permet pas.",
+    label: "Étape 1",
+    title: "Ajoute un livre",
+    body: "Appuie sur le bouton + puis cherche ton livre par son titre. La couverture, le résumé, l'année et le nombre de pages sont récupérés automatiquement.",
+    visual: <VisualAddBook />,
   },
   {
-    label: "Bibliothèque",
-    title: "Gère ta Bibliothèque",
-    body: "Ajoute tes livres via la recherche, change leur statut (En cours · Terminé · Abandonné) et personnalise leur genre.\n\nChoisis ton Top 4 Favoris — affiché sur ton profil public à la manière de Letterboxd.",
+    label: "Étape 2",
+    title: "Note ta session",
+    body: "Après ta lecture, indique simplement la page où tu t'es arrêté. Swena calcule les pages lues, ton rythme et ta progression.\n\nTu peux y ajouter une note ou une photo.",
+    visual: <VisualSession />,
   },
   {
-    label: "Sessions",
-    title: "Note tes sessions",
-    body: "Enregistre chaque session de lecture comme sur Strava : nombre de pages lues, note du moment, commentaire libre et même une photo depuis ta pellicule.\n\nChaque entrée alimente tes graphiques en temps réel.",
+    label: "Étape 3",
+    title: "Retrouve ton club",
+    body: "L'accueil affiche l'activité de tes amis : ce qu'ils lisent, leurs notes, le champion du jour. Tu peux aimer, commenter et recommander des livres.",
+    visual: <VisualClub />,
   },
   {
-    label: "Club",
-    title: "La vie du Club",
-    body: "Sur l'Accueil, retrouve l'activité de tous les membres en temps réel, filtrée sur les 3 derniers jours.\n\nClique sur les avatars pour voir leur profil, leurs lectures du moment et leurs avis complets sur chaque livre.",
-  },
-  {
-    label: "Statistiques",
-    title: "Analyse tes Statistiques",
-    body: "Tes pages lues, ton rythme quotidien, ton classement par auteur et tes objectifs annuels et mensuels — tout est dans l'onglet Statistiques.\n\nLes graphiques des autres membres sont visibles sur leurs profils.",
-  },
-  {
-    label: "Installation",
-    title: "Installe l'appli sur ton téléphone",
-    body: "Accède à l'application comme une vraie app, sans passer par le navigateur.\n\nSur iPhone (Safari) :\n1. Appuie sur les ••• en bas à droite\n2. Appuie sur l'icône Partager ↑\n3. Choisis « Sur l'écran d'accueil »\n\nSur Android (Chrome) :\n1. Appuie sur les ⋮ en haut à droite\n2. Choisis « Ajouter à l'écran d'accueil »\n\nL'icône apparaît comme une app native — sans pub, sans Store.",
+    label: "Astuce",
+    title: "Installe l'app sur ton téléphone",
+    body: "Sur iPhone : bouton Partager, puis « Sur l'écran d'accueil ».\nSur Android : menu ⋮, puis « Ajouter à l'écran d'accueil ».\n\nTu viens de Goodreads ? Importe ton historique depuis Mon compte.",
+    visual: <VisualInstall />,
   },
 ];
 
@@ -134,67 +154,68 @@ export default function GuideModal({
   userId,
   open,
   onClose,
+  onAddBook,
 }: {
   userId?: string;
   open: boolean;
   onClose: () => void;
+  /** Appelé à la fin du guide pour enchaîner sur l'ajout d'un premier livre. */
+  onAddBook?: () => void;
 }) {
   const [step, setStep] = useState(0);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
   const slide = SLIDES[step];
   const isLast = step === SLIDES.length - 1;
 
-  const handleClose = async () => {
-    if (userId) {
-      if (typeof window !== "undefined") {
-        localStorage.setItem(`onboarding_done_${userId}`, "1");
-      }
-      await supabase
-        .from("user_profiles")
-        .upsert({ id: userId, has_seen_onboarding: true }, { onConflict: "id" });
+  const markSeen = async () => {
+    if (!userId) return;
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`onboarding_done_${userId}`, "1");
     }
+    await supabase
+      .from("user_profiles")
+      .upsert({ id: userId, has_seen_onboarding: true }, { onConflict: "id" });
+  };
+
+  const handleClose = async () => {
+    await markSeen();
     setStep(0);
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center sm:items-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-ink/40 backdrop-blur-sm"
-        onClick={handleClose}
-      />
+  const handleFinish = async () => {
+    await markSeen();
+    setStep(0);
+    onClose();
+    onAddBook?.();
+  };
 
-      {/* Panel */}
-      <div className="relative z-10 w-full max-w-md rounded-t-[28px] bg-paper px-6 pb-10 pt-4 shadow-2xl sm:rounded-3xl">
-        {/* Handle mobile */}
-        <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-line sm:hidden" />
+  return createPortal(
+    <div className="fixed inset-0 z-[95] flex items-end justify-center sm:items-center">
+      <div className="absolute inset-0 bg-ink/50 backdrop-blur-sm" onClick={handleClose} />
 
-        {/* Top row : label + croix */}
-        <div className="mb-7 flex items-center justify-between">
+      <div className="relative z-10 flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-[28px] bg-paper shadow-2xl sm:rounded-3xl">
+        {/* En-tête */}
+        <div className="flex shrink-0 items-center justify-between px-6 pb-2 pt-4">
           <span className="text-[10.5px] font-bold uppercase tracking-[0.15em] text-violet">
             {slide.label}
           </span>
           <button
             onClick={handleClose}
-            aria-label="Fermer"
-            className="flex h-7 w-7 items-center justify-center rounded-full border border-line bg-card text-[12px] text-muted transition-colors hover:border-violet/40 hover:text-ink"
+            className="text-[11.5px] font-medium text-muted transition-colors hover:text-ink"
           >
-            ✕
+            Passer
           </button>
         </div>
 
-        {/* Illustration */}
-        <div className="mb-7 flex justify-center">
-          <div className="flex h-[120px] w-[120px] items-center justify-center rounded-3xl bg-violet-soft text-violet-deep shadow-sm">
-            {SLIDE_ICONS[step]}
+        {/* Corps défilant */}
+        <div className="min-h-0 flex-1 overflow-y-auto px-6">
+          <div className="mb-6 flex min-h-[132px] items-center justify-center rounded-2xl bg-violet-soft/60 px-4 py-5">
+            {slide.visual}
           </div>
-        </div>
 
-        {/* Titre + Corps */}
-        <div className="mb-7">
           <h2 className="font-serif text-[22px] font-bold leading-tight text-ink">
             {slide.title}
           </h2>
@@ -206,29 +227,40 @@ export default function GuideModal({
           </p>
         </div>
 
-        {/* Indicateur de progression */}
-        <div className="mb-5 flex items-center justify-center gap-1.5">
-          {SLIDES.map((_, i) => (
-            <button
-              key={i}
-              onClick={() => setStep(i)}
-              className={`h-2 rounded-full transition-all duration-200 ${
-                i === step ? "w-6 bg-violet" : "w-2 bg-line hover:bg-muted/40"
-              }`}
-              aria-label={`Slide ${i + 1}`}
-            />
-          ))}
-        </div>
+        {/* Pied : progression + actions */}
+        <div className="shrink-0 px-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-5">
+          <div className="mb-4 flex items-center justify-center gap-1.5">
+            {SLIDES.map((_, i) => (
+              <button
+                key={i}
+                onClick={() => setStep(i)}
+                className={`h-2 rounded-full transition-all duration-200 ${
+                  i === step ? "w-6 bg-violet" : "w-2 bg-line hover:bg-muted/40"
+                }`}
+                aria-label={`Étape ${i + 1}`}
+              />
+            ))}
+          </div>
 
-        {/* Bouton principal */}
-        <button
-          onClick={isLast ? handleClose : () => setStep((s) => s + 1)}
-          className="w-full rounded-2xl bg-violet py-3.5 text-[15px] font-bold text-cream transition-opacity hover:opacity-90 active:scale-[0.98]"
-        >
-          {isLast ? "C'est parti !" : "Suivant  →"}
-        </button>
+          <div className="flex gap-2">
+            {step > 0 && (
+              <button
+                onClick={() => setStep((s) => s - 1)}
+                className="rounded-2xl border border-line bg-card px-5 py-3.5 text-[14px] font-medium text-ink-2 transition-colors hover:text-ink"
+              >
+                Retour
+              </button>
+            )}
+            <button
+              onClick={isLast ? handleFinish : () => setStep((s) => s + 1)}
+              className="flex-1 rounded-2xl bg-violet py-3.5 text-[15px] font-bold text-cream transition-opacity hover:opacity-90 active:scale-[0.98]"
+            >
+              {isLast ? "Ajouter mon premier livre" : "Suivant →"}
+            </button>
+          </div>
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
-

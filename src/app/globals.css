@@ -84,8 +84,12 @@ h1, h2, h3, h4 {
   }
 }
 
+/* fill-mode "backwards" (et non "both") : après l'animation, l'élément revient à
+   ses styles naturels. Avec "both", le transform/filter de la keyframe finale
+   persistait et créait un bloc conteneur qui capturait les position:fixed enfants
+   (modales et toasts se retrouvaient enfermés dans la zone de contenu). */
 .animate-fadeIn {
-  animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: fadeIn 0.45s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 
 /* Fade-up avec stagger via --delay (ex: style="--delay:0.1s") */
@@ -103,7 +107,7 @@ h1, h2, h3, h4 {
 }
 
 .animate-fadeUp {
-  animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: fadeUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) backwards;
   animation-delay: var(--delay, 0s);
 }
 
@@ -151,10 +155,12 @@ h1, h2, h3, h4 {
     filter    0.5s  cubic-bezier(0.16, 1, 0.3, 1);
   transition-delay: var(--delay, 0s);
 }
+/* État final sans transform/filter résiduels, pour ne pas créer de bloc conteneur
+   qui capturerait les position:fixed enfants (voir note sur .animate-fadeIn). */
 .reveal.visible {
   opacity: 1;
-  transform: translateY(0);
-  filter: blur(0);
+  transform: none;
+  filter: none;
 }
 
 /* ── Double-bezel (nested card architecture) ────────────────────────────── */

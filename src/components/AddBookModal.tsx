@@ -18,8 +18,8 @@ const STATUS_OPTIONS: { value: Status; label: string }[] = [
   { value: "completed", label: "Terminé ✓" },
 ];
 
-type Draft = { title: string; author: string; pages: string; genre: string; year: string };
-const emptyDraft: Draft = { title: "", author: "", pages: "", genre: "", year: "" };
+type Draft = { title: string; author: string; pages: string; genre: string; year: string; isbn: string };
+const emptyDraft: Draft = { title: "", author: "", pages: "", genre: "", year: "", isbn: "" };
 
 const GENRE_LIST = [
   "Roman", "Fiction", "Non-Fiction", "Classique", "Nouvelle",
@@ -70,6 +70,9 @@ export default function AddBookModal({
   const [genreOpen, setGenreOpen] = useState(false);
   const [coverSuggestions, setCoverSuggestions] = useState<string[]>([]);
   const [selectedSuggestionCover, setSelectedSuggestionCover] = useState<string | null>(null);
+  const [summary, setSummary] = useState("");
+  const [enriching, setEnriching] = useState(false);
+  const [enrichMsg, setEnrichMsg] = useState<string | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
   const coverDebounce = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -95,6 +98,9 @@ export default function AddBookModal({
       setGenreOpen(false);
       setCoverSuggestions([]);
       setSelectedSuggestionCover(null);
+      setSummary("");
+      setEnriching(false);
+      setEnrichMsg(null);
     }
   }, [open]);
 
@@ -163,6 +169,7 @@ export default function AddBookModal({
             genre: b.genre ?? null,
             year: b.published_year ?? null,
             summary: b.summary ?? null,
+            isbn: b.isbn13 ?? null,
             pages: b.pages || undefined,
             memberCount: titleCount.get(key) || 1,
           };
@@ -179,9 +186,11 @@ export default function AddBookModal({
     return () => clearTimeout(debounce.current);
   }, [query, open, selected, manual, user?.id]);
 
-  // Suggestions de couvertures en mode manuel
+  // Suggestions de couvertures en mode manuel (au fil de la frappe).
+  // On n'écrase pas si une couverture a déjà été choisie (ex. via l'enrichissement web).
   useEffect(() => {
     if (!manual || !open) return;
+    if (selectedSuggestionCover) return;
     clearTimeout(coverDebounce.current);
     if (draft.title.trim().length < 3) { setCoverSuggestions([]); return; }
     coverDebounce.current = setTimeout(async () => {
@@ -201,7 +210,7 @@ export default function AddBookModal({
       } catch { /* silencieux */ }
     }, 700);
     return () => clearTimeout(coverDebounce.current);
-  }, [draft.title, draft.author, manual, open]);
+  }, [draft.title, draft.author, manual, open, selectedSuggestionCover]);
 
   const insertBook = async (b: {
     title: string;
@@ -211,6 +220,7 @@ export default function AddBookModal({
     genre?: string | null;
     year?: number | null;
     summary?: string | null;
+    isbn?: string | null;
   }) => {
     if (!user) return false;
     setSaving(true);
@@ -240,6 +250,7 @@ export default function AddBookModal({
       genre: b.genre ?? null,
       published_year: b.year ?? null,
       summary: b.summary ?? null,
+      isbn13: b.isbn ? b.isbn.replace(/[^0-9Xx]/g, "") : null,
       user_id: user.id,
     };
 
@@ -312,7 +323,76 @@ export default function AddBookModal({
       cover_url: selectedSuggestionCover || null,
       genre: genreStr,
       year: draft.year ? Number(draft.year) : null,
+      summary: summary.trim() || null,
+      isbn: draft.isbn.trim() || null,
     });
+  };
+
+  // Récupère automatiquement les infos du livre depuis le web.
+  // Métadonnées : Google Books / Open Library. Résumé : Google Books FR puis Wikipédia FR.
+  // Couvertures : route /api/books/covers (plusieurs images de qualité, placeholders filtrés).
+  const enrichFromWeb = async () => {
+    const title = draft.title.trim();
+    if (!title) { setError("Renseigne au moins le titre."); return; }
+    setEnriching(true);
+    setError(null);
+    setEnrichMsg(null);
+    const author = draft.author.trim();
+    try {
+      const [results, enrichRes, coversRes] = await Promise.all([
+        searchBooks(`${title} ${author}`.trim()).catch((): BookSuggestion[] => []),
+        fetch(`/api/books/enrich?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`)
+          .then((r) => (r.ok ? r.json() : { summary: null, genres: [], year: null, isbn: null }))
+          .catch(() => ({ summary: null as string | null, genres: [] as string[], year: null as number | null, isbn: null as string | null })),
+        fetch(`/api/books/covers?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`)
+          .then((r) => (r.ok ? r.json() : { covers: [] }))
+          .catch(() => ({ covers: [] as string[] })),
+      ]);
+
+      const best = results[0];
+      setDraft((d) => ({
+        ...d,
+        author: d.author.trim() || best?.author || "",
+        year: enrichRes.year ? String(enrichRes.year) : best?.year ? String(best.year) : d.year,
+        isbn: d.isbn.trim() || enrichRes.isbn || best?.isbn || "",
+      }));
+
+      // Genres : on ajoute tous ceux détectés qui existent dans la liste canonique,
+      // sans retirer ceux déjà choisis à la main.
+      const canonical = new Set(GENRE_LIST);
+      const detected: string[] = [...(enrichRes.genres || [])];
+      if (best?.genre) detected.push(best.genre);
+      const toAdd = detected.filter((g) => canonical.has(g));
+      if (toAdd.length > 0) {
+        setSelectedGenres((prev) => {
+          const s = new Set(prev);
+          toAdd.forEach((g) => s.add(g));
+          return [...s];
+        });
+      }
+
+      if (enrichRes.summary) setSummary(enrichRes.summary);
+
+      const covers: string[] = coversRes.covers || [];
+      if (covers.length > 0) {
+        setCoverSuggestions(covers);
+        setSelectedSuggestionCover(covers[0]);
+      } else if (best?.coverUrl) {
+        setCoverSuggestions([best.coverUrl]);
+        setSelectedSuggestionCover(best.coverUrl);
+      }
+
+      const gotSomething = !!best || !!enrichRes.summary || (enrichRes.genres?.length ?? 0) > 0 || covers.length > 0;
+      setEnrichMsg(
+        gotSomething
+          ? "Infos récupérées. Choisis la bonne couverture ci-dessous si besoin."
+          : "Aucune information trouvée pour ce titre.",
+      );
+    } catch {
+      setEnrichMsg("Récupération indisponible pour le moment.");
+    } finally {
+      setEnriching(false);
+    }
   };
 
   // Champs conditionnels partagés entre "selected" et "manual"
@@ -524,6 +604,36 @@ export default function AddBookModal({
               className={inputClass}
             />
           </div>
+
+          {/* Enrichissement automatique depuis le web */}
+          <div className="flex flex-col gap-1">
+            <button
+              type="button"
+              onClick={enrichFromWeb}
+              disabled={enriching || draft.title.trim().length < 2}
+              className="flex items-center justify-center gap-2 rounded-xl border border-violet/40 bg-violet-soft py-2.5 text-[12.5px] font-semibold text-violet-deep transition-colors hover:border-violet disabled:opacity-50"
+            >
+              {enriching ? (
+                <>
+                  <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.3" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                  Recherche en cours…
+                </>
+              ) : (
+                <>
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3 4.9 4.9M19.1 19.1l-1.4-1.4M17.7 6.3l1.4-1.4M4.9 19.1l1.4-1.4" />
+                    <circle cx="12" cy="12" r="3.5" />
+                  </svg>
+                  Récupérer les infos depuis le web
+                </>
+              )}
+            </button>
+            {enrichMsg && <p className="text-center text-[11px] font-medium text-muted">{enrichMsg}</p>}
+          </div>
+
           <div className="flex gap-3">
             <div className="flex-1">
               <FieldLabel>Année</FieldLabel>
@@ -576,6 +686,17 @@ export default function AddBookModal({
             </div>
           </div>
 
+          <div>
+            <FieldLabel>ISBN (optionnel)</FieldLabel>
+            <input
+              value={draft.isbn}
+              onChange={(e) => setDraft({ ...draft, isbn: e.target.value })}
+              placeholder="ex. 9782253006329"
+              inputMode="numeric"
+              className={inputClass}
+            />
+          </div>
+
           {/* Suggestions de couverture */}
           {coverSuggestions.length > 0 && (
             <div>
@@ -595,6 +716,18 @@ export default function AddBookModal({
               </div>
             </div>
           )}
+
+          {/* Résumé (rempli par l'enrichissement, éditable) */}
+          <div>
+            <FieldLabel>Résumé (optionnel)</FieldLabel>
+            <textarea
+              value={summary}
+              onChange={(e) => setSummary(e.target.value)}
+              rows={4}
+              placeholder="Résumé du livre, ou récupéré automatiquement depuis le web…"
+              className={`${inputClass} resize-y leading-relaxed`}
+            />
+          </div>
 
           {renderStatusFields()}
 

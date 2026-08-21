@@ -151,6 +151,13 @@ export default function DecouvertePage() {
   const [selectedGenres, setSelectedGenres] = useState<string[]>([]);
   const [showGenrePanel, setShowGenrePanel] = useState(false);
 
+  // Suggestions des amis (issues des notifications book_recommendation)
+  const [friendRecos, setFriendRecos] = useState<
+    { id: string; from_name: string; book_title: string; message: string | null; created_at: string }[]
+  >([]);
+  const [addFriendReco, setAddFriendReco] = useState<{ ref: BookRef; notifId: string } | null>(null);
+  const [recoPreparing, setRecoPreparing] = useState<string | null>(null);
+
   // Recommandations personnalisées
   const [recommendations, setRecommendations] = useState<BookSuggestion[]>([]);
   const [selectedReco, setSelectedReco] = useState<BookSuggestion | null>(null);
@@ -222,6 +229,59 @@ export default function DecouvertePage() {
   }, []);
 
   useEffect(() => { loadBooks(); }, [loadBooks]);
+
+  // Suggestions des amis : on lit les notifications book_recommendation et on les
+  // regroupe ici (au lieu de les répéter dans le carillon).
+  useEffect(() => {
+    if (!user?.id) return;
+    (async () => {
+      const { data } = await supabase
+        .from("notifications")
+        .select("id, from_user_id, book_title, message, created_at")
+        .eq("user_id", user.id)
+        .eq("type", "book_recommendation")
+        .order("created_at", { ascending: false });
+      const rows = (data ?? []) as { id: string; from_user_id: string; book_title: string; message: string | null; created_at: string }[];
+      if (rows.length === 0) { setFriendRecos([]); return; }
+      const ids = [...new Set(rows.map((r) => r.from_user_id))];
+      const { data: profs } = await supabase.from("user_profiles").select("id, display_name").in("id", ids);
+      const nameMap = new Map(((profs ?? []) as { id: string; display_name: string }[]).map((p) => [p.id, p.display_name]));
+      setFriendRecos(rows.map((r) => ({
+        id: r.id,
+        from_name: nameMap.get(r.from_user_id) ?? "Un ami",
+        book_title: r.book_title,
+        message: r.message,
+        created_at: r.created_at,
+      })));
+    })();
+  }, [user?.id]);
+
+  const dismissFriendReco = async (id: string) => {
+    await supabase.from("notifications").delete().eq("id", id);
+    setFriendRecos((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const startAddFriendReco = async (reco: { id: string; book_title: string }) => {
+    setRecoPreparing(reco.id);
+    let ref: BookRef = { title: reco.book_title, author: "", pages: 0 };
+    try {
+      const results = await searchBooks(reco.book_title);
+      const best = results[0];
+      if (best) {
+        ref = {
+          title: best.title,
+          author: best.author,
+          pages: 0,
+          cover_url: best.coverUrl,
+          genre: best.genre,
+          published_year: best.year,
+          summary: best.summary,
+        };
+      }
+    } catch { /* on garde le ref minimal */ }
+    setRecoPreparing(null);
+    setAddFriendReco({ ref, notifId: reco.id });
+  };
 
   // Recommandations (une seule fois)
   useEffect(() => {
@@ -402,6 +462,42 @@ export default function DecouvertePage() {
           {loading ? "…" : `${groups.length} livre${groups.length > 1 ? "s" : ""} dans le club`}
         </p>
       </header>
+
+      {/* Suggestions de tes amis */}
+      {friendRecos.length > 0 && (
+        <section className="flex flex-col gap-3">
+          <h2 className="font-serif text-lg font-medium text-ink">Suggestions de tes amis</h2>
+          <div className="flex flex-col gap-2">
+            {friendRecos.map((reco) => (
+              <div key={reco.id} className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-soft text-lg">📚</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-serif text-[14px] font-semibold text-ink">{reco.book_title}</p>
+                  <p className="text-[11px] text-muted">Recommandé par {reco.from_name}</p>
+                  {reco.message && (
+                    <p className="mt-0.5 text-[11.5px] italic text-ink-2">« {reco.message} »</p>
+                  )}
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      onClick={() => startAddFriendReco(reco)}
+                      disabled={recoPreparing === reco.id}
+                      className="rounded-xl bg-violet px-3 py-1.5 text-[11.5px] font-semibold text-cream transition-opacity disabled:opacity-50"
+                    >
+                      {recoPreparing === reco.id ? "…" : "Ajouter à ma liste"}
+                    </button>
+                    <button
+                      onClick={() => dismissFriendReco(reco.id)}
+                      className="rounded-xl border border-line bg-card px-3 py-1.5 text-[11.5px] font-medium text-muted hover:text-ink"
+                    >
+                      Retirer
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Recommandé pour toi */}
       {recommendations.length > 0 && (
@@ -711,7 +807,7 @@ export default function DecouvertePage() {
 
       {/* Toast succès */}
       {toast && (
-        <div className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-cream shadow-xl">
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] left-1/2 z-[70] -translate-x-1/2 rounded-2xl border border-[#a78bfa]/45 bg-[#252131] px-4 py-2.5 text-sm font-medium text-[#fdfbf7] shadow-[0_8px_28px_rgba(0,0,0,0.4)] md:bottom-6">
           {toast}
         </div>
       )}
@@ -736,6 +832,24 @@ export default function DecouvertePage() {
         book={webTarget}
         onAdded={(msg) => {
           setWebTarget(null);
+          loadBooks();
+          setToast(msg);
+          setTimeout(() => setToast(null), 3500);
+        }}
+      />
+
+      {/* AddToLibraryModal pour les suggestions d'amis */}
+      <AddToLibraryModal
+        open={addFriendReco !== null}
+        onClose={() => setAddFriendReco(null)}
+        book={addFriendReco?.ref ?? null}
+        onAdded={(msg) => {
+          const notifId = addFriendReco?.notifId;
+          if (notifId) {
+            supabase.from("notifications").delete().eq("id", notifId);
+            setFriendRecos((prev) => prev.filter((r) => r.id !== notifId));
+          }
+          setAddFriendReco(null);
           loadBooks();
           setToast(msg);
           setTimeout(() => setToast(null), 3500);

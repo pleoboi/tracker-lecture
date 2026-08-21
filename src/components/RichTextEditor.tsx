@@ -38,6 +38,35 @@ interface Props {
   autoFocus?: boolean;
 }
 
+// Défini hors du composant : sinon React le voit comme un nouveau type à chaque
+// rendu et remonte tous les boutons de la barre à chaque frappe.
+function ToolBtn({
+  active,
+  onClick,
+  children,
+  title,
+}: {
+  active?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <button
+      type="button"
+      onMouseDown={(e) => { e.preventDefault(); onClick(); }}
+      title={title}
+      className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs transition-colors ${
+        active
+          ? "bg-violet text-cream"
+          : "text-muted hover:bg-violet-soft hover:text-violet-deep"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function RichTextEditor({ value, onChange, placeholder, autoFocus }: Props) {
   const editor = useEditor({
     extensions: [
@@ -70,31 +99,6 @@ export default function RichTextEditor({ value, onChange, placeholder, autoFocus
 
   if (!editor) return null;
 
-  const ToolBtn = ({
-    active,
-    onClick,
-    children,
-    title,
-  }: {
-    active?: boolean;
-    onClick: () => void;
-    children: React.ReactNode;
-    title: string;
-  }) => (
-    <button
-      type="button"
-      onMouseDown={(e) => { e.preventDefault(); onClick(); }}
-      title={title}
-      className={`flex h-7 w-7 items-center justify-center rounded-lg text-xs transition-colors ${
-        active
-          ? "bg-violet text-cream"
-          : "text-muted hover:bg-violet-soft hover:text-violet-deep"
-      }`}
-    >
-      {children}
-    </button>
-  );
-
   const setFontSize = (size: string | null) => {
     if (size) {
       editor.chain().focus().setMark("textStyle", { fontSize: size }).run();
@@ -114,21 +118,30 @@ export default function RichTextEditor({ value, onChange, placeholder, autoFocus
           onClick={() => editor.chain().focus().toggleBold().run()}
           title="Gras"
         >
-          <strong>G</strong>
+          {/* icône gras */}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M7 5h6a3.5 3.5 0 0 1 0 7H7z" />
+            <path d="M7 12h7a3.5 3.5 0 0 1 0 7H7z" />
+          </svg>
         </ToolBtn>
         <ToolBtn
           active={editor.isActive("italic")}
           onClick={() => editor.chain().focus().toggleItalic().run()}
           title="Italique"
         >
-          <em>I</em>
+          {/* icône italique */}
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="19" y1="5" x2="11" y2="5" />
+            <line x1="13" y1="19" x2="5" y2="19" />
+            <line x1="15" y1="5" x2="9" y2="19" />
+          </svg>
         </ToolBtn>
         <ToolBtn
           active={editor.isActive("bulletList")}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
           title="Liste"
         >
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
             <circle cx="2" cy="4" r="1.5" />
             <rect x="5" y="3" width="9" height="2" rx="1" />
             <circle cx="2" cy="8" r="1.5" />
@@ -141,20 +154,19 @@ export default function RichTextEditor({ value, onChange, placeholder, autoFocus
         {/* Taille */}
         {(
           [
-            { label: "S", size: "11px", title: "Petit" },
-            { label: "M", size: null, title: "Normal" },
-            { label: "L", size: "17px", title: "Grand" },
-          ] as { label: string; size: string | null; title: string }[]
-        ).map(({ label, size, title }) => (
+            { key: "S", size: "11px", title: "Petit", glyph: "10px" },
+            { key: "M", size: null, title: "Normal", glyph: "13px" },
+            { key: "L", size: "17px", title: "Grand", glyph: "16px" },
+          ] as { key: string; size: string | null; title: string; glyph: string }[]
+        ).map(({ key, size, title, glyph }) => (
           <ToolBtn
-            key={label}
+            key={key}
             active={size === null ? !currentFontSize : currentFontSize === size}
             onClick={() => setFontSize(size)}
             title={title}
           >
-            <span style={{ fontSize: label === "S" ? "9px" : label === "L" ? "13px" : "11px" }}>
-              {label}
-            </span>
+            {/* glyphe « A » dimensionné pour signifier la taille */}
+            <span style={{ fontSize: glyph, lineHeight: 1, fontWeight: 600 }}>A</span>
           </ToolBtn>
         ))}
       </div>

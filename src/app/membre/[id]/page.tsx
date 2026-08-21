@@ -6,7 +6,7 @@ import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth-context";
 import type { Book, ReadingLog } from "../../../lib/types";
-import { pct, isCompleted } from "../../../lib/books";
+import { pct, isCompleted, todayISO } from "../../../lib/books";
 import { Cover, ProgressBar, AvatarImg } from "../../../components/ui";
 import { ObjectiveChart, RatingsChart } from "../../../components/DashboardWidgets";
 import AddToLibraryModal from "../../../components/AddToLibraryModal";
@@ -102,7 +102,7 @@ function ChallengeCard({ challenge, currentUserId, profileMap, onUpdate }: {
   const [scores, setScores] = useState<Map<string, number> | null>(null);
   const [loadingScores, setLoadingScores] = useState(false);
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = todayISO();
   const isActive = challenge.start_date <= today && challenge.end_date >= today;
   const isEnded = challenge.end_date < today;
   const isUpcoming = challenge.start_date > today;
@@ -297,6 +297,9 @@ export default function MembrePage() {
   }, [memberId]);
 
   // Recommandation
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [messageText, setMessageText] = useState("");
+  const [sendingMessage, setSendingMessage] = useState(false);
   const [showRecoModal, setShowRecoModal] = useState(false);
   const [recoBooks, setRecoBooks] = useState<{ id: number; title: string; author: string; cover_url: string | null }[]>([]);
   const [recoSearch, setRecoSearch] = useState("");
@@ -312,7 +315,7 @@ export default function MembrePage() {
   const [challengeForm, setChallengeForm] = useState({
     title: "",
     metric: "pages" as "pages" | "books" | "sessions",
-    startDate: new Date().toISOString().split("T")[0],
+    startDate: todayISO(),
     endDate: "",
   });
   const [inviteIds, setInviteIds] = useState<string[]>([]);
@@ -461,7 +464,9 @@ export default function MembrePage() {
       notifyUser(
         noteModal.reviewerUserId,
         "Swena",
-        `${senderName} a aimé ta review sur «${noteModal.bookTitle || "ton livre"}»`,
+        `${senderName} a aimé ton activité sur «${noteModal.bookTitle || "ton livre"}»`,
+        undefined,
+        "likes",
       );
     }
     setNoteLikeLoading(false);
@@ -480,7 +485,7 @@ export default function MembrePage() {
       setIsFollowing(true);
       setFollowersCount((n) => n + 1);
       const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
-      notifyUser(memberId, "Swena", `${senderName} s'est abonné à toi`);
+      notifyUser(memberId, "Swena", `${senderName} s'est abonné à toi`, undefined, "follows");
     }
     setLoadingFollow(false);
   };
@@ -573,13 +578,13 @@ export default function MembrePage() {
         );
         const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
         inviteIds.forEach((uid) =>
-          notifyUser(uid, "Swena", `${senderName} t'invite à rejoindre le challenge «${challengeForm.title.trim()}»`),
+          notifyUser(uid, "Swena", `${senderName} t'invite à rejoindre le challenge «${challengeForm.title.trim()}»`, undefined, "challenges"),
         );
       }
     }
     setSavingChallenge(false);
     setShowCreateChallenge(false);
-    setChallengeForm({ title: "", metric: "pages", startDate: new Date().toISOString().split("T")[0], endDate: "" });
+    setChallengeForm({ title: "", metric: "pages", startDate: todayISO(), endDate: "" });
     setInviteIds([]);
     loadChallenges();
   };
@@ -688,6 +693,20 @@ export default function MembrePage() {
         <button onClick={() => router.back()} className="flex items-center gap-1 text-xs font-medium text-muted">
           ← Membres
         </button>
+        {!isOwn && user?.id && (
+          <button
+            onClick={() => { setMessageText(""); setShowMessageModal(true); }}
+            className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-card text-muted transition-colors hover:border-violet/40 hover:text-ink"
+            aria-label="Envoyer un message"
+            title="Envoyer un message"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+              <circle cx="5" cy="12" r="1.5" />
+              <circle cx="12" cy="12" r="1.5" />
+              <circle cx="19" cy="12" r="1.5" />
+            </svg>
+          </button>
+        )}
         {isOwn && (
           <div className="relative" ref={settingsMenuRef}>
             <button
@@ -1025,6 +1044,15 @@ export default function MembrePage() {
                 </button>
               )}
             </>
+          )}
+
+          {isOwn && (
+            <Link
+              href="/bibliotheque"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-violet/40 bg-violet-soft py-3 text-[13px] font-semibold text-violet-deep transition-colors hover:border-violet"
+            >
+              Voir toute la bibliothèque →
+            </Link>
           )}
         </div>
       )}
@@ -1369,6 +1397,51 @@ export default function MembrePage() {
       )}
 
       {/* Modal recommandation */}
+      {showMessageModal && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 pt-4 pb-24 [touch-action:none]" onClick={() => setShowMessageModal(false)}>
+          <div className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4 max-h-[85dvh]" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-serif text-base font-semibold text-ink">Message à {profile?.display_name}</h3>
+              <button onClick={() => setShowMessageModal(false)} className="text-sm text-muted">✕</button>
+            </div>
+
+            <textarea
+              rows={4}
+              placeholder="Ton message…"
+              value={messageText}
+              onChange={(e) => setMessageText(e.target.value.slice(0, 300))}
+              className="w-full rounded-xl border border-line bg-input px-3.5 py-2.5 text-sm text-ink outline-none focus:border-violet resize-none"
+              autoFocus
+            />
+            <p className="text-right text-[10.5px] text-muted">{messageText.length} / 300</p>
+
+            <button
+              disabled={!messageText.trim() || sendingMessage}
+              onClick={async () => {
+                if (!messageText.trim() || !user?.id) return;
+                setSendingMessage(true);
+                const text = messageText.trim();
+                await supabase.from("notifications").insert({
+                  user_id: memberId,
+                  from_user_id: user.id,
+                  type: "direct_message",
+                  message: text,
+                });
+                const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
+                notifyUser(memberId, "Swena", `${senderName} vous a envoyé un message : "${text}"`, undefined, "messages");
+                setSendingMessage(false);
+                setShowMessageModal(false);
+                setToast("Message envoyé.");
+                setTimeout(() => setToast(null), 3000);
+              }}
+              className="w-full rounded-2xl bg-violet py-3.5 text-[14px] font-bold text-cream disabled:opacity-40"
+            >
+              {sendingMessage ? "Envoi…" : "Envoyer le message"}
+            </button>
+          </div>
+        </div>
+      )}
+
       {showRecoModal && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 px-4 pt-4 pb-24 [touch-action:none]" onClick={() => setShowRecoModal(false)}>
           <div className="animate-slideUp w-full max-w-sm rounded-2xl bg-card p-5 flex flex-col gap-4 max-h-[85dvh]" onClick={(e) => e.stopPropagation()}>
@@ -1460,7 +1533,7 @@ export default function MembrePage() {
                 const recoBody = recoMessage.trim()
                   ? `${senderNameReco} te recommande «${recoSelected.title}» : ${recoMessage.trim()}`
                   : `${senderNameReco} te recommande «${recoSelected.title}»`;
-                notifyUser(memberId, "Swena", recoBody);
+                notifyUser(memberId, "Swena", recoBody, undefined, "recommendations");
                 setSendingReco(false);
                 setShowRecoModal(false);
               }}
@@ -1574,7 +1647,7 @@ export default function MembrePage() {
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-cream shadow-xl">
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] left-1/2 z-[70] -translate-x-1/2 rounded-2xl border border-[#a78bfa]/45 bg-[#252131] px-4 py-2.5 text-sm font-medium text-[#fdfbf7] shadow-[0_8px_28px_rgba(0,0,0,0.4)] md:bottom-6">
           {toast}
         </div>
       )}

@@ -9,14 +9,19 @@ interface PodiumEntry {
   pages: number;
 }
 
+// Dates en heure locale : toISOString() renvoyait la veille après minuit.
+function localISO(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function todayISO() {
-  return new Date().toISOString().split("T")[0];
+  return localISO(new Date());
 }
 
 function shiftDate(date: string, days: number): string {
   const d = new Date(date + "T12:00:00");
   d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
+  return localISO(d);
 }
 
 const RANK_STYLES = [
@@ -88,7 +93,7 @@ export default function PodiumModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 backdrop-blur-sm sm:items-center"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/40 backdrop-blur-sm sm:items-center"
       onClick={onClose}
     >
       <div

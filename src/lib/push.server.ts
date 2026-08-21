@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
+import { isNotifEnabled, type NotifPrefs, type NotifType } from "./notificationPrefs";
 
 export const adminSupabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,11 +40,38 @@ export async function sendPushDirect(
   }
 }
 
+/**
+ * Vérifie les préférences de notification de l'utilisateur pour un type donné.
+ * Tolérant par défaut : si la colonne n'existe pas encore ou en cas d'erreur,
+ * on autorise l'envoi plutôt que de faire disparaître les notifications.
+ */
+async function isTypeEnabled(userId: string, type?: NotifType): Promise<boolean> {
+  if (!type) return true;
+  try {
+    const { data, error } = await adminSupabase
+      .from("user_profiles")
+      .select("notification_prefs")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error) return true;
+    const prefs = (data as { notification_prefs?: NotifPrefs } | null)?.notification_prefs;
+    return isNotifEnabled(prefs, type);
+  } catch {
+    return true;
+  }
+}
+
 export async function sendPushToUser(
   userId: string,
   payload: { title: string; body: string; url?: string },
+  type?: NotifType,
 ): Promise<{ sent: number; skipped: number }> {
   if (!initVapid()) return { sent: 0, skipped: 0 };
+
+  if (!(await isTypeEnabled(userId, type))) {
+    console.info("[push] type désactivé par l'utilisateur:", type, "userId:", userId);
+    return { sent: 0, skipped: 0 };
+  }
 
   const { data: subs, error: subsErr } = await adminSupabase
     .from("user_push_subscriptions")

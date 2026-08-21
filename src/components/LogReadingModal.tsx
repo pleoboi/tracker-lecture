@@ -7,6 +7,7 @@ import type { Book } from "../lib/types";
 import { todayISO } from "../lib/books";
 import { Modal, Button, FieldLabel, inputClass, Cover } from "./ui";
 import RichTextEditor from "./RichTextEditor";
+import { compressImage } from "../lib/image";
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
@@ -114,8 +115,6 @@ interface CompletionStats {
   pagesPerDay: number | null;
 }
 
-type QuizPhase = "idle" | "loading" | "ready" | "passed" | "wrong" | "unavailable";
-
 export default function LogReadingModal({
   open,
   onClose,
@@ -149,12 +148,6 @@ export default function LogReadingModal({
   const [reviewText, setReviewText] = useState("");
   const [reviewRating, setReviewRating] = useState(0);
 
-  // ── Quiz ──
-  const [quizPhase, setQuizPhase]       = useState<QuizPhase>("idle");
-  const [quizData, setQuizData]         = useState<{ question: string; choices: string[] } | null>(null);
-  const [selectedChoice, setSelectedChoice] = useState<number | null>(null);
-  const [quizSubmitting, setQuizSubmitting] = useState(false);
-
   useEffect(() => {
     if (open) {
       setStep("log");
@@ -170,9 +163,6 @@ export default function LogReadingModal({
       setCompletionStats(null);
       setReviewText("");
       setReviewRating(0);
-      setQuizPhase("idle");
-      setQuizData(null);
-      setSelectedChoice(null);
     }
   }, [open, defaultBookId, books]);
 
@@ -181,47 +171,18 @@ export default function LogReadingModal({
   const validNumber = endPage !== "" && !isNaN(target);
   const diff = book && validNumber ? target - book.progress : 0;
 
-  // ── Chargement du quiz quand le livre est terminé ───────────────────────
-  useEffect(() => {
-    if (step !== "complete" || !book) return;
-    setQuizPhase("loading");
-    setQuizData(null);
-    setSelectedChoice(null);
-    const quizKey = book.isbn13 || `book-${book.id}`;
-    fetch("/api/quiz/generate", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        quizKey, title: book.title, author: book.author,
-        summary: book.summary ?? null,
-        userId: user?.id,
-      }),
-    })
-      .then((r) => r.json())
-      .then((data: { unavailable?: boolean; alreadyPassed?: boolean; question?: string; choices?: string[] }) => {
-        if (data.unavailable) { setQuizPhase("unavailable"); return; }
-        if (data.alreadyPassed) { setQuizPhase("passed"); return; }
-        if (data.question && data.choices) {
-          setQuizData({ question: data.question, choices: data.choices });
-          setQuizPhase("ready");
-        } else {
-          setQuizPhase("unavailable");
-        }
-      })
-      .catch(() => setQuizPhase("unavailable"));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, book?.id]);
-
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
+    const original = e.target.files?.[0];
+    if (!original || !user) return;
     setPhotoUploading(true);
     await fetch("/api/storage/setup", { method: "POST" }).catch(() => null);
+    // Compression / redimensionnement côté client avant envoi (WebP si supporté).
+    const file = await compressImage(original);
     const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
     const path = `${user.id}/${Date.now()}.${ext}`;
     const { data, error: upErr } = await supabase.storage
       .from("session-photos")
-      .upload(path, file, { upsert: false });
+      .upload(path, file, { upsert: false, contentType: file.type });
     if (!upErr && data) {
       const { data: { publicUrl } } = supabase.storage
         .from("session-photos")
@@ -247,11 +208,14 @@ export default function LogReadingModal({
     setError(null);
 
     const completed = target === book.pages;
-    if (diff > 0) {
+    // On enregistre un log dès qu'il y a une progression OU une note / photo de session,
+    // sinon une note prise sans avancer dans les pages (diff === 0) serait perdue.
+    const hasSessionExtras = !!sessionNotes.trim() || !!sessionPhotoUrl.trim();
+    if (diff > 0 || hasSessionExtras) {
       await supabase.from("reading_logs").insert({
         book_id: book.id,
         date,
-        pages_read: diff,
+        pages_read: diff > 0 ? diff : 0,
         end_page: target,
         user_id: user.id,
         session_notes: sessionNotes.trim() || null,
@@ -303,10 +267,16 @@ export default function LogReadingModal({
     }
 
     setSaving(false);
+    // Vérifie les badges après chaque session (pas seulement à la fin d'un livre).
+    triggerBadgeCheck(user.id);
     onSaved(
       diff < 0
         ? `Correction : retour page ${target}.`
-        : `Session enregistrée : +${diff} pages.`
+        : diff > 0
+          ? `Session enregistrée : +${diff} pages.`
+          : hasSessionExtras
+            ? "Note de session enregistrée."
+            : "Aucune modification."
     );
     onClose();
   };
@@ -316,7 +286,14 @@ export default function LogReadingModal({
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId }),
-    }).catch(() => {});
+    })
+      .then((r) => r.json())
+      .then((data: { awarded?: { id: string }[] }) => {
+        if (data.awarded?.length) {
+          window.dispatchEvent(new CustomEvent("swena:badges-awarded", { detail: data.awarded }));
+        }
+      })
+      .catch(() => {});
   };
 
   const submitReview = async () => {
@@ -340,28 +317,24 @@ export default function LogReadingModal({
     onClose();
   };
 
-  const submitQuiz = async () => {
-    if (selectedChoice === null || !user || !book) return;
-    setQuizSubmitting(true);
-    const quizKey = book.isbn13 || `book-${book.id}`;
-    try {
-      const res = await fetch("/api/quiz/submit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, quizKey, answerIndex: selectedChoice }),
-      });
-      const data = await res.json() as { passed?: boolean; sandboxed?: boolean };
-      setQuizPhase(data.passed ? "passed" : "wrong");
-    } catch {
-      setQuizPhase("wrong");
-    }
-    setQuizSubmitting(false);
-  };
-
   // ── Render : étape "complete" ───────────────────────────────────────────
   if (step === "complete" && book && completionStats) {
     return (
-      <Modal open={open} onClose={skipReview} title="">
+      <Modal
+        open={open}
+        onClose={skipReview}
+        title=""
+        footer={
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={skipReview} className="flex-1 py-3">
+              Passer
+            </Button>
+            <Button onClick={submitReview} disabled={saving} className="flex-1 py-3">
+              {saving ? "Enregistrement…" : "Enregistrer"}
+            </Button>
+          </div>
+        }
+      >
         <div className="flex flex-col gap-5">
           {/* Header célébration */}
           <div className="-mx-5 -mt-2 flex flex-col items-center gap-3 rounded-t-2xl bg-gradient-to-br from-violet/90 to-violet-deep px-5 py-6 text-center">
@@ -421,87 +394,6 @@ export default function LogReadingModal({
             )}
           </div>
 
-          {/* ── Quiz "Le Dernier Test" ────────────────────────────────── */}
-          {quizPhase === "loading" && (
-            <div className="flex items-center justify-center gap-2 rounded-2xl border border-line bg-card px-4 py-5">
-              <svg className="h-4 w-4 animate-spin text-violet" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.3" />
-                <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-              </svg>
-              <span className="text-[12.5px] text-muted">Génération de ta question…</span>
-            </div>
-          )}
-
-          {quizPhase === "ready" && quizData && (
-            <div className="rounded-2xl border border-violet/25 bg-violet-soft px-4 py-4">
-              <p className="mb-0.5 text-[9.5px] font-semibold uppercase tracking-widest text-violet-deep">
-                Le Dernier Test
-              </p>
-              <p className="mb-3 text-[13.5px] font-semibold text-ink leading-snug">{quizData.question}</p>
-              <div className="flex flex-col gap-2">
-                {quizData.choices.map((choice, i) => {
-                  const label = ["A", "B", "C", "D"][i];
-                  const active = selectedChoice === i;
-                  return (
-                    <button
-                      key={i}
-                      onClick={() => setSelectedChoice(i)}
-                      className={`flex items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left text-[12.5px] transition-colors ${
-                        active
-                          ? "border-violet bg-violet text-cream font-medium"
-                          : "border-line bg-paper text-ink hover:border-violet/50"
-                      }`}
-                    >
-                      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${
-                        active ? "bg-white/20 text-cream" : "bg-line text-muted"
-                      }`}>
-                        {label}
-                      </span>
-                      {choice}
-                    </button>
-                  );
-                })}
-              </div>
-              <button
-                onClick={submitQuiz}
-                disabled={selectedChoice === null || quizSubmitting}
-                className="mt-3 w-full rounded-xl bg-violet py-2.5 text-[13px] font-semibold text-cream transition-opacity disabled:opacity-40"
-              >
-                {quizSubmitting ? "Vérification…" : "Valider ma réponse"}
-              </button>
-            </div>
-          )}
-
-          {quizPhase === "passed" && (
-            <div className="rounded-2xl border border-success-soft bg-success-soft px-4 py-4 text-center">
-              <div className="mb-1 flex items-center justify-center gap-1.5">
-                <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4 text-success shrink-0" stroke="currentColor" strokeWidth="2.2">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z" />
-                </svg>
-                <p className="text-[12.5px] font-semibold text-success">
-                  Bonne réponse — Sans Faute !
-                </p>
-              </div>
-              <p className="text-[11px] text-success/80">
-                +30 pts ajoutés à ton score
-              </p>
-            </div>
-          )}
-
-          {quizPhase === "wrong" && (
-            <div className="rounded-2xl border border-danger-soft bg-danger-soft px-4 py-3 text-center">
-              <p className="text-[12.5px] font-semibold text-danger">
-                Mauvaise réponse — mais la lecture compte !
-              </p>
-            </div>
-          )}
-
-          {quizPhase === "unavailable" && (
-            <p className="text-center text-[11px] text-muted">
-              Le livre n&apos;a pas de quiz disponible pour le moment, votre lecture est validée par défaut.
-            </p>
-          )}
-
           {/* Séparateur */}
           <div className="flex items-center gap-2">
             <div className="h-px flex-1 bg-line" />
@@ -543,15 +435,6 @@ export default function LogReadingModal({
             </p>
           </div>
 
-          {/* Actions */}
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={skipReview} className="flex-1 py-3">
-              Passer
-            </Button>
-            <Button onClick={submitReview} disabled={saving} className="flex-1 py-3">
-              {saving ? "Enregistrement…" : "Enregistrer"}
-            </Button>
-          </div>
         </div>
       </Modal>
     );
@@ -559,7 +442,28 @@ export default function LogReadingModal({
 
   // ── Render : étape "log" ────────────────────────────────────────────────
   return (
-    <Modal open={open} onClose={onClose} title="Noter ma lecture">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Noter ma lecture"
+      footer={
+        books.length === 0 ? undefined : (
+          <div className="flex flex-col gap-2">
+            {error && <p className="text-xs font-medium text-danger">{error}</p>}
+            <Button onClick={handleSave} disabled={saving || !validNumber} className="w-full">
+              {saving
+                ? "Enregistrement…"
+                : book && validNumber && target === book.pages
+                  ? "Terminer le livre ✓"
+                  : "Enregistrer la session"}
+            </Button>
+            <p className="text-[11px] leading-4 text-muted">
+              La progression et la durée de lecture se mettent à jour automatiquement.
+            </p>
+          </div>
+        )
+      }
+    >
       {books.length === 0 ? (
         <p className="text-sm text-muted">Ajoute d&apos;abord un livre en cours de lecture.</p>
       ) : (
@@ -697,18 +601,6 @@ export default function LogReadingModal({
             </div>
           )}
 
-          {error && <p className="text-xs font-medium text-danger">{error}</p>}
-
-          <Button onClick={handleSave} disabled={saving || !validNumber} className="w-full">
-            {saving
-              ? "Enregistrement…"
-              : book && validNumber && target === book.pages
-                ? "Terminer le livre ✓"
-                : "Enregistrer la session"}
-          </Button>
-          <p className="text-[11px] leading-4 text-muted">
-            La progression et la durée de lecture se mettent à jour automatiquement.
-          </p>
         </div>
       )}
     </Modal>

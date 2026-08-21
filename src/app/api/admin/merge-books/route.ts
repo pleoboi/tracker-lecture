@@ -163,13 +163,6 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Mettre à jour les quiz éventuels
-  for (const sourceId of sourceIds) {
-    await db.from("book_quizzes")
-      .update({ quiz_key: `book-${targetId}` })
-      .eq("quiz_key", `book-${sourceId}`);
-  }
-
   return NextResponse.json({ ok: true, updated, deduplicated, errors: errors.length ? errors : undefined, affected });
 }
 

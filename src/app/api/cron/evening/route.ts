@@ -102,26 +102,26 @@ export async function GET(req: NextRequest) {
         const dailyGoal = Math.ceil(pagesYear / 365);
 
         if (pagesRead >= dailyGoal) {
-          await sendPushToUser(uid, { title: "Swena", body: pick(GOAL_REACHED_MESSAGES(pagesRead)) });
+          await sendPushToUser(uid, { title: "Swena", body: pick(GOAL_REACHED_MESSAGES(pagesRead)) }, "reminders");
           sent++;
           return;
         }
 
         if (pagesRead > 0) {
           const remaining = dailyGoal - pagesRead;
-          await sendPushToUser(uid, { title: "Swena", body: pick(PROGRESS_MESSAGES(remaining, pagesRead)) });
+          await sendPushToUser(uid, { title: "Swena", body: pick(PROGRESS_MESSAGES(remaining, pagesRead)) }, "reminders");
           sent++;
           return;
         }
 
         // objectif défini mais rien lu aujourd'hui
-        await sendPushToUser(uid, { title: "Swena", body: pick(NO_READ_MESSAGES) });
+        await sendPushToUser(uid, { title: "Swena", body: pick(NO_READ_MESSAGES) }, "reminders");
         sent++;
         return;
       }
 
       // pas d'objectif annuel défini — motiver quand même
-      await sendPushToUser(uid, { title: "Swena", body: pick(NO_GOAL_MESSAGES(pagesRead)) });
+      await sendPushToUser(uid, { title: "Swena", body: pick(NO_GOAL_MESSAGES(pagesRead)) }, "reminders");
       sent++;
     }),
   );

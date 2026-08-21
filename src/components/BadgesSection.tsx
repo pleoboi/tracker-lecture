@@ -22,7 +22,13 @@ const TYPE_GRADIENT: Record<BadgeType, [string, string][]> = {
   time_of_day:   [["#bae6fd","#0369a1"],["#7dd3fc","#075985"],["#38bdf8","#0c4a6e"],["#0ea5e9","#082f49"]],
   performance:   [["#fdba74","#c2410c"],["#fb923c","#9a3412"],["#f97316","#7c2d12"],["#ea580c","#431407"]],
   social:        [["#5eead4","#0f766e"],["#2dd4bf","#0d6b63"],["#14b8a6","#0b5e57"],["#0d9488","#042f2e"]],
-  quiz:          [["#fde68a","#d97706"],["#fcd34d","#b45309"],["#f59e0b","#92400e"],["#d97706","#451a03"]],
+  goal:          [["#f9c74f","#c8961a"],["#f4b942","#a87d16"],["#eeb130","#8f6a10"],["#e0a01e","#6b4e0c"]],
+  monthly_goal:  [["#fbc7a4","#dd6b20"],["#f7ae7a","#c05621"],["#f39554","#9c4221"],["#e17b2f","#7b341e"]],
+  author:        [["#c7d2fe","#4338ca"],["#a5b4fc","#3730a3"],["#818cf8","#312e81"],["#6366f1","#1e1b4b"]],
+  champion_month:[["#fde68a","#b45309"],["#fcd34d","#92400e"],["#fbbf24","#78350f"],["#f59e0b","#451a03"]],
+  challenge:     [["#fbcfe8","#a21caf"],["#f9a8d4","#86198f"],["#f472b6","#701a75"],["#ec4899","#4a044e"]],
+  milestone:     [["#ddd6fe","#5b21b6"],["#c4b5fd","#4c1d95"],["#a78bfa","#3b0764"],["#8b5cf6","#2e1065"]],
+  referral:      [["#99f6e4","#0f766e"],["#5eead4","#0d6b63"],["#2dd4bf","#0b5e57"],["#14b8a6","#042f2e"]],
 };
 
 // ── Stats helper ──────────────────────────────────────────────────────────────
@@ -207,6 +213,25 @@ function BadgeIcon({ iconKey, size = 22 }: { iconKey: IconKey; size?: number }) 
         <circle cx="12" cy="12" r="5.5" fill="white" fillOpacity="0.2" stroke="white" strokeWidth="1.2" />
         {/* Coche de validation */}
         <polyline points="9,12 11.2,14.2 15.5,9.5" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    ),
+    target: (
+      // Cible — badges "Objectifs"
+      <svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9"   stroke="white" strokeWidth="1.4" />
+        <circle cx="12" cy="12" r="5.3" stroke="white" strokeWidth="1.4" />
+        <circle cx="12" cy="12" r="1.8" fill="white" />
+      </svg>
+    ),
+    invite: (
+      // Deux silhouettes — badges "Parrain"
+      <svg width={s} height={s} viewBox="0 0 24 24" fill="none">
+        <circle cx="8.5" cy="8" r="3" stroke="white" strokeWidth="1.4" />
+        <path d="M2.5 20c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="white" strokeWidth="1.4" strokeLinecap="round" />
+        <circle cx="17" cy="7.5" r="2.3" stroke="white" strokeWidth="1.3" opacity="0.7" />
+        <path d="M14.8 20c0-2.6 1.9-4.7 4.3-5.1" stroke="white" strokeWidth="1.3" strokeLinecap="round" opacity="0.7" />
+        <line x1="19.5" y1="3" x2="19.5" y2="6.5" stroke="white" strokeWidth="1.3" strokeLinecap="round" />
+        <line x1="17.75" y1="4.75" x2="21.25" y2="4.75" stroke="white" strokeWidth="1.3" strokeLinecap="round" />
       </svg>
     ),
   };
@@ -498,14 +523,17 @@ const TYPE_LABEL: Record<BadgeType, string> = {
   volume:"Bâtisseur", genre:"Explorateur", sessions:"Marathonien", review:"Critique",
   pages:"Vorace", streak:"Régulier", monthly:"Défis mensuels", monthly_books:"Défi du mois",
   event:"Événements", time_of_day:"Horaires", performance:"Performance", social:"Social & Profil",
-  quiz:"Validation de lecture",
+  goal:"Objectifs", monthly_goal:"Objectif du mois",
+  author:"Auteurs", champion_month:"Champion du mois", challenge:"Défis de club",
+  milestone:"Ancienneté & bibliothèque", referral:"Parrainage",
 };
 
 // ── Badges Hub (full-screen, style Garmin) ────────────────────────────────────
 const TYPE_ORDER: BadgeType[] = [
-  "volume", "genre", "sessions", "review", "pages", "streak",
-  "performance", "time_of_day", "event", "social", "quiz",
-  "monthly_books", "monthly",
+  "volume", "genre", "author", "sessions", "review", "pages", "streak",
+  "performance", "time_of_day", "event", "social", "goal",
+  "challenge", "milestone", "referral",
+  "monthly_books", "monthly", "monthly_goal", "champion_month",
 ];
 
 function BadgesHub({ memberId, currentUserId, onClose }: {
@@ -518,8 +546,6 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
   const [stats,         setStats]         = useState<UserBadgeStats | null>(null);
   const [selected,      setSelected]      = useState<BadgeDef | null>(null);
   const [awardQueue,    setAwardQueue]    = useState<BadgeDef[]>([]);
-  const [quizPassCount,   setQuizPassCount]   = useState(0);
-  const [quizBonus,       setQuizBonus]       = useState(0);
   const [sprintCount,     setSprintCount]     = useState(0);
   const [sprintBonus,     setSprintBonus]     = useState(0);
 
@@ -557,16 +583,14 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
       }
 
       const [profileRes, ubRes, computedStats] = await Promise.all([
-        supabase.from("user_profiles").select("display_name, avatar_url, quiz_pass_count, quiz_bonus_points, sprint_eclair_count, sprint_bonus_points").eq("id", memberId).single(),
+        supabase.from("user_profiles").select("display_name, avatar_url, sprint_eclair_count, sprint_bonus_points").eq("id", memberId).single(),
         supabase.from("user_badges").select("badge_id, unlocked_at").eq("user_id", memberId)
           .order("unlocked_at", { ascending: false }),
         fetchBadgeStats(memberId),
       ]);
 
-      const prof = profileRes.data as { display_name: string; avatar_url: string | null; quiz_pass_count?: number; quiz_bonus_points?: number; sprint_eclair_count?: number; sprint_bonus_points?: number } | null;
+      const prof = profileRes.data as { display_name: string; avatar_url: string | null; sprint_eclair_count?: number; sprint_bonus_points?: number } | null;
       setProfile(prof);
-      setQuizPassCount(prof?.quiz_pass_count ?? 0);
-      setQuizBonus(prof?.quiz_bonus_points ?? 0);
       setSprintCount(prof?.sprint_eclair_count ?? 0);
       setSprintBonus(prof?.sprint_bonus_points ?? 0);
       setUnlocked((ubRes.data ?? []) as { badge_id: string; unlocked_at: string }[]);
@@ -578,17 +602,18 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
   }, [memberId, currentUserId]);
 
   const unlockedSet = new Set(unlocked.map((u) => u.badge_id));
-  const totalPoints = getTotalPoints(unlockedSet) + quizBonus + sprintBonus;
+  const totalPoints = getTotalPoints(unlockedSet) + sprintBonus;
   const lvl         = getLevelProgress(totalPoints);
 
   // ── Grille dédupliquée : une seule carte par famille, palier le plus haut en couleur ──
-  const todayStr = new Date().toISOString().slice(0, 10);
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 
   // Regroupe les defs par famille (même name+type → une famille)
   // Exception : badges mensuels → chacun est sa propre famille
   const familyMap = new Map<string, BadgeDef[]>();
   for (const def of BADGE_DEFS) {
-    const isMonthly = def.type === "monthly" || def.type === "monthly_books";
+    const isMonthly = def.type === "monthly" || def.type === "monthly_books" || def.type === "monthly_goal" || def.type === "champion_month";
     if (isMonthly) {
       const inPeriod = def.startDate && def.endDate && todayStr >= def.startDate && todayStr <= def.endDate;
       if (!inPeriod && !unlockedSet.has(def.id)) continue; // cacher les mois hors période non obtenus
@@ -746,9 +771,8 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
                     </p>
                     <div className="grid grid-cols-3 gap-3">
                       {items.map(({ def, isUnlocked, unlockedAt: ubAt }) => {
-                        const isSansFaute    = def.id === "sans-faute";
                         const isSprintEclair = def.id === "sprint-eclair";
-                        const cumulCount = isSansFaute ? quizPassCount : isSprintEclair ? sprintCount : 0;
+                        const cumulCount = isSprintEclair ? sprintCount : 0;
                         const statVal = stats && !isUnlocked ? getStatValue(def, stats) : -1;
                         const isNumeric = statVal >= 0;
                         const pct = isNumeric ? Math.min(100, (statVal / def.targetValue) * 100) : 0;

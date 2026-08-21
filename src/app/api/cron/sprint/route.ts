@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
         await sendPushToUser(uid, {
           title: "Sprint final",
           body: `Tu es à ${gap} pages du leader dans le challenge "${challenge.title}". Fonce !`,
-        });
+        }, "sprint");
         sent++;
       }),
     );

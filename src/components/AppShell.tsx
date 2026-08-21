@@ -7,10 +7,12 @@ import { useAuth } from "../lib/auth-context";
 import { supabase } from "../lib/supabase";
 import type { Book } from "../lib/types";
 import GuideModal from "./GuideModal";
+import ProfileSetupModal from "./ProfileSetupModal";
+import ReferralPromptModal from "./ReferralPromptModal";
 import AddBookModal from "./AddBookModal";
 import LogReadingModal from "./LogReadingModal";
 
-type NavItem = { name: string; href: string; icon: React.ReactNode };
+type NavItem = { name: string; href: string; icon: React.ReactNode; shortName?: string };
 
 const allNavItems: NavItem[] = [
   {
@@ -24,6 +26,7 @@ const allNavItems: NavItem[] = [
   },
   {
     name: "Bibliothèque",
+    shortName: "Biblio",
     href: "/bibliotheque",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-[22px] w-[22px]">
@@ -52,6 +55,7 @@ const allNavItems: NavItem[] = [
   },
   {
     name: "Statistiques",
+    shortName: "Stats",
     href: "/dashboard",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-[22px] w-[22px]">
@@ -200,7 +204,15 @@ function MobileTopBar({
   return (
     <header
       className="sticky top-0 z-50 flex items-center justify-between border-b border-line bg-paper/90 px-5 pb-2.5 backdrop-blur-md md:hidden"
-      style={{ paddingTop: "max(env(safe-area-inset-top), 0.625rem)" }}
+      style={{
+        paddingTop: "max(env(safe-area-inset-top), 0.625rem)",
+        // sticky + backdrop-filter est un bug WebKit connu en PWA iOS standalone :
+        // lors d'une navigation, un fragment figé de l'ancienne page reste visible
+        // sous la barre. Forcer sa propre couche de composition évite ce résidu.
+        transform: "translateZ(0)",
+        WebkitTransform: "translateZ(0)",
+        WebkitBackfaceVisibility: "hidden",
+      }}
     >
       <Link href="/accueil">
         <SwenaWordmark />
@@ -256,7 +268,12 @@ function TopBar({
   return (
     <header
       className="sticky top-0 z-50 hidden border-b border-line bg-paper/90 backdrop-blur-md md:block"
-      style={{ paddingTop: "env(safe-area-inset-top)" }}
+      style={{
+        paddingTop: "env(safe-area-inset-top)",
+        transform: "translateZ(0)",
+        WebkitTransform: "translateZ(0)",
+        WebkitBackfaceVisibility: "hidden",
+      }}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-10">
         <Link href="/accueil">
@@ -348,13 +365,13 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
         {item.icon}
       </span>
       <span
-        className="text-[9px] font-semibold tracking-wide"
+        className="whitespace-nowrap text-[9px] font-semibold tracking-wide"
         style={{
           color: active ? "var(--color-violet-deep)" : "var(--color-muted)",
           transition: "color 0.22s cubic-bezier(0.32,0.72,0,1)",
         }}
       >
-        {item.name}
+        {item.shortName ?? item.name}
       </span>
     </Link>
   );
@@ -430,6 +447,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user } = useAuth();
   const [showGuide, setShowGuide] = useState(false);
+  const [showProfileSetup, setShowProfileSetup] = useState(false);
+  const [showReferralPrompt, setShowReferralPrompt] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showLog, setShowLog] = useState(false);
@@ -462,20 +481,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     created_at: string;
     isNew: boolean;
   }[]>([]);
-  const [recoNotifs, setRecoNotifs] = useState<{
+  const [dmNotifs, setDmNotifs] = useState<{
     id: string;
+    from_user_id: string;
     from_name: string;
-    book_title: string;
-    message: string | null;
+    message: string;
     created_at: string;
     isNew: boolean;
   }[]>([]);
   const [weeklyRecap, setWeeklyRecap] = useState<{
-    pages: number;
-    sessions: number;
-    booksCompleted: number;
-    clubChampion: { name: string; pages: number } | null;
     weekLabel: string;
+    totalPages: number;      // tout le club
+    totalSessions: number;   // tout le club
+    booksCompleted: number;  // tout le club
+    activeReaders: number;   // nombre de membres actifs
+    myPages: number;         // ma contribution — pages
+    mySessions: number;      // ma contribution — activités
+    myBookTitles: string[];  // mes livres terminés cette semaine
+    podium: { name: string; pages: number; isMe: boolean }[];
   } | null>(null);
 
   const displayName =
@@ -485,17 +508,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const fetchAvatar = async (uid: string) => {
     const { data } = await supabase
       .from("user_profiles")
-      .select("avatar_url, has_seen_onboarding")
+      .select("avatar_url, has_seen_onboarding, created_at")
       .eq("id", uid)
       .single();
     setAvatarUrl((data as { avatar_url?: string | null } | null)?.avatar_url ?? null);
 
+    // Nouveau compte : on ouvre d'abord la personnalisation du profil, puis le
+    // tutoriel s'enchaîne (ProfileSetupModal.onClose déclenche setShowGuide).
     const hasSeen = (data as { has_seen_onboarding?: boolean | null } | null)?.has_seen_onboarding;
     if (hasSeen === false) {
-      setShowGuide(true);
+      setShowProfileSetup(true);
     } else if (data === null && typeof window !== "undefined") {
       const lsKey = `onboarding_done_${uid}`;
-      if (!localStorage.getItem(lsKey)) setShowGuide(true);
+      if (!localStorage.getItem(lsKey)) setShowProfileSetup(true);
+    }
+
+    // Rappel de parrainage : une fois, à partir du 7e jour du compte.
+    const createdAt = (data as { created_at?: string | null } | null)?.created_at;
+    if (createdAt && typeof window !== "undefined") {
+      const ageDays = (Date.now() - new Date(createdAt).getTime()) / 86_400_000;
+      const seenKey = `referral_prompt_seen_${uid}`;
+      if (ageDays >= 7 && !localStorage.getItem(seenKey)) {
+        setShowReferralPrompt(true);
+      }
     }
   };
 
@@ -511,8 +546,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       ? (localStorage.getItem(`notif_last_seen_${uid}`) ?? "1970-01-01")
       : "1970-01-01";
 
-    // Likes + invitations challenges + recommandations (parallèle)
-    const [{ data: likeRows }, { data: inviteRows }, { data: recoRows }] = await Promise.all([
+    // Likes + invitations challenges + messages directs (parallèle). Les
+    // recommandations d'amis sont gérées séparément dans la liste dédiée (page Découverte).
+    const [{ data: likeRows }, { data: inviteRows }, { data: dmRows }] = await Promise.all([
       supabase
         .from("notifications")
         .select("id, from_user_id, book_id, book_title, created_at")
@@ -529,11 +565,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         .limit(10),
       supabase
         .from("notifications")
-        .select("id, from_user_id, book_title, message, created_at")
+        .select("id, from_user_id, message, created_at")
         .eq("user_id", uid)
-        .eq("type", "book_recommendation")
+        .eq("type", "direct_message")
         .order("created_at", { ascending: false })
-        .limit(10),
+        .limit(20),
     ]);
 
     // Abonnés
@@ -594,29 +630,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
     setChallengeInvites(enrichedInvites);
 
-    // Recommandations de livres
-    let enrichedRecos: typeof recoNotifs = [];
-    if (recoRows && recoRows.length > 0) {
-      type RecoRow = { id: string; from_user_id: string; book_title: string; message: string | null; created_at: string };
-      const recoFromIds = [...new Set((recoRows as RecoRow[]).map((r) => r.from_user_id))];
-      const { data: recoProfiles } = await supabase.from("user_profiles").select("id, display_name").in("id", recoFromIds);
-      const recoMap = new Map(((recoProfiles || []) as { id: string; display_name: string }[]).map((p) => [p.id, p.display_name]));
-      enrichedRecos = (recoRows as RecoRow[]).map((r) => ({
+    // Messages directs
+    let enrichedDms: typeof dmNotifs = [];
+    if (dmRows && dmRows.length > 0) {
+      type DmRow = { id: string; from_user_id: string; message: string | null; created_at: string };
+      const fromIds = [...new Set((dmRows as DmRow[]).map((r) => r.from_user_id))];
+      const { data: fromProfiles } = await supabase.from("user_profiles").select("id, display_name").in("id", fromIds);
+      const fromMap = new Map(((fromProfiles || []) as { id: string; display_name: string }[]).map((p) => [p.id, p.display_name]));
+      enrichedDms = (dmRows as DmRow[]).map((r) => ({
         id: r.id,
-        from_name: recoMap.get(r.from_user_id) ?? "Membre",
-        book_title: r.book_title ?? "un livre",
-        message: r.message ?? null,
+        from_user_id: r.from_user_id,
+        from_name: fromMap.get(r.from_user_id) ?? "Membre",
+        message: r.message ?? "",
         created_at: r.created_at,
         isNew: r.created_at > lastSeen,
       }));
     }
-    setRecoNotifs(enrichedRecos);
+    setDmNotifs(enrichedDms);
 
     setNewFollowersCount(
       enriched.filter((f) => f.isNew).length +
       enrichedLikes.filter((l) => l.isNew).length +
       enrichedInvites.filter((i) => i.isNew).length +
-      enrichedRecos.filter((r) => r.isNew).length
+      enrichedDms.filter((d) => d.isNew).length
     );
   };
 
@@ -633,54 +669,86 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (user?.id) { fetchAvatar(user.id); fetchNotifications(user.id); }
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Parrainage : si l'inscription vient d'un lien /register?ref=..., on l'attribue
+  // une fois connecté (le code a été mémorisé en localStorage sur la page d'inscription).
+  useEffect(() => {
+    if (!user?.id || typeof window === "undefined") return;
+    const referrerId = localStorage.getItem("swena_ref");
+    if (!referrerId) return;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      try {
+        await fetch("/api/referral/claim", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token ?? ""}`,
+          },
+          body: JSON.stringify({ referrerId }),
+        });
+      } catch { /* on retentera à la prochaine connexion si ça échoue */ }
+      finally { localStorage.removeItem("swena_ref"); }
+    })();
+  }, [user?.id]);
+
   useEffect(() => {
     if (!user?.id || typeof window === "undefined") return;
     const today = new Date();
     if (today.getDay() !== 1) return; // seulement le lundi
-    const mondayKey = today.toISOString().split("T")[0];
+    const localDate = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const mondayKey = localDate(today);
     if (localStorage.getItem(`weeklyRecap_${mondayKey}`)) return; // déjà vu
 
+    // Semaine passée : lundi dernier → dimanche dernier
     const prevWeekEnd = new Date(today);
     prevWeekEnd.setDate(today.getDate() - 1);
     const prevWeekStart = new Date(today);
     prevWeekStart.setDate(today.getDate() - 7);
-    const startStr = prevWeekStart.toISOString().split("T")[0];
-    const endStr = prevWeekEnd.toISOString().split("T")[0];
+    const startStr = localDate(prevWeekStart);
+    const endStr = localDate(prevWeekEnd);
 
     const weekLabel = `${prevWeekStart.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })} – ${prevWeekEnd.toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}`;
 
     (async () => {
       const uid = user.id;
-      const [{ data: myLogs }, { data: followRows }] = await Promise.all([
-        supabase.from("reading_logs").select("pages_read, date, book_id").eq("user_id", uid).gte("date", startStr).lte("date", endStr),
-        supabase.from("user_follows").select("following_id").eq("follower_id", uid),
+
+      // Récap GLOBAL + PERSO sur la semaine passée.
+      const [{ data: allLogsData }, booksRes, { data: myBooksData }] = await Promise.all([
+        supabase.from("reading_logs").select("user_id, pages_read").gte("date", startStr).lte("date", endStr),
+        supabase.from("books").select("id", { count: "exact", head: true })
+          .eq("status", "completed").gte("date_read", startStr).lte("date_read", endStr),
+        supabase.from("books").select("title").eq("user_id", uid)
+          .eq("status", "completed").gte("date_read", startStr).lte("date_read", endStr),
       ]);
 
-      const myPages = ((myLogs ?? []) as { pages_read: number }[]).reduce((s, l) => s + (l.pages_read || 0), 0);
-      const mySessions = (myLogs ?? []).length;
+      const logs = (allLogsData ?? []) as { user_id: string; pages_read: number | null }[];
+      const totalPages = logs.reduce((s, l) => s + (l.pages_read || 0), 0);
+      const totalSessions = logs.length;
+      const booksCompleted = booksRes.count ?? 0;
 
-      const { data: completedBooks } = await supabase.from("books").select("id").eq("user_id", uid).eq("status", "completed").gte("date_read", startStr).lte("date_read", endStr);
-      const booksCompleted = (completedBooks ?? []).length;
+      const pagesByUser = new Map<string, number>();
+      logs.forEach((l) => pagesByUser.set(l.user_id, (pagesByUser.get(l.user_id) ?? 0) + (l.pages_read || 0)));
+      const myPages = pagesByUser.get(uid) ?? 0;
+      const mySessions = logs.filter((l) => l.user_id === uid).length;
+      const myBookTitles = ((myBooksData ?? []) as { title: string }[]).map((b) => b.title);
+      const activeReaders = [...pagesByUser.values()].filter((p) => p > 0).length;
 
-      let clubChampion: { name: string; pages: number } | null = null;
-      const followedIds = ((followRows ?? []) as { following_id: string }[]).map((r) => r.following_id);
-      if (followedIds.length > 0) {
-        const { data: clubLogs } = await supabase.from("reading_logs").select("user_id, pages_read").in("user_id", followedIds).gte("date", startStr).lte("date", endStr);
-        if (clubLogs?.length) {
-          const pagesByUser = new Map<string, number>();
-          (clubLogs as { user_id: string; pages_read: number }[]).forEach((l) => {
-            pagesByUser.set(l.user_id, (pagesByUser.get(l.user_id) ?? 0) + (l.pages_read || 0));
-          });
-          const [champId, champPages] = [...pagesByUser.entries()].sort((a, b) => b[1] - a[1])[0];
-          if (champPages > 0) {
-            const { data: champProfile } = await supabase.from("user_profiles").select("display_name").eq("id", champId).single();
-            clubChampion = { name: (champProfile as { display_name: string } | null)?.display_name ?? "Membre", pages: champPages };
-          }
-        }
+      // Podium des 3 plus gros lecteurs du club
+      const top = [...pagesByUser.entries()].filter(([, p]) => p > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+      let podium: { name: string; pages: number; isMe: boolean }[] = [];
+      if (top.length > 0) {
+        const { data: profs } = await supabase.from("user_profiles").select("id, display_name").in("id", top.map(([id]) => id));
+        const nameMap = new Map(((profs ?? []) as { id: string; display_name: string }[]).map((p) => [p.id, p.display_name]));
+        podium = top.map(([id, pages]) => ({
+          name: id === uid ? "Toi" : (nameMap.get(id) ?? "Membre"),
+          pages,
+          isMe: id === uid,
+        }));
       }
 
-      if (myPages > 0 || mySessions > 0 || booksCompleted > 0) {
-        setWeeklyRecap({ pages: myPages, sessions: mySessions, booksCompleted, clubChampion, weekLabel });
+      if (totalSessions > 0 || totalPages > 0) {
+        setWeeklyRecap({ weekLabel, totalPages, totalSessions, booksCompleted, activeReaders, myPages, mySessions, myBookTitles, podium });
       }
     })();
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -821,7 +889,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <button onClick={() => setShowNotif(false)} className="text-xs text-muted">✕</button>
             </div>
 
-            {notifFollowers.length === 0 && likeNotifs.length === 0 && challengeInvites.length === 0 && recoNotifs.length === 0 ? (
+            {notifFollowers.length === 0 && likeNotifs.length === 0 && challengeInvites.length === 0 ? (
               <p className="px-4 py-8 text-center text-xs text-muted">
                 Aucune notification pour l&apos;instant.
               </p>
@@ -870,44 +938,37 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   </div>
                 ))}
 
-                {/* Recommandations de livres */}
-                {recoNotifs.map((reco) => (
-                  <div key={`reco-${reco.id}`} className="border-b border-line px-4 py-3">
-                    <div className="flex items-start gap-2">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-soft text-sm">📚</span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[12.5px] font-semibold text-ink">
-                          {reco.from_name} <span className="font-normal text-muted">te recommande</span>
-                        </p>
-                        <p className="truncate text-[11px] font-medium text-violet-deep">{reco.book_title}</p>
-                        {reco.message && (
-                          <p className="mt-0.5 line-clamp-2 text-[11px] italic text-muted">&ldquo;{reco.message}&rdquo;</p>
-                        )}
-                        <p className="mt-0.5 text-[10px] text-muted">{relativeTime(reco.created_at)}</p>
-                        <button
-                          onClick={async () => {
-                            await supabase.from("notifications").delete().eq("id", reco.id);
-                            setRecoNotifs((prev) => prev.filter((r) => r.id !== reco.id));
-                            setNewFollowersCount((n) => Math.max(0, n - (reco.isNew ? 1 : 0)));
-                          }}
-                          className="mt-1.5 text-[11px] font-medium text-muted underline-offset-2 hover:underline"
-                        >
-                          Ignorer
-                        </button>
-                      </div>
-                      {reco.isNew && <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-violet" />}
-                    </div>
-                  </div>
-                ))}
+                {/* Les recommandations d'amis sont désormais regroupées dans une liste
+                    dédiée sur la page Découverte (elles ne s'affichent plus ici). */}
 
-                {/* Likes + abonnés triés par date */}
+                {/* Likes + abonnés + messages directs triés par date */}
                 {[
                   ...likeNotifs.map((n) => ({ ...n, _type: "like" as const })),
                   ...notifFollowers.map((f) => ({ ...f, _type: "follow" as const })),
+                  ...dmNotifs.map((d) => ({ ...d, _type: "dm" as const })),
                 ]
                   .sort((a, b) => b.created_at.localeCompare(a.created_at))
                   .map((item) =>
-                    item._type === "like" ? (
+                    item._type === "dm" ? (
+                      <Link
+                        key={`dm-${item.id}`}
+                        href={`/membre/${(item as typeof dmNotifs[0] & { _type: "dm" }).from_user_id}`}
+                        onClick={() => setShowNotif(false)}
+                        className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-violet-soft"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-soft text-sm text-violet-deep">✉</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[12.5px] font-semibold text-ink">
+                            {(item as typeof dmNotifs[0] & { _type: "dm" }).from_name}{" "}
+                            <span className="font-normal text-muted">vous a envoyé un message</span>
+                          </p>
+                          <p className="truncate text-[11px] text-muted italic">
+                            «{(item as typeof dmNotifs[0] & { _type: "dm" }).message}» · {relativeTime(item.created_at)}
+                          </p>
+                        </div>
+                        {item.isNew && <span className="h-2 w-2 shrink-0 rounded-full bg-danger" />}
+                      </Link>
+                    ) : item._type === "like" ? (
                       <Link
                         key={`like-${item.id}`}
                         href={`/livre/${(item as typeof likeNotifs[0] & { _type: "like" }).book_id}`}
@@ -918,7 +979,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[12.5px] font-semibold text-ink">
                             {(item as typeof likeNotifs[0] & { _type: "like" }).from_name}{" "}
-                            <span className="font-normal text-muted">a aimé ta critique sur</span>
+                            <span className="font-normal text-muted">a aimé ton activité sur</span>
                           </p>
                           <p className="truncate text-[11px] text-muted italic">
                             {(item as typeof likeNotifs[0] & { _type: "like" }).book_title} · {relativeTime(item.created_at)}
@@ -956,14 +1017,32 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {/* Toast global */}
+      {/* Toast global — ancré au-dessus de la barre de navigation flottante (safe-area iOS).
+          Couleurs explicites (indépendantes du thème) pour rester lisible en mode sombre comme clair. */}
       {shellToast && (
-        <div className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-cream shadow-xl md:bottom-6">
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] left-1/2 z-[70] -translate-x-1/2 rounded-2xl border border-[#a78bfa]/45 bg-[#252131] px-4 py-2.5 text-sm font-medium text-[#fdfbf7] shadow-[0_8px_28px_rgba(0,0,0,0.4)] md:bottom-6">
           {shellToast}
         </div>
       )}
 
-      <GuideModal userId={user?.id} open={showGuide} onClose={() => setShowGuide(false)} />
+      <ProfileSetupModal
+        open={showProfileSetup}
+        onClose={() => { setShowProfileSetup(false); setShowGuide(true); }}
+        userId={user?.id}
+      />
+
+      <GuideModal
+        userId={user?.id}
+        open={showGuide}
+        onClose={() => setShowGuide(false)}
+        onAddBook={() => setShowAdd(true)}
+      />
+
+      <ReferralPromptModal
+        open={showReferralPrompt}
+        onClose={() => setShowReferralPrompt(false)}
+        userId={user?.id}
+      />
 
       {/* Récap hebdo du lundi */}
       {weeklyRecap && (
@@ -974,45 +1053,81 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               style={{ background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 60%, #4f46e5 100%)" }}>
               <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10" />
               <span className="text-3xl">📚</span>
-              <h2 className="font-serif text-xl font-black text-white">Récap de la semaine</h2>
+              <h2 className="font-serif text-xl font-black text-white">Récap du club</h2>
               <p className="text-[11px] font-medium text-white/60">{weeklyRecap.weekLabel}</p>
             </div>
 
-            {/* Stats */}
+            {/* Stats globales du club */}
             <div className="grid grid-cols-3 divide-x divide-line border-b border-line">
               {[
-                { value: weeklyRecap.pages.toLocaleString("fr-FR"), label: "pages" },
-                { value: String(weeklyRecap.sessions), label: "sessions" },
-                { value: String(weeklyRecap.booksCompleted), label: weeklyRecap.booksCompleted > 1 ? "livres terminés" : "livre terminé" },
+                { value: weeklyRecap.totalPages.toLocaleString("fr-FR"), label: "pages lues" },
+                { value: String(weeklyRecap.totalSessions), label: "sessions" },
+                { value: String(weeklyRecap.booksCompleted), label: weeklyRecap.booksCompleted > 1 ? "livres finis" : "livre fini" },
               ].map(({ value, label }) => (
                 <div key={label} className="flex flex-col items-center gap-0.5 py-5">
                   <span className="font-serif text-2xl font-black text-ink">{value}</span>
-                  <span className="text-[10px] text-muted">{label}</span>
+                  <span className="text-center text-[10px] text-muted">{label}</span>
                 </div>
               ))}
             </div>
 
-            {/* Champion du club */}
-            <div className="px-6 py-4">
-              {weeklyRecap.clubChampion ? (
-                <div className="flex items-center gap-3 rounded-2xl border border-violet/20 bg-violet-soft px-4 py-3">
-                  <span className="text-xl">🏆</span>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Champion du club</p>
-                    <p className="truncate font-serif text-[15px] font-bold text-ink">{weeklyRecap.clubChampion.name}</p>
-                    <p className="text-[11px] text-violet-deep">{weeklyRecap.clubChampion.pages.toLocaleString("fr-FR")} pages</p>
+            {/* Podium des lecteurs de la semaine */}
+            <div className="flex flex-col gap-2 px-6 py-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                Podium de la semaine · {weeklyRecap.activeReaders} membre{weeklyRecap.activeReaders > 1 ? "s" : ""} actif{weeklyRecap.activeReaders > 1 ? "s" : ""}
+              </p>
+              {weeklyRecap.podium.length > 0 ? (
+                weeklyRecap.podium.map((p, i) => (
+                  <div
+                    key={i}
+                    className={`flex items-center gap-3 rounded-2xl border px-4 py-2.5 ${
+                      p.isMe ? "border-violet/40 bg-violet-soft" : "border-line bg-card"
+                    }`}
+                  >
+                    <span className="text-lg">{["🥇", "🥈", "🥉"][i]}</span>
+                    <p className={`min-w-0 flex-1 truncate font-serif text-[15px] font-bold ${p.isMe ? "text-violet-deep" : "text-ink"}`}>
+                      {p.name}
+                    </p>
+                    <p className="shrink-0 text-[12px] font-semibold text-muted">
+                      {p.pages.toLocaleString("fr-FR")} p.
+                    </p>
                   </div>
-                </div>
+                ))
               ) : (
                 <p className="text-center text-[12px] text-muted">Pas encore d&apos;activité dans le club cette semaine.</p>
               )}
             </div>
 
-            <div className="px-6 pb-6">
+            {/* Ta semaine (perso) */}
+            <div className="flex flex-col gap-2 px-6">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Ta semaine</p>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { value: weeklyRecap.myPages.toLocaleString("fr-FR"), label: "pages" },
+                  { value: String(weeklyRecap.mySessions), label: weeklyRecap.mySessions > 1 ? "activités" : "activité" },
+                  { value: String(weeklyRecap.myBookTitles.length), label: weeklyRecap.myBookTitles.length > 1 ? "livres finis" : "livre fini" },
+                ].map(({ value, label }) => (
+                  <div key={label} className="flex flex-col items-center gap-0.5 rounded-2xl bg-input py-3">
+                    <span className="font-serif text-xl font-black text-violet-deep">{value}</span>
+                    <span className="text-center text-[10px] text-muted">{label}</span>
+                  </div>
+                ))}
+              </div>
+              {weeklyRecap.myBookTitles.length > 0 && (
+                <div className="rounded-2xl border border-violet/20 bg-violet-soft px-4 py-2.5">
+                  <p className="text-[11px] font-medium text-violet-deep">
+                    🎉 Tu as terminé {weeklyRecap.myBookTitles.map((t) => `« ${t} »`).join(", ")}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 pb-6 pt-4">
               <button
                 onClick={() => {
                   if (user?.id && typeof window !== "undefined") {
-                    const mondayKey = new Date().toISOString().split("T")[0];
+                    const t = new Date();
+                    const mondayKey = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
                     localStorage.setItem(`weeklyRecap_${mondayKey}`, "1");
                   }
                   setWeeklyRecap(null);

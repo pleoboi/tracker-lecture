@@ -7,12 +7,16 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth-context";
 import type { Book, ReadingLog, ReadSession } from "../../../lib/types";
-import { pct, isCompleted, isAbandoned, readingStats, formatDate, formatDateLong } from "../../../lib/books";
-import { Cover, ProgressBar, Pill, Button, AvatarImg } from "../../../components/ui";
+import { pct, isCompleted, isAbandoned, readingStats, formatDate, formatDateLong, todayISO } from "../../../lib/books";
+import { Cover, ProgressBar, Pill, Button, AvatarImg, Modal } from "../../../components/ui";
 import LogReadingModal from "../../../components/LogReadingModal";
 import AddToLibraryModal from "../../../components/AddToLibraryModal";
 import CoverPickerModal from "../../../components/CoverPickerModal";
 import RichTextEditor from "../../../components/RichTextEditor";
+import Lightbox from "../../../components/Lightbox";
+import { getBuyLinks, normalizeIsbn } from "../../../lib/affiliate";
+import { notifyUser } from "../../../lib/push.client";
+import { stripHtml } from "../../../lib/googleBooks";
 
 const GENRES = [
   "Roman", "Fiction", "Non-Fiction", "Classique", "Nouvelle",
@@ -35,6 +39,20 @@ interface MemberEntry {
   status: string;
   dateRead: string | null;
   isFollowed: boolean;
+}
+
+// Certains résumés (import Goodreads, saisie manuelle) contiennent encore des
+// balises HTML brutes ou des sauts de ligne qui ne s'affichent pas tels quels.
+// On les normalise en texte simple à l'affichage : balises retirées, emphase
+// markdown retirée (jamais de gras dans l'UI), sauts de ligne conservés via
+// whiteSpace: pre-line au rendu.
+function cleanSummaryText(raw: string): string {
+  const text = /<[a-z][\s\S]*>/i.test(raw) ? stripHtml(raw) : raw;
+  return text
+    .replace(/\*\*(.+?)\*\*/g, "$1")
+    .replace(/__(.+?)__/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 /* ── Confetti ──────────────────────────────────────────────────────── */
@@ -165,10 +183,16 @@ export default function BookDetailPage() {
   const [logs, setLogs] = useState<ReadingLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [showLog, setShowLog] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [editingInfo, setEditingInfo] = useState(false);
-  const [infoDraft, setInfoDraft] = useState({ title: "", author: "", year: "", pages: "", summary: "", coverUrl: "" });
+  const [infoDraft, setInfoDraft] = useState({ title: "", author: "", year: "", pages: "", summary: "", coverUrl: "", isbn: "" });
+  const [enrichingInfo, setEnrichingInfo] = useState(false);
+  const [enrichInfoMsg, setEnrichInfoMsg] = useState<string | null>(null);
+  const [detectedGenres, setDetectedGenres] = useState<string[]>([]);
+  const [applyingGenres, setApplyingGenres] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
 
   // Social
   const [memberActivity, setMemberActivity] = useState<MemberEntry[]>([]);
@@ -246,6 +270,7 @@ export default function BookDetailPage() {
       pages: urlBook.pages ? String(urlBook.pages) : "",
       summary: urlBook.summary || "",
       coverUrl: urlBook.cover_url || "",
+      isbn: urlBook.isbn13 || "",
     });
 
     // Étape B : copie de l'utilisateur connecté (peut être le même livre)
@@ -419,6 +444,8 @@ export default function BookDetailPage() {
           book_id: id,
           book_title: book.title,
         });
+        const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "Quelqu'un";
+        notifyUser(selectedMember.userId, "Swena", `${senderName} a aimé ton activité sur «${book.title}»`, undefined, "likes");
       }
     }
     setLikeLoading(false);
@@ -437,6 +464,72 @@ export default function BookDetailPage() {
     setEditingNotes(false);
   };
 
+  // Récupère les infos du livre depuis le web pour pré-remplir le formulaire d'édition.
+  const enrichInfoFromWeb = async () => {
+    const title = (infoDraft.title || book?.title || "").trim();
+    const author = (infoDraft.author || book?.author || "").trim();
+    if (!title) { setEnrichInfoMsg("Renseigne au moins le titre."); return; }
+    setEnrichingInfo(true);
+    setEnrichInfoMsg(null);
+    setDetectedGenres([]);
+    try {
+      const [enrichRes, coversRes] = await Promise.all([
+        fetch(`/api/books/enrich?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`)
+          .then((r) => (r.ok ? r.json() : { summary: null, year: null, genres: [], isbn: null }))
+          .catch(() => ({ summary: null as string | null, year: null as number | null, genres: [] as string[], isbn: null as string | null })),
+        fetch(`/api/books/covers?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`)
+          .then((r) => (r.ok ? r.json() : { covers: [] }))
+          .catch(() => ({ covers: [] as string[] })),
+      ]);
+      const cover = (coversRes.covers && coversRes.covers[0]) || "";
+      setInfoDraft((d) => ({
+        ...d,
+        author: d.author.trim() || author,
+        year: enrichRes.year ? String(enrichRes.year) : d.year,
+        summary: enrichRes.summary || d.summary,
+        isbn: d.isbn.trim() || enrichRes.isbn || "",
+        // On conserve la couverture actuelle si elle existe ; on ne la remplit que si vide.
+        coverUrl: d.coverUrl || cover,
+      }));
+      // Genres : on ne propose que ceux détectés dans la liste canonique et pas
+      // déjà présents sur le livre — validés d'un clic via le bouton dédié
+      // (pas via le panneau "Modifier le genre", qui réinitialise sa sélection
+      // à chaque ouverture depuis le genre déjà enregistré).
+      const canonical = new Set(GENRES);
+      const currentGenres = new Set((book?.genre ?? "").split(", ").filter(Boolean));
+      const fetchedGenres = (enrichRes.genres ?? []) as string[];
+      const newGenres = [...new Set(fetchedGenres.filter((g) => canonical.has(g)))]
+        .filter((g) => !currentGenres.has(g));
+      setDetectedGenres(newGenres);
+
+      const got = !!enrichRes.summary || !!enrichRes.year || (coversRes.covers?.length ?? 0) > 0 || newGenres.length > 0;
+      setEnrichInfoMsg(
+        got
+          ? "Infos récupérées. Utilise ✎ pour changer la couverture (l'actuelle reste proposée)."
+          : "Aucune information trouvée pour ce titre.",
+      );
+    } catch {
+      setEnrichInfoMsg("Récupération indisponible pour le moment.");
+    } finally {
+      setEnrichingInfo(false);
+    }
+  };
+
+  // Ajoute les genres détectés par l'enrichissement web au genre déjà enregistré
+  // (fusion, sans rien retirer). Écrit directement, indépendamment du panneau
+  // "Modifier le genre" qui a sa propre logique d'édition manuelle.
+  const applyDetectedGenres = async () => {
+    if (!activeBook || detectedGenres.length === 0 || applyingGenres) return;
+    setApplyingGenres(true);
+    const current = activeBook.genre?.split(", ").filter(Boolean) ?? [];
+    const merged = [...new Set([...current, ...detectedGenres])];
+    const genre = merged.join(", ");
+    await supabase.from("books").update({ genre }).eq("id", activeBook.id);
+    updateActiveBook({ ...activeBook, genre });
+    setDetectedGenres([]);
+    setApplyingGenres(false);
+  };
+
   const saveInfo = async () => {
     if (!book) return;
     const year = infoDraft.year ? Number(infoDraft.year) : null;
@@ -447,6 +540,7 @@ export default function BookDetailPage() {
       published_year: year,
       summary: infoDraft.summary.trim() || null,
       cover_url: infoDraft.coverUrl.trim() || null,
+      isbn13: infoDraft.isbn.replace(/[^0-9Xx]/g, "") || null,
     };
     if (isAdmin) {
       // Admin : métadonnées globales (toutes les copies), pages uniquement sur sa propre copie
@@ -506,7 +600,7 @@ export default function BookDetailPage() {
   const markAsReadNoDate = async () => {
     if (!activeBook || markingRead) return;
     setMarkingRead(true);
-    const todayDate = new Date().toISOString().split("T")[0];
+    const todayDate = todayISO();
     await supabase
       .from("books")
       .update({ status: "completed", progress: activeBook.pages, date_read: todayDate })
@@ -644,6 +738,7 @@ export default function BookDetailPage() {
   const isPaused = activeBook?.status === "paused";
   const stats = activeBook ? readingStats(activeBook, logs) : { startDate: null, endDate: null, durationDays: null, pagesPerDay: null };
   const rating = activeBook?.rating || 0;
+  const timesRead = 1 + readSessions.length;
 
   // Stats communauté
   const communityCompleted = memberActivity.filter((m) => m.status === "completed").length + (activeBook && isCompleted(activeBook) ? 1 : 0);
@@ -660,690 +755,712 @@ export default function BookDetailPage() {
       ? allClubRatings.reduce((s, r) => s + r, 0) / clubRaterCount
       : 0;
   const membersWithReview = memberActivity.filter((m) => !!m.review);
+  const cleanSummary = book.summary ? cleanSummaryText(book.summary) : "";
 
   return (
     <div className="animate-fadeIn -mx-5 md:-mx-10">
       {showConfetti && <Confetti />}
 
-      {/* En-tête */}
-      <div className="flex flex-col items-center gap-4 bg-violet-soft px-5 pb-7 pt-4 md:rounded-3xl md:px-10">
-        <div className="flex w-full items-center justify-between">
-          <button
-            onClick={() => router.back()}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-card text-lg text-ink"
-            aria-label="Retour"
-          >
-            ‹
-          </button>
-          <div className="flex items-center gap-2">
-            {isOwner && !done && !abandoned && !isPaused && (
-              <>
-                <button
-                  onClick={markAsReadNoDate}
-                  disabled={markingRead}
-                  className="flex h-9 items-center justify-center rounded-xl border border-success-soft bg-success-soft px-3 text-xs font-semibold text-success"
-                >
-                  {markingRead ? "…" : "✓ Lu"}
-                </button>
-                <button
-                  onClick={pause}
-                  className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-line bg-card px-3 text-xs font-medium text-muted"
-                >
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
-                    <rect x="6" y="5" width="4" height="14" rx="1.5"/>
-                    <rect x="14" y="5" width="4" height="14" rx="1.5"/>
-                  </svg>
-                  Pause
-                </button>
-                <button
-                  onClick={abandon}
-                  className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-muted"
-                >
-                  Abandonner
-                </button>
-              </>
-            )}
-            {isOwner && isPaused && (
-              <>
-                <button
-                  onClick={resume}
-                  className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-violet/40 bg-violet-soft px-3 text-xs font-semibold text-violet-deep"
-                >
-                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
-                    <path d="M6 4.75C6 4.03 6.84 3.6 7.43 4.02l12 7.25a1 1 0 0 1 0 1.46l-12 7.25C6.84 20.4 6 19.97 6 19.25V4.75z"/>
-                  </svg>
-                  Reprendre
-                </button>
-                <button
-                  onClick={abandon}
-                  className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-muted"
-                >
-                  Abandonner
-                </button>
-              </>
-            )}
-            {isOwner && abandoned && (
-              <span className="rounded-xl border border-danger-soft bg-danger-soft px-3 py-1.5 text-xs font-semibold text-danger">
-                Abandonné
-              </span>
-            )}
-            {isOwner && (
-              <button
-                onClick={remove}
-                className="flex h-9 items-center justify-center rounded-xl border border-line bg-card px-3 text-xs font-medium text-danger"
-              >
-                Supprimer
-              </button>
-            )}
-            {!isOwner && (
-              <div className="flex items-center gap-1.5">
-                <button
-                  onClick={quickAddWishlist}
-                  title="Envie de lire"
-                  className={`flex h-9 w-9 items-center justify-center rounded-xl border transition-colors ${
-                    wishlistAdded
-                      ? "border-violet bg-violet text-cream"
-                      : "border-violet/40 bg-violet-soft text-violet-deep hover:bg-violet hover:text-cream"
-                  }`}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill={wishlistAdded ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
-                  </svg>
-                </button>
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="flex h-9 items-center justify-center gap-1.5 rounded-xl border border-violet/40 bg-violet-soft px-3 text-xs font-semibold text-violet-deep transition-colors hover:bg-violet hover:text-cream"
-                >
-                  + Ajouter
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <Cover
-          id={book.id}
-          title={book.title}
-          coverUrl={book.cover_url}
-          className="h-[205px] w-[140px]"
-          rounded="rounded-lg"
-        />
-
-        {canEdit && editingInfo ? (
-          <div className="flex w-full max-w-sm flex-col gap-2">
-            {/* Couverture : aperçu + bouton picker */}
-            <div className="flex items-center gap-3">
-              <div className="relative shrink-0">
-                <Cover
-                  id={0}
-                  title={infoDraft.title || book.title}
-                  coverUrl={infoDraft.coverUrl || null}
-                  className="h-[80px] w-[55px]"
-                  rounded="rounded-lg"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowCoverPickerEdit(true)}
-                  className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-violet text-[11px] text-cream shadow-md"
-                  title="Choisir une couverture"
-                >
-                  ✎
-                </button>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="mb-1 text-[10.5px] font-medium text-muted">
-                  URL couverture (ou utilise ✎)
-                </p>
-                <input
-                  value={infoDraft.coverUrl}
-                  onChange={(e) => setInfoDraft({ ...infoDraft, coverUrl: e.target.value })}
-                  placeholder="https://…"
-                  className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
-                />
-              </div>
-            </div>
-            <input
-              value={infoDraft.title}
-              onChange={(e) => setInfoDraft({ ...infoDraft, title: e.target.value })}
-              placeholder="Titre"
-              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
-              autoFocus
-            />
-            <input
-              value={infoDraft.author}
-              onChange={(e) => setInfoDraft({ ...infoDraft, author: e.target.value })}
-              placeholder="Auteur"
-              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
-            />
-            <div className="flex gap-2">
-              <input
-                value={infoDraft.year}
-                onChange={(e) => setInfoDraft({ ...infoDraft, year: e.target.value })}
-                placeholder="Année (ex. 2021)"
-                type="number"
-                className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
-              />
-              <input
-                value={infoDraft.pages}
-                onChange={(e) => setInfoDraft({ ...infoDraft, pages: e.target.value })}
-                placeholder="Pages (votre éd.)"
-                type="number"
-                min={1}
-                className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
-              />
-            </div>
-            <textarea
-              value={infoDraft.summary}
-              onChange={(e) => setInfoDraft({ ...infoDraft, summary: e.target.value })}
-              placeholder="Résumé…"
-              rows={3}
-              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
-            />
-            {isAdmin && !isOwner && (
-              <p className="rounded-xl bg-violet-soft px-3 py-2 text-[10.5px] font-medium text-violet-deep">
-                ⚡ Mode admin — les modifications s&apos;appliquent à toutes les copies
-              </p>
-            )}
-            <div className="flex gap-2">
-              <Button onClick={saveInfo} className="flex-1 py-2">Enregistrer</Button>
-              <Button variant="ghost" onClick={() => setEditingInfo(false)} className="flex-1 py-2">Annuler</Button>
-            </div>
-          </div>
-        ) : canEdit ? (
-          <button
-            onClick={() => setEditingInfo(true)}
-            className="text-xs font-medium text-violet-deep underline decoration-violet/40 underline-offset-2"
-          >
-            Modifier les informations
-          </button>
-        ) : null}
-
-        <div className="text-center">
-          <h1 className="font-serif text-2xl font-black text-ink">{book.title}</h1>
-          <p className="mt-0.5 text-sm text-ink-2">{book.author}</p>
-          {clubRaterCount > 0 && (
-            <div className="mt-2 flex items-center justify-center gap-1.5">
-              <span className="text-gold text-base leading-none">★</span>
-              <span className="font-serif text-[15px] font-bold text-ink">
-                {clubAvgRating.toFixed(1).replace(".", ",")}
-              </span>
-              <span className="text-xs text-muted">/ 5</span>
-              <span className="text-[11px] text-muted">
-                ({clubRaterCount} lecteur{clubRaterCount > 1 ? "s" : ""})
-              </span>
-            </div>
-          )}
-        </div>
-
-        {isOwner && (
-          <div className="flex flex-col items-center gap-2.5">
-            <div className="flex items-center gap-1">
-              {[1, 2, 3, 4, 5].map((s) => (
-                <button key={s} onClick={() => setRating(s)} className="text-2xl leading-none">
-                  <span style={{ color: s <= Math.round(rating) ? "var(--color-gold)" : "#dad2c2" }}>★</span>
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setRating(Math.max(0, Math.round((rating - 0.1) * 10) / 10))}
-                className="flex h-8 w-9 items-center justify-center rounded-lg border border-line bg-card text-xs font-bold text-ink"
-              >
-                −0,1
-              </button>
-              <span className="min-w-[58px] rounded-lg border border-line bg-card py-1.5 text-center text-sm font-bold text-ink">
-                {rating > 0 ? rating.toFixed(1).replace(".", ",") : "—"}{" "}
-                <span className="text-xs font-medium text-muted">/ 5</span>
-              </span>
-              <button
-                onClick={() => setRating(Math.min(5, Math.round((rating + 0.1) * 10) / 10))}
-                className="flex h-8 w-9 items-center justify-center rounded-lg border border-line bg-card text-xs font-bold text-ink"
-              >
-                +0,1
-              </button>
-            </div>
-          </div>
+      {/* Bandeau décoratif : couverture floutée en arrière-plan (façon Letterboxd) */}
+      <div className="relative h-32 overflow-hidden bg-card md:h-44 md:rounded-t-3xl">
+        {book.cover_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={book.cover_url}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 h-full w-full scale-125 object-cover opacity-50 blur-2xl"
+          />
         )}
+        <div className="absolute inset-0 bg-gradient-to-b from-paper/20 via-paper/75 to-paper" />
+        <button
+          onClick={() => router.back()}
+          className="absolute left-5 top-4 flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-card text-lg text-ink md:left-10"
+          aria-label="Retour"
+        >
+          ‹
+        </button>
       </div>
 
-      {/* Corps */}
-      <div className="flex flex-col gap-5 px-5 pt-5 md:px-10">
-        <div className="flex flex-wrap items-center gap-2">
-          {book.genre
-            ? book.genre.split(", ").filter(Boolean).map((g) => (
-                <Pill key={g} tone="sage">{g}</Pill>
-              ))
-            : null}
-          <Pill tone="neutral">{book.pages} pages</Pill>
-          {stats.durationDays != null && (
-            <Pill tone="violet">Lu en {stats.durationDays} jour{stats.durationDays > 1 ? "s" : ""}</Pill>
-          )}
-          {book.published_year && <Pill tone="neutral">{book.published_year}</Pill>}
-          {isOwner && (
+      {/* Cover+achat / titre+résumé / panneau latéral — colonnes façon Letterboxd, même principe mobile et desktop */}
+      <div className="grid grid-cols-[100px_1fr] items-start gap-x-4 gap-y-6 px-5 pt-6 md:grid-cols-[220px_1fr_300px] md:gap-8 md:px-10">
+
+        {/* Couverture + achat — une seule colonne, jamais coupée en deux lignes */}
+        <div className="col-start-1 flex flex-col items-start gap-3">
+          <Cover
+            id={book.id}
+            title={book.title}
+            coverUrl={book.cover_url}
+            className="h-[145px] w-[100px] md:h-[280px] md:w-[192px]"
+            rounded="rounded-lg"
+          />
+
+          {/* ISBN + achat affilié — masqué tant qu'aucun ISBN valide n'est renseigné */}
+          {(() => {
+            const isbn = normalizeIsbn(book.isbn13);
+            const buyLinks = getBuyLinks(book);
+            if (!isbn) return null;
+            return (
+              <div className="flex w-full flex-col items-start gap-1.5">
+                <div className="flex flex-wrap gap-2">
+                  {buyLinks.map((l) => (
+                    <a
+                      key={l.name}
+                      href={l.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-card px-3 py-1.5 text-[11px] font-semibold text-ink transition-colors hover:border-violet/50"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="9" cy="21" r="1" />
+                        <circle cx="20" cy="21" r="1" />
+                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
+                      </svg>
+                      Acheter
+                    </a>
+                  ))}
+                </div>
+                {/* Divulgation exigée par le programme Partenaires Amazon — texte minimal mais conservé pour rester conforme */}
+                <p className="text-[9px] leading-tight text-muted">
+                  Lien partenaire Amazon.
+                </p>
+              </div>
+            );
+          })()}
+
+          {canEdit && (
             <button
-              onClick={() => {
-                setGenreSelection(activeBook!.genre?.split(", ").filter(Boolean) || []);
-                setEditingGenre((v) => !v);
-              }}
-              className="rounded-full border border-dashed border-violet/40 px-2.5 py-0.5 text-[10.5px] font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep"
+              onClick={() => { setEditingInfo(true); setEnrichInfoMsg(null); }}
+              className="text-[11px] font-medium text-violet-deep underline decoration-violet/40 underline-offset-2"
             >
-              {editingGenre ? "✕ Fermer" : activeBook!.genre ? "Modifier le genre" : "+ Genre"}
+              Modifier les informations
             </button>
           )}
         </div>
 
-        {/* Panneau d'édition des genres (multi-sélection) */}
-        {editingGenre && (
-          <div className="rounded-2xl border border-violet/20 bg-violet-soft p-4 flex flex-col gap-3">
-            <p className="text-[12.5px] font-medium text-ink-2">
-              Sélectionne le ou les genres :
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {GENRES.map((g) => {
-                const active = genreSelection.includes(g);
-                return (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() =>
-                      setGenreSelection((prev) =>
-                        active ? prev.filter((x) => x !== g) : [...prev, g]
-                      )
-                    }
-                    className={`rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
-                      active
-                        ? "border-violet bg-violet text-cream"
-                        : "border-line bg-input text-ink hover:border-violet/40 hover:text-violet-deep"
-                    }`}
-                  >
-                    {g}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" onClick={() => setEditingGenre(false)} className="flex-1 py-2 text-sm">
-                Annuler
-              </Button>
-              <Button onClick={saveGenreMulti} disabled={savingGenreEdit} className="flex-1 py-2 text-sm">
-                {savingGenreEdit ? "…" : "Enregistrer"}
-              </Button>
-            </div>
+        {/* Titre, auteur, infos, genres, résumé */}
+        <div className="col-start-2 flex flex-col items-start gap-3 text-left md:row-span-2">
+          <div>
+            <h1 className="font-serif text-2xl font-black text-ink md:text-[34px] md:leading-tight">{book.title}</h1>
+            <p className="mt-1 text-sm text-ink-2 md:text-base">{book.author}</p>
+            {(book.published_year || book.pages) && (
+              <p className="mt-1.5 text-[11.5px] text-muted">
+                {book.published_year ? book.published_year : null}
+                {book.published_year && book.pages ? " · " : null}
+                {book.pages ? `${book.pages} pages` : null}
+              </p>
+            )}
           </div>
-        )}
 
-        {/* Ma lecture — visible uniquement par le propriétaire */}
-        {isOwner && (
-        <div className="flex flex-col gap-3.5 rounded-2xl border border-line bg-card p-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-serif text-[15px] font-medium text-ink">Ma lecture</h2>
+          <div className="flex flex-wrap items-center justify-center gap-2 md:justify-start">
+            {book.genre
+              ? book.genre.split(", ").filter(Boolean).map((g) => (
+                  <Pill key={g} tone="sage">{g}</Pill>
+                ))
+              : null}
+            {stats.durationDays != null && (
+              <Pill tone="violet">Lu en {stats.durationDays} jour{stats.durationDays > 1 ? "s" : ""}</Pill>
+            )}
             {isOwner && (
-              <button onClick={() => setShowLog(true)} className="text-xs font-medium text-violet-deep">
-                Noter une session
+              <button
+                onClick={() => {
+                  setGenreSelection(activeBook!.genre?.split(", ").filter(Boolean) || []);
+                  setEditingGenre((v) => !v);
+                }}
+                className="rounded-full border border-dashed border-violet/40 px-2.5 py-0.5 text-[10.5px] font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep"
+              >
+                {editingGenre ? "✕ Fermer" : activeBook!.genre ? "Modifier le genre" : "+ Genre"}
               </button>
             )}
           </div>
-          <div className="flex justify-between">
-            <Stat label="Commencé" value={formatDate(stats.startDate)} />
-            <Stat label={done ? "Terminé" : "Dernière"} value={formatDate(stats.endDate)} />
-            <Stat label="Durée" value={stats.durationDays ? `${stats.durationDays} j` : "—"} accent="text-violet-deep" />
-            <Stat label="Rythme" value={stats.pagesPerDay ? `${stats.pagesPerDay} p./j` : "—"} accent="text-sage" />
-          </div>
-          <ProgressBar value={p / 100} color={done ? "var(--color-success)" : "var(--color-violet)"} />
 
-          {editingProgress ? (
-            <div className="flex items-center gap-2">
-              <input
-                type="number"
-                min={0}
-                max={activeBook!.pages}
-                value={progressDraft}
-                onChange={(e) => setProgressDraft(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") saveProgress(); if (e.key === "Escape") setEditingProgress(false); }}
-                autoFocus
-                className="w-20 rounded-lg border border-violet bg-input px-2 py-1 text-center text-sm font-bold text-ink outline-none"
-              />
-              <span className="text-[11px] text-muted">/ {activeBook!.pages} pages</span>
-              <button
-                onClick={saveProgress}
-                disabled={savingProgress}
-                className="flex h-6 w-6 items-center justify-center rounded-full bg-violet text-[11px] font-bold text-cream disabled:opacity-60"
-              >
-                ✓
-              </button>
-              <button
-                onClick={() => setEditingProgress(false)}
-                className="flex h-6 w-6 items-center justify-center rounded-full border border-line text-[11px] text-muted"
-              >
-                ✕
-              </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2">
-              <p className={`text-[11px] font-medium ${done ? "text-success" : "text-muted"}`}>
-                {done ? "Terminé · " : ""}
-                {activeBook!.progress} / {activeBook!.pages} pages
+          {/* Panneau d'édition des genres (multi-sélection) */}
+          {editingGenre && (
+            <div className="w-full rounded-2xl border border-violet/20 bg-violet-soft p-4 flex flex-col gap-3 text-left">
+              <p className="text-[12.5px] font-medium text-ink-2">
+                Sélectionne le ou les genres :
               </p>
-              {!done && (
-                <button
-                  onClick={() => { setProgressDraft(String(activeBook!.progress)); setEditingProgress(true); }}
-                  title="Corriger la page"
-                  className="flex h-5 w-5 items-center justify-center rounded-full text-muted transition-colors hover:bg-violet-soft hover:text-violet-deep"
-                >
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                  </svg>
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Graphique évolution des notes */}
-          <div className="border-t border-line pt-3">
-            <RatingEvolutionChart history={ratingHistory} currentProgress={activeBook!.progress} />
-          </div>
-
-          {/* Historique des relectures */}
-          {done && (activeBook!.date_started || activeBook!.date_read || readSessions.length > 0) && (
-            <div className="flex flex-col gap-2 border-t border-line pt-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                Historique des lectures
-              </p>
-              {/* Session originale */}
-              <div className="flex items-center gap-2 rounded-xl bg-paper px-3 py-2.5">
-                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet text-[9px] font-bold text-cream">1</span>
-                <div className="min-w-0 flex-1">
-                  {activeBook!.date_started && (
-                    <span className="text-[11px] text-muted">
-                      {formatDate(activeBook!.date_started)} →{" "}
-                    </span>
-                  )}
-                  <span className="text-[11.5px] font-medium text-ink">
-                    {activeBook!.date_read ? formatDate(activeBook!.date_read) : "Date inconnue"}
-                  </span>
-                  {activeBook!.import_source === "goodreads" && (
-                    <span className="ml-1.5 rounded-md bg-[#f4f0e8] dark:bg-card px-1.5 py-0.5 text-[9.5px] font-medium text-muted">
-                      Goodreads
-                    </span>
-                  )}
-                </div>
-              </div>
-              {/* Sessions supplémentaires */}
-              {readSessions.map((s, i) => (
-                <div key={s.id} className="flex items-center gap-2 rounded-xl bg-paper px-3 py-2.5">
-                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet text-[9px] font-bold text-cream">
-                    {i + 2}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    {s.date_started && (
-                      <span className="text-[11px] text-muted">
-                        {formatDate(s.date_started)} →{" "}
-                      </span>
-                    )}
-                    <span className="text-[11.5px] font-medium text-ink">
-                      {formatDate(s.date_read)}
-                    </span>
-                    <span className="ml-1.5 rounded-md bg-violet-soft px-1.5 py-0.5 text-[9.5px] font-medium text-violet-deep">
-                      Relecture
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Bouton Relire + formulaire inline */}
-          {isOwner && done && (
-            <div className="border-t border-line pt-3">
-              {!addingRelecture ? (
-                <button
-                  onClick={() => setAddingRelecture(true)}
-                  className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-violet/30 bg-violet-soft py-2.5 text-[12px] font-semibold text-violet-deep transition-colors hover:border-violet/60"
-                >
-                  ↺ Relire ce livre
-                </button>
-              ) : (
-                <div className="flex flex-col gap-3 rounded-2xl border border-violet/20 bg-violet-soft p-3.5">
-                  <p className="text-[12.5px] font-semibold text-ink">Nouvelle période de lecture</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <p className="mb-1 text-[10.5px] font-medium text-muted">Début (optionnel)</p>
-                      <input
-                        type="date"
-                        value={relectureDraft.date_started}
-                        onChange={(e) => setRelectureDraft({ ...relectureDraft, date_started: e.target.value })}
-                        className="w-full rounded-xl border border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-violet"
-                      />
-                    </div>
-                    <div>
-                      <p className="mb-1 text-[10.5px] font-medium text-muted">Fin (requis)</p>
-                      <input
-                        type="date"
-                        value={relectureDraft.date_read}
-                        onChange={(e) => setRelectureDraft({ ...relectureDraft, date_read: e.target.value })}
-                        className="w-full rounded-xl border border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-violet"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button variant="ghost" onClick={() => { setAddingRelecture(false); setRelectureDraft({ date_started: "", date_read: "" }); }} className="flex-1 py-2 text-sm">
-                      Annuler
-                    </Button>
-                    <Button onClick={addRelecture} disabled={savingRelecture || !relectureDraft.date_read} className="flex-1 py-2 text-sm">
-                      {savingRelecture ? "…" : "Enregistrer"}
-                    </Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-        )}
-
-        {/* Section communauté */}
-        {(memberActivity.length > 0 || communityCompleted > 0) && (
-          <div className="flex flex-col gap-4">
-
-            {/* Stats lecteurs */}
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { count: communityCompleted, label: "ont lu", icon: "✓" },
-                { count: communityReading,   label: "en cours", icon: "📖" },
-                { count: communityWant,      label: "veulent lire", icon: "♡" },
-              ].map(({ count, label, icon }) => (
-                <div key={label} className="flex flex-col items-center gap-0.5 rounded-2xl border border-line bg-card py-3">
-                  <span className="font-serif text-xl font-black text-ink">{count}</span>
-                  <span className="text-[10px] text-muted">{icon} {label}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Avatars membres (tous) */}
-            {memberActivity.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Membres</p>
-                <div className="flex flex-wrap gap-3">
-                  {memberActivity.map((m) => (
-                    <button key={m.userId} onClick={() => setSelectedMember(m)} className="flex flex-col items-center gap-1">
-                      <div className="relative">
-                        <AvatarImg
-                          url={m.avatarUrl}
-                          name={m.displayName}
-                          className={`h-10 w-10 text-[11px] font-semibold ring-2 ring-offset-1 ${
-                            m.status === "completed" ? "ring-success/60" : m.status === "reading" ? "ring-violet/50" : "ring-line"
-                          }`}
-                        />
-                        {m.isFollowed && (
-                          <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-violet text-[7px] text-white">✓</span>
-                        )}
-                      </div>
-                      <span className="max-w-[48px] truncate text-[9.5px] text-muted">{m.displayName.split(" ")[0]}</span>
-                      {(m.rating ?? 0) > 0 && (
-                        <span className="text-[9px] font-bold text-gold">{"★".repeat(Math.round(m.rating! / 0.5) * 0.5 >= 1 ? Math.round(m.rating!) : 1)}</span>
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Reviews texte */}
-            {membersWithReview.length > 0 && (
-              <div className="flex flex-col gap-2">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
-                  Critiques membres{membersWithReview.length > 0 ? ` · ${membersWithReview.length}` : ""}
-                </p>
-                <div className="flex flex-col gap-3">
-                  {membersWithReview.map((m) => (
+              <div className="flex flex-wrap gap-2">
+                {GENRES.map((g) => {
+                  const active = genreSelection.includes(g);
+                  return (
                     <button
-                      key={m.userId}
-                      onClick={() => setSelectedMember(m)}
-                      className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3.5 text-left transition-colors hover:border-violet/40"
+                      key={g}
+                      type="button"
+                      onClick={() =>
+                        setGenreSelection((prev) =>
+                          active ? prev.filter((x) => x !== g) : [...prev, g]
+                        )
+                      }
+                      className={`rounded-full border px-3 py-1.5 text-[11.5px] font-medium transition-colors ${
+                        active
+                          ? "border-violet bg-violet text-cream"
+                          : "border-line bg-input text-ink hover:border-violet/40 hover:text-violet-deep"
+                      }`}
                     >
-                      <div className="relative shrink-0">
-                        <AvatarImg url={m.avatarUrl} name={m.displayName} className="h-9 w-9 text-[11px]" />
-                        {m.isFollowed && (
-                          <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-violet text-[7px] text-white">✓</span>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-[12.5px] font-semibold text-ink">{m.displayName}</span>
-                          {m.isFollowed && <span className="rounded-full bg-violet-soft px-1.5 py-0.5 text-[9px] font-semibold text-violet-deep">abonné</span>}
-                          {(m.rating ?? 0) > 0 && (
-                            <span className="ml-auto shrink-0 text-[11px] font-bold text-gold">{"★".repeat(Math.round(m.rating!))} {m.rating!.toFixed(1)}</span>
-                          )}
-                        </div>
-                        {m.dateRead && (
-                          <p className="text-[10px] text-muted">Lu le {new Date(m.dateRead).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</p>
-                        )}
-                        <p className="mt-1.5 line-clamp-3 font-serif text-[12.5px] italic leading-relaxed text-ink-2">
-                          « {m.review} »
-                        </p>
-                      </div>
+                      {g}
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
-            )}
-          </div>
-        )}
-
-        {/* Résumé */}
-        {book.summary && (
-          <div className="flex flex-col gap-2">
-            <h2 className="font-serif text-[15px] font-medium text-ink">Résumé</h2>
-            <p className="text-[13px] leading-relaxed text-ink-2">{book.summary}</p>
-            <p className="text-[10.5px] text-muted">Source : Google Books</p>
-          </div>
-        )}
-
-        {/* Ma review (visible uniquement par le propriétaire) */}
-        {isOwner && <div className="flex flex-col gap-2 rounded-2xl border border-amber-soft bg-amber-soft p-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-serif text-[15px] font-medium text-ink">Ma review</h2>
-            {!editingNotes && (
-              <button onClick={() => setEditingNotes(true)} className="text-xs font-medium text-amber-label">
-                {activeBook!.notes ? "Modifier" : "Ajouter"}
-              </button>
-            )}
-          </div>
-          {editingNotes ? (
-            <div className="flex flex-col gap-2">
-              <RichTextEditor
-                value={notesDraft}
-                onChange={setNotesDraft}
-                placeholder="Ta critique globale du livre, tes citations préférées… (visible par les membres du club)"
-                autoFocus
-              />
               <div className="flex gap-2">
-                <Button onClick={saveNotes} className="px-4 py-2">Enregistrer</Button>
-                <Button
-                  variant="ghost"
-                  onClick={() => { setNotesDraft(activeBook!.notes || ""); setEditingNotes(false); }}
-                  className="px-4 py-2"
-                >
+                <Button variant="ghost" onClick={() => setEditingGenre(false)} className="flex-1 py-2 text-sm">
                   Annuler
+                </Button>
+                <Button onClick={saveGenreMulti} disabled={savingGenreEdit} className="flex-1 py-2 text-sm">
+                  {savingGenreEdit ? "…" : "Enregistrer"}
                 </Button>
               </div>
             </div>
-          ) : activeBook!.notes ? (
-            activeBook!.notes.startsWith("<") ? (
-              <div
-                className="prose-review font-serif text-[13.5px] leading-relaxed text-ink-2"
-                dangerouslySetInnerHTML={{ __html: activeBook!.notes }}
-              />
-            ) : (
-              <p className="font-serif text-[13.5px] leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
-                {activeBook!.notes}
-              </p>
-            )
-          ) : (
-            <p className="text-[13px] text-ink-2">Aucune review pour le moment.</p>
           )}
-        </div>}
 
-        {/* Sessions de lecture — individuelles */}
-        {groupedLogs.length > 0 && (
-          <div className="flex flex-col gap-3">
-            <h2 className="font-serif text-[15px] font-medium text-ink">
-              Mes sessions{" "}
-              <span className="font-sans text-xs font-normal text-muted">
-                ({logs.length})
-              </span>
-            </h2>
-            {groupedLogs.map((log) => (
-              <div
-                key={log.date}
-                className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3.5"
-              >
-                <div className="flex flex-1 flex-col gap-2.5">
-                  <p className="text-[12px] font-medium capitalize text-muted">
-                    {formatDateLong(log.date)}
+          {/* Résumé — tronqué en fondu façon Letterboxd tant qu'il n'est pas déplié */}
+          {cleanSummary && (() => {
+            const isLong = cleanSummary.length > 260;
+            return (
+              <div className="flex flex-col gap-2 text-left">
+                <h2 className="font-serif text-[15px] font-medium text-ink">Résumé</h2>
+                <div className="relative">
+                  <p
+                    className={`text-[13px] leading-relaxed text-ink-2 ${!summaryExpanded && isLong ? "max-h-[92px] overflow-hidden" : ""}`}
+                    style={{ whiteSpace: "pre-line" }}
+                  >
+                    {cleanSummary}
                   </p>
+                  {!summaryExpanded && isLong && (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-9 bg-gradient-to-t from-paper to-transparent" />
+                  )}
+                </div>
+                {isLong && (
+                  <button
+                    type="button"
+                    onClick={() => setSummaryExpanded((v) => !v)}
+                    className="self-start text-[11.5px] font-medium text-violet-deep"
+                  >
+                    {summaryExpanded ? "Réduire" : "Lire la suite"}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Panneau latéral — gestion de ma relation au livre + note du club */}
+        <div className="col-span-2 flex flex-col gap-4 md:col-span-1 md:col-start-3 md:row-span-2">
+          {isOwner ? (
+            <div className="flex flex-col gap-4 rounded-2xl border border-line bg-card p-4">
+              <h2 className="font-serif text-[15px] font-medium text-ink">Ma relation à ce livre</h2>
+
+              <div className="flex flex-col gap-2">
+                {!done && !abandoned && !isPaused && (
+                  <>
+                    <button
+                      onClick={markAsReadNoDate}
+                      disabled={markingRead}
+                      className="flex h-9 w-full items-center justify-center rounded-xl border border-success-soft bg-success-soft text-xs font-semibold text-success"
+                    >
+                      {markingRead ? "…" : "✓ Marquer comme lu"}
+                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={pause}
+                        className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line bg-paper text-xs font-medium text-muted"
+                      >
+                        <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
+                          <rect x="6" y="5" width="4" height="14" rx="1.5"/>
+                          <rect x="14" y="5" width="4" height="14" rx="1.5"/>
+                        </svg>
+                        Pause
+                      </button>
+                      <button
+                        onClick={abandon}
+                        className="flex h-9 flex-1 items-center justify-center rounded-xl border border-line bg-paper text-xs font-medium text-muted"
+                      >
+                        Abandonner
+                      </button>
+                    </div>
+                  </>
+                )}
+                {isPaused && (
                   <div className="flex gap-2">
-                    <div className="flex-1 rounded-xl bg-violet-soft px-3 py-2">
-                      <p className="text-[9px] font-medium uppercase tracking-wide text-violet-deep">
-                        Lu ce jour
-                      </p>
-                      <p className="font-serif text-base font-black text-violet-deep">+{log.pages_read}</p>
-                    </div>
-                    <div className="flex-1 rounded-xl bg-input px-3 py-2">
-                      <p className="text-[9px] font-medium uppercase tracking-wide text-ink-2">Arrêté p.</p>
-                      <p className="font-serif text-base font-black text-ink">{log.end_page}</p>
-                    </div>
+                    <button
+                      onClick={resume}
+                      className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl border border-violet/40 bg-violet-soft text-xs font-semibold text-violet-deep"
+                    >
+                      <svg viewBox="0 0 24 24" fill="currentColor" className="h-3.5 w-3.5">
+                        <path d="M6 4.75C6 4.03 6.84 3.6 7.43 4.02l12 7.25a1 1 0 0 1 0 1.46l-12 7.25C6.84 20.4 6 19.97 6 19.25V4.75z"/>
+                      </svg>
+                      Reprendre
+                    </button>
+                    <button
+                      onClick={abandon}
+                      className="flex h-9 flex-1 items-center justify-center rounded-xl border border-line bg-paper text-xs font-medium text-muted"
+                    >
+                      Abandonner
+                    </button>
                   </div>
-                  {log.extraNotes.map((note, ni) => (
-                    note.startsWith("<") ? (
-                      <div key={ni} className="prose-review rounded-xl bg-violet-soft px-3 py-2 font-serif text-[12.5px] leading-relaxed text-ink" dangerouslySetInnerHTML={{ __html: note }} />
-                    ) : (
-                      <p key={ni} className="rounded-xl bg-violet-soft px-3 py-2 font-serif text-[12.5px] leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
-                        {note}
-                      </p>
-                    )
-                  ))}
-                  {log.extraPhotos.map((url, pi) => (
-                    <a key={pi} href={url} target="_blank" rel="noopener noreferrer">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={url} alt="Photo de session" className="h-36 w-full rounded-xl object-cover" />
-                    </a>
+                )}
+                {abandoned && (
+                  <span className="rounded-xl border border-danger-soft bg-danger-soft px-3 py-2 text-center text-xs font-semibold text-danger">
+                    Abandonné
+                  </span>
+                )}
+              </div>
+
+              <div className="flex flex-col items-center gap-2.5 border-t border-line pt-3.5">
+                <p className="self-start text-[10.5px] font-semibold uppercase tracking-wide text-muted">Ta note</p>
+                <div className="flex items-center gap-1">
+                  {[1, 2, 3, 4, 5].map((s) => (
+                    <button key={s} onClick={() => setRating(s)} className="text-2xl leading-none">
+                      <span style={{ color: s <= Math.round(rating) ? "var(--color-gold)" : "#dad2c2" }}>★</span>
+                    </button>
                   ))}
                 </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setRating(Math.max(0, Math.round((rating - 0.1) * 10) / 10))}
+                    className="flex h-8 w-9 items-center justify-center rounded-lg border border-line bg-paper text-xs font-bold text-ink"
+                  >
+                    −0,1
+                  </button>
+                  <span className="min-w-[58px] rounded-lg border border-line bg-paper py-1.5 text-center text-sm font-bold text-ink">
+                    {rating > 0 ? rating.toFixed(1).replace(".", ",") : "—"}{" "}
+                    <span className="text-xs font-medium text-muted">/ 5</span>
+                  </span>
+                  <button
+                    onClick={() => setRating(Math.min(5, Math.round((rating + 0.1) * 10) / 10))}
+                    className="flex h-8 w-9 items-center justify-center rounded-lg border border-line bg-paper text-xs font-bold text-ink"
+                  >
+                    +0,1
+                  </button>
+                </div>
+              </div>
+
+              {done && (
+                <p className="border-t border-line pt-3 text-center text-[12px] text-ink-2">
+                  Lu <span className="font-semibold text-ink">{timesRead}</span> fois{timesRead > 1 ? " (relectures incluses)" : ""}
+                </p>
+              )}
+
+              <button
+                onClick={remove}
+                className="border-t border-line pt-3 text-center text-[11px] font-medium text-danger"
+              >
+                Supprimer ce livre
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
+              <h2 className="font-serif text-[15px] font-medium text-ink">Ta bibliothèque</h2>
+              <p className="text-[12px] text-ink-2">Ajoute ce livre pour suivre ta lecture.</p>
+              <button
+                onClick={quickAddWishlist}
+                className={`flex h-10 items-center justify-center gap-2 rounded-xl border text-xs font-semibold transition-colors ${
+                  wishlistAdded
+                    ? "border-violet bg-violet text-cream"
+                    : "border-violet/40 bg-violet-soft text-violet-deep hover:bg-violet hover:text-cream"
+                }`}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill={wishlistAdded ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
+                </svg>
+                {wishlistAdded ? "Dans ma liste" : "Envie de lire"}
+              </button>
+              <Button onClick={() => setShowAddModal(true)} className="w-full py-2.5">
+                + Ajouter à ma bibliothèque
+              </Button>
+            </div>
+          )}
+
+          {clubRaterCount > 0 && (
+            <div className="flex flex-col items-center gap-1.5 rounded-2xl border border-line bg-card p-4">
+              <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted">Note du club</p>
+              <div className="flex items-center gap-1.5">
+                <span className="text-gold text-lg leading-none">★</span>
+                <span className="font-serif text-xl font-bold text-ink">
+                  {clubAvgRating.toFixed(1).replace(".", ",")}
+                </span>
+                <span className="text-xs text-muted">/ 5</span>
+              </div>
+              <p className="text-[11px] text-muted">
+                {clubRaterCount} lecteur{clubRaterCount > 1 ? "s" : ""}
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Contenu principal restant : ma lecture / ma review / mes sessions */}
+      <div className="flex flex-col gap-5 px-5 pt-6 md:px-10">
+          {/* Ma lecture — visible uniquement par le propriétaire */}
+          {isOwner && (
+          <div className="flex flex-col gap-3.5 rounded-2xl border border-line bg-card p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-serif text-[15px] font-medium text-ink">Ma lecture</h2>
+              {isOwner && (
+                <button onClick={() => setShowLog(true)} className="text-xs font-medium text-violet-deep">
+                  Noter une session
+                </button>
+              )}
+            </div>
+            <div className="flex justify-between">
+              <Stat label="Commencé" value={formatDate(stats.startDate)} />
+              <Stat label={done ? "Terminé" : "Dernière"} value={formatDate(stats.endDate)} />
+              <Stat label="Durée" value={stats.durationDays ? `${stats.durationDays} j` : "—"} accent="text-violet-deep" />
+              <Stat label="Rythme" value={stats.pagesPerDay ? `${stats.pagesPerDay} p./j` : "—"} accent="text-sage" />
+            </div>
+            <ProgressBar value={p / 100} color={done ? "var(--color-success)" : "var(--color-violet)"} />
+
+            {editingProgress ? (
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={activeBook!.pages}
+                  value={progressDraft}
+                  onChange={(e) => setProgressDraft(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") saveProgress(); if (e.key === "Escape") setEditingProgress(false); }}
+                  autoFocus
+                  className="w-20 rounded-lg border border-violet bg-input px-2 py-1 text-center text-sm font-bold text-ink outline-none"
+                />
+                <span className="text-[11px] text-muted">/ {activeBook!.pages} pages</span>
                 <button
-                  onClick={() => {
-                    logs.filter((l) => l.date === log.date).forEach((l) => deleteLog(l.id));
-                  }}
-                  className="ml-1 shrink-0 self-start text-muted hover:text-danger"
-                  aria-label="Supprimer"
+                  onClick={saveProgress}
+                  disabled={savingProgress}
+                  className="flex h-6 w-6 items-center justify-center rounded-full bg-violet text-[11px] font-bold text-cream disabled:opacity-60"
+                >
+                  ✓
+                </button>
+                <button
+                  onClick={() => setEditingProgress(false)}
+                  className="flex h-6 w-6 items-center justify-center rounded-full border border-line text-[11px] text-muted"
                 >
                   ✕
                 </button>
               </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <p className={`text-[11px] font-medium ${done ? "text-success" : "text-muted"}`}>
+                  {done ? "Terminé · " : ""}
+                  {activeBook!.progress} / {activeBook!.pages} pages
+                </p>
+                {!done && (
+                  <button
+                    onClick={() => { setProgressDraft(String(activeBook!.progress)); setEditingProgress(true); }}
+                    title="Corriger la page"
+                    className="flex h-5 w-5 items-center justify-center rounded-full text-muted transition-colors hover:bg-violet-soft hover:text-violet-deep"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Graphique évolution des notes */}
+            <div className="border-t border-line pt-3">
+              <RatingEvolutionChart history={ratingHistory} currentProgress={activeBook!.progress} />
+            </div>
+
+            {/* Historique des relectures */}
+            {done && (activeBook!.date_started || activeBook!.date_read || readSessions.length > 0) && (
+              <div className="flex flex-col gap-2 border-t border-line pt-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                  Historique des lectures
+                </p>
+                {/* Session originale */}
+                <div className="flex items-center gap-2 rounded-xl bg-paper px-3 py-2.5">
+                  <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet text-[9px] font-bold text-cream">1</span>
+                  <div className="min-w-0 flex-1">
+                    {activeBook!.date_started && (
+                      <span className="text-[11px] text-muted">
+                        {formatDate(activeBook!.date_started)} →{" "}
+                      </span>
+                    )}
+                    <span className="text-[11.5px] font-medium text-ink">
+                      {activeBook!.date_read ? formatDate(activeBook!.date_read) : "Date inconnue"}
+                    </span>
+                    {activeBook!.import_source === "goodreads" && (
+                      <span className="ml-1.5 rounded-md bg-[#f4f0e8] dark:bg-card px-1.5 py-0.5 text-[9.5px] font-medium text-muted">
+                        Goodreads
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {/* Sessions supplémentaires */}
+                {readSessions.map((s, i) => (
+                  <div key={s.id} className="flex items-center gap-2 rounded-xl bg-paper px-3 py-2.5">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet text-[9px] font-bold text-cream">
+                      {i + 2}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      {s.date_started && (
+                        <span className="text-[11px] text-muted">
+                          {formatDate(s.date_started)} →{" "}
+                        </span>
+                      )}
+                      <span className="text-[11.5px] font-medium text-ink">
+                        {formatDate(s.date_read)}
+                      </span>
+                      <span className="ml-1.5 rounded-md bg-violet-soft px-1.5 py-0.5 text-[9.5px] font-medium text-violet-deep">
+                        Relecture
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Bouton Relire + formulaire inline */}
+            {isOwner && done && (
+              <div className="border-t border-line pt-3">
+                {!addingRelecture ? (
+                  <button
+                    onClick={() => setAddingRelecture(true)}
+                    className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-violet/30 bg-violet-soft py-2.5 text-[12px] font-semibold text-violet-deep transition-colors hover:border-violet/60"
+                  >
+                    ↺ Relire ce livre
+                  </button>
+                ) : (
+                  <div className="flex flex-col gap-3 rounded-2xl border border-violet/20 bg-violet-soft p-3.5">
+                    <p className="text-[12.5px] font-semibold text-ink">Nouvelle période de lecture</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="mb-1 text-[10.5px] font-medium text-muted">Début (optionnel)</p>
+                        <input
+                          type="date"
+                          value={relectureDraft.date_started}
+                          onChange={(e) => setRelectureDraft({ ...relectureDraft, date_started: e.target.value })}
+                          className="w-full rounded-xl border border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+                        />
+                      </div>
+                      <div>
+                        <p className="mb-1 text-[10.5px] font-medium text-muted">Fin (requis)</p>
+                        <input
+                          type="date"
+                          value={relectureDraft.date_read}
+                          onChange={(e) => setRelectureDraft({ ...relectureDraft, date_read: e.target.value })}
+                          className="w-full rounded-xl border border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="ghost" onClick={() => { setAddingRelecture(false); setRelectureDraft({ date_started: "", date_read: "" }); }} className="flex-1 py-2 text-sm">
+                        Annuler
+                      </Button>
+                      <Button onClick={addRelecture} disabled={savingRelecture || !relectureDraft.date_read} className="flex-1 py-2 text-sm">
+                        {savingRelecture ? "…" : "Enregistrer"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          )}
+
+          {/* Ma review (visible uniquement par le propriétaire) */}
+          {isOwner && <div className="flex flex-col gap-2 rounded-2xl border border-amber-soft bg-amber-soft p-4">
+            <div className="flex items-center justify-between">
+              <h2 className="font-serif text-[15px] font-medium text-ink">Ma review</h2>
+              {!editingNotes && (
+                <button onClick={() => setEditingNotes(true)} className="text-xs font-medium text-amber-label">
+                  {activeBook!.notes ? "Modifier" : "Ajouter"}
+                </button>
+              )}
+            </div>
+            {editingNotes ? (
+              <div className="flex flex-col gap-2">
+                <RichTextEditor
+                  value={notesDraft}
+                  onChange={setNotesDraft}
+                  placeholder="Ta critique globale du livre, tes citations préférées… (visible par les membres du club)"
+                  autoFocus
+                />
+                <div className="flex gap-2">
+                  <Button onClick={saveNotes} className="px-4 py-2">Enregistrer</Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => { setNotesDraft(activeBook!.notes || ""); setEditingNotes(false); }}
+                    className="px-4 py-2"
+                  >
+                    Annuler
+                  </Button>
+                </div>
+              </div>
+            ) : activeBook!.notes ? (
+              activeBook!.notes.startsWith("<") ? (
+                <div
+                  className="prose-review font-serif text-[13.5px] leading-relaxed text-ink-2"
+                  dangerouslySetInnerHTML={{ __html: activeBook!.notes }}
+                />
+              ) : (
+                <p className="font-serif text-[13.5px] leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
+                  {activeBook!.notes}
+                </p>
+              )
+            ) : (
+              <p className="text-[13px] text-ink-2">Aucune review pour le moment.</p>
+            )}
+          </div>}
+
+          {/* Sessions de lecture — individuelles */}
+          {groupedLogs.length > 0 && (
+            <div className="flex flex-col gap-3">
+              <h2 className="font-serif text-[15px] font-medium text-ink">
+                Mes sessions{" "}
+                <span className="font-sans text-xs font-normal text-muted">
+                  ({logs.length})
+                </span>
+              </h2>
+              {groupedLogs.map((log) => (
+                <div
+                  key={log.date}
+                  className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3.5"
+                >
+                  <div className="flex flex-1 flex-col gap-2.5">
+                    <p className="text-[12px] font-medium capitalize text-muted">
+                      {formatDateLong(log.date)}
+                    </p>
+                    <div className="flex gap-2">
+                      <div className="flex-1 rounded-xl bg-violet-soft px-3 py-2">
+                        <p className="text-[9px] font-medium uppercase tracking-wide text-violet-deep">
+                          Lu ce jour
+                        </p>
+                        <p className="font-serif text-base font-black text-violet-deep">+{log.pages_read}</p>
+                      </div>
+                      <div className="flex-1 rounded-xl bg-input px-3 py-2">
+                        <p className="text-[9px] font-medium uppercase tracking-wide text-ink-2">Arrêté p.</p>
+                        <p className="font-serif text-base font-black text-ink">{log.end_page}</p>
+                      </div>
+                    </div>
+                    {log.extraNotes.map((note, ni) => (
+                      note.startsWith("<") ? (
+                        <div key={ni} className="prose-review rounded-xl bg-violet-soft px-3 py-2 font-serif text-[12.5px] leading-relaxed text-ink" dangerouslySetInnerHTML={{ __html: note }} />
+                      ) : (
+                        <p key={ni} className="rounded-xl bg-violet-soft px-3 py-2 font-serif text-[12.5px] leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
+                          {note}
+                        </p>
+                      )
+                    ))}
+                    {log.extraPhotos.map((url, pi) => (
+                      <button
+                        key={pi}
+                        type="button"
+                        onClick={() => setLightboxUrl(url)}
+                        className="group relative block w-full overflow-hidden rounded-xl border border-line bg-card"
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="Photo de session" className="aspect-[4/3] w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => {
+                      logs.filter((l) => l.date === log.date).forEach((l) => deleteLog(l.id));
+                    }}
+                    className="ml-1 shrink-0 self-start text-muted hover:text-danger"
+                    aria-label="Supprimer"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+      </div>
+
+      {/* Section communauté — pleine largeur, en bas de page */}
+      {(memberActivity.length > 0 || communityCompleted > 0) && (
+        <div className="flex flex-col gap-4 px-5 pt-8 md:px-10">
+          <h2 className="font-serif text-[15px] font-medium text-ink">Le club et ce livre</h2>
+
+          {/* Stats lecteurs */}
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { count: communityCompleted, label: "ont lu", icon: "✓" },
+              { count: communityReading,   label: "en cours", icon: "📖" },
+              { count: communityWant,      label: "veulent lire", icon: "♡" },
+            ].map(({ count, label, icon }) => (
+              <div key={label} className="flex flex-col items-center gap-0.5 rounded-2xl border border-line bg-card py-3">
+                <span className="font-serif text-xl font-black text-ink">{count}</span>
+                <span className="text-[10px] text-muted">{icon} {label}</span>
+              </div>
             ))}
           </div>
-        )}
-      </div>
+
+          {/* Avatars membres (tous) */}
+          {memberActivity.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Membres</p>
+              <div className="flex flex-wrap gap-3">
+                {memberActivity.map((m) => (
+                  <button key={m.userId} onClick={() => setSelectedMember(m)} className="flex flex-col items-center gap-1">
+                    <div className="relative">
+                      <AvatarImg
+                        url={m.avatarUrl}
+                        name={m.displayName}
+                        className={`h-10 w-10 text-[11px] font-semibold ring-2 ring-offset-1 ${
+                          m.status === "completed" ? "ring-success/60" : m.status === "reading" ? "ring-violet/50" : "ring-line"
+                        }`}
+                      />
+                      {m.isFollowed && (
+                        <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-violet text-[7px] text-white">✓</span>
+                      )}
+                    </div>
+                    <span className="max-w-[48px] truncate text-[9.5px] text-muted">{m.displayName.split(" ")[0]}</span>
+                    {(m.rating ?? 0) > 0 && (
+                      <span className="text-[9px] font-bold text-gold">{"★".repeat(Math.round(m.rating! / 0.5) * 0.5 >= 1 ? Math.round(m.rating!) : 1)}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Reviews texte */}
+          {membersWithReview.length > 0 && (
+            <div className="flex flex-col gap-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                Critiques membres{membersWithReview.length > 0 ? ` · ${membersWithReview.length}` : ""}
+              </p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                {membersWithReview.map((m) => (
+                  <button
+                    key={m.userId}
+                    onClick={() => setSelectedMember(m)}
+                    className="flex items-start gap-3 rounded-2xl border border-line bg-card p-3.5 text-left transition-colors hover:border-violet/40"
+                  >
+                    <div className="relative shrink-0">
+                      <AvatarImg url={m.avatarUrl} name={m.displayName} className="h-9 w-9 text-[11px]" />
+                      {m.isFollowed && (
+                        <span className="absolute -bottom-0.5 -right-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-violet text-[7px] text-white">✓</span>
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[12.5px] font-semibold text-ink">{m.displayName}</span>
+                        {m.isFollowed && <span className="rounded-full bg-violet-soft px-1.5 py-0.5 text-[9px] font-semibold text-violet-deep">abonné</span>}
+                        {(m.rating ?? 0) > 0 && (
+                          <span className="ml-auto shrink-0 text-[11px] font-bold text-gold">{"★".repeat(Math.round(m.rating!))} {m.rating!.toFixed(1)}</span>
+                        )}
+                      </div>
+                      {m.dateRead && (
+                        <p className="text-[10px] text-muted">Lu le {new Date(m.dateRead).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</p>
+                      )}
+                      <p className="mt-1.5 line-clamp-3 font-serif text-[12.5px] italic leading-relaxed text-ink-2">
+                        « {m.review} »
+                      </p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {isOwner && <LogReadingModal
         open={showLog}
@@ -1370,9 +1487,159 @@ export default function BookDetailPage() {
       )}
 
       {addedMsg && (
-        <div className="fixed bottom-24 left-1/2 z-[70] -translate-x-1/2 rounded-2xl bg-ink px-4 py-2.5 text-sm font-medium text-cream shadow-xl">
+        <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] left-1/2 z-[70] -translate-x-1/2 rounded-2xl border border-[#a78bfa]/45 bg-[#252131] px-4 py-2.5 text-sm font-medium text-[#fdfbf7] shadow-[0_8px_28px_rgba(0,0,0,0.4)] md:bottom-6">
           {addedMsg}
         </div>
+      )}
+
+      {canEdit && (
+        <Modal
+          open={editingInfo}
+          onClose={() => { setEditingInfo(false); setEnrichInfoMsg(null); }}
+          title="Modifier les informations"
+          footer={
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => { setEditingInfo(false); setEnrichInfoMsg(null); }} className="flex-1 py-2.5">
+                Annuler
+              </Button>
+              <Button onClick={saveInfo} className="flex-1 py-2.5">Enregistrer</Button>
+            </div>
+          }
+        >
+          <div className="flex flex-col gap-3">
+            {/* Couverture : aperçu + bouton picker */}
+            <div className="flex items-center gap-3">
+              <div className="relative shrink-0">
+                <Cover
+                  id={0}
+                  title={infoDraft.title || book.title}
+                  coverUrl={infoDraft.coverUrl || null}
+                  className="h-[90px] w-[62px]"
+                  rounded="rounded-lg"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCoverPickerEdit(true)}
+                  className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-violet text-xs text-cream shadow-md"
+                  title="Choisir une couverture"
+                >
+                  ✎
+                </button>
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="mb-1 text-[10.5px] font-medium text-muted">
+                  URL couverture (ou utilise ✎)
+                </p>
+                <input
+                  value={infoDraft.coverUrl}
+                  onChange={(e) => setInfoDraft({ ...infoDraft, coverUrl: e.target.value })}
+                  placeholder="https://…"
+                  className="w-full rounded-xl border border-line bg-input px-3 py-2 text-xs text-ink outline-none focus:border-violet"
+                />
+              </div>
+            </div>
+            <input
+              value={infoDraft.title}
+              onChange={(e) => setInfoDraft({ ...infoDraft, title: e.target.value })}
+              placeholder="Titre"
+              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+            />
+            <input
+              value={infoDraft.author}
+              onChange={(e) => setInfoDraft({ ...infoDraft, author: e.target.value })}
+              placeholder="Auteur"
+              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+            />
+
+            {/* Enrichissement automatique depuis le web */}
+            <button
+              type="button"
+              onClick={enrichInfoFromWeb}
+              disabled={enrichingInfo || (infoDraft.title || book.title).trim().length < 2}
+              className="flex items-center justify-center gap-2 rounded-xl border border-violet/40 bg-violet-soft py-2 text-[12px] font-semibold text-violet-deep transition-colors hover:border-violet disabled:opacity-50"
+            >
+              {enrichingInfo ? (
+                <>
+                  <svg className="h-3.5 w-3.5 animate-spin" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.3" />
+                    <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                  </svg>
+                  Recherche en cours…
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6.3 6.3 4.9 4.9M19.1 19.1l-1.4-1.4M17.7 6.3l1.4-1.4M4.9 19.1l1.4-1.4" />
+                    <circle cx="12" cy="12" r="3.5" />
+                  </svg>
+                  Récupérer les infos depuis le web
+                </>
+              )}
+            </button>
+            {enrichInfoMsg && <p className="text-[10.5px] font-medium text-muted">{enrichInfoMsg}</p>}
+
+            {/* Genres détectés par l'enrichissement — ajout d'un clic */}
+            {detectedGenres.length > 0 && (
+              <div className="flex flex-col gap-2 rounded-xl border border-violet/30 bg-violet-soft p-3">
+                <p className="text-[10.5px] font-medium text-violet-deep">
+                  Genre{detectedGenres.length > 1 ? "s" : ""} détecté{detectedGenres.length > 1 ? "s" : ""} :
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {detectedGenres.map((g) => (
+                    <span key={g} className="rounded-full bg-violet px-2.5 py-1 text-[10.5px] font-medium text-cream">
+                      {g}
+                    </span>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={applyDetectedGenres}
+                  disabled={applyingGenres}
+                  className="rounded-lg border border-violet/40 bg-paper py-1.5 text-[11px] font-semibold text-violet-deep transition-colors hover:border-violet disabled:opacity-50"
+                >
+                  {applyingGenres ? "Ajout…" : "Ajouter ce" + (detectedGenres.length > 1 ? "s genres" : " genre")}
+                </button>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <input
+                value={infoDraft.year}
+                onChange={(e) => setInfoDraft({ ...infoDraft, year: e.target.value })}
+                placeholder="Année (ex. 2021)"
+                type="number"
+                className="w-full rounded-xl border border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+              />
+              <input
+                value={infoDraft.pages}
+                onChange={(e) => setInfoDraft({ ...infoDraft, pages: e.target.value })}
+                placeholder="Pages (votre éd.)"
+                type="number"
+                min={1}
+                className="w-full rounded-xl border border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+              />
+            </div>
+            <input
+              value={infoDraft.isbn}
+              onChange={(e) => setInfoDraft({ ...infoDraft, isbn: e.target.value })}
+              placeholder="ISBN (ex. 9782253006329)"
+              inputMode="numeric"
+              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+            />
+            <textarea
+              value={infoDraft.summary}
+              onChange={(e) => setInfoDraft({ ...infoDraft, summary: e.target.value })}
+              placeholder="Résumé…"
+              rows={4}
+              className="w-full rounded-xl border border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-violet"
+            />
+            {isAdmin && !isOwner && (
+              <p className="rounded-xl bg-violet-soft px-3 py-2 text-[10.5px] font-medium text-violet-deep">
+                ⚡ Mode admin — les modifications s&apos;appliquent à toutes les copies
+              </p>
+            )}
+          </div>
+        </Modal>
       )}
 
       {showCoverPickerEdit && (
@@ -1462,10 +1729,14 @@ export default function BookDetailPage() {
                       </p>
                     )}
                     {note.session_photo_url && (
-                      <a href={note.session_photo_url} target="_blank" rel="noopener noreferrer">
+                      <button
+                        type="button"
+                        onClick={() => setLightboxUrl(note.session_photo_url!)}
+                        className="group relative mt-2 block w-full overflow-hidden rounded-lg border border-line bg-card"
+                      >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={note.session_photo_url} alt="" className="mt-2 h-32 w-full rounded-lg object-cover" />
-                      </a>
+                        <img src={note.session_photo_url} alt="" className="aspect-[4/3] w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]" />
+                      </button>
                     )}
                   </div>
                 ))}
@@ -1506,6 +1777,8 @@ export default function BookDetailPage() {
           </div>
         </div>
       )}
+
+      <Lightbox src={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </div>
   );
 }

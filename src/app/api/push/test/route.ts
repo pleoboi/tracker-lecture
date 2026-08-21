@@ -40,13 +40,20 @@ export async function POST(req: NextRequest) {
   }
 
   // Envoi direct via push.server.ts (VAPID initialisé là-dedans)
+  const vapidPresent = !!process.env.VAPID_PRIVATE_KEY;
+  const vapidLength = process.env.VAPID_PRIVATE_KEY?.length ?? 0;
+
   const result = await sendPushDirect(
     { endpoint, p256dh, auth },
     { title: "Swena", body: "Les notifications fonctionnent.", url: "/accueil" },
   );
 
   if (result.sent === 0) {
-    return NextResponse.json({ error: result.error, sent: 0 }, { status: 502 });
+    return NextResponse.json({
+      error: result.error,
+      sent: 0,
+      debug: { vapidPresent, vapidLength },
+    }, { status: 502 });
   }
 
   return NextResponse.json({ sent: 1 });

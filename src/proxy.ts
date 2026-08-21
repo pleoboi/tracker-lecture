@@ -15,6 +15,44 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Routes API push : elles s'authentifient elles-mêmes via token Bearer.
+  // Le contrôle par cookie du proxy est redondant et bloque le push quand le
+  // cookie de session est désynchronisé du token (ex. envoi de notification
+  // depuis un appareil dont le cookie a expiré mais le token localStorage est valide).
+  if (reqPath.startsWith("/api/push/")) {
+    return NextResponse.next();
+  }
+
+  // Routes cron : invoquées par Vercel avec le CRON_SECRET (pas de cookie de
+  // session). Elles valident elles-mêmes ce secret. Sans cette exclusion, le
+  // proxy les redirige vers /login et les notifications programmées ne partent jamais.
+  if (reqPath.startsWith("/api/cron/")) {
+    return NextResponse.next();
+  }
+
+  // Endpoint de stats en lecture seule, appelé serveur à serveur (ex: mon app
+  // Bingo Perso) avec STATS_API_SECRET, pas de cookie de session. Même
+  // raisonnement que /api/cron/.
+  if (reqPath.startsWith("/api/stats")) {
+    return NextResponse.next();
+  }
+
+  // Attribution de parrainage : appelée juste après l'inscription, avec token
+  // Bearer, avant que le cookie de session ne soit forcément stabilisé. Même
+  // raisonnement que /api/push/ — la route valide déjà son propre token.
+  if (reqPath.startsWith("/api/referral/")) {
+    return NextResponse.next();
+  }
+
+  // Pages légales : doivent rester consultables sans compte (obligation LCEN/RGPD).
+  if (
+    reqPath === "/mentions-legales" ||
+    reqPath === "/confidentialite" ||
+    reqPath === "/conditions"
+  ) {
+    return NextResponse.next();
+  }
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient(

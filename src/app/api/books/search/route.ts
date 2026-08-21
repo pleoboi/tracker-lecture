@@ -47,10 +47,14 @@ interface OLDoc {
   first_publish_year?: number;
   subject?: string[];
   cover_i?: number;
+  isbn?: string[];
 }
 
 function mapOLDoc(doc: OLDoc): BookSuggestion {
   const workId = (doc.key ?? "").replace("/works/", "") || `ol-${Math.random().toString(36).slice(2)}`;
+  // ISBN : on privilégie un ISBN-13 si présent dans la liste.
+  const isbnList = (doc.isbn ?? []).map((i) => i.replace(/[^0-9Xx]/g, ""));
+  const isbn = isbnList.find((i) => i.length === 13) || isbnList[0] || null;
   return {
     googleId: workId,
     title: doc.title || "Sans titre",
@@ -61,6 +65,7 @@ function mapOLDoc(doc: OLDoc): BookSuggestion {
       ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`
       : null,
     summary: null,
+    isbn,
   };
 }
 
@@ -68,7 +73,7 @@ async function searchOpenLibrary(q: string, lang?: string): Promise<BookSuggesti
   const params = new URLSearchParams({
     q,
     limit: "15",
-    fields: "key,title,author_name,first_publish_year,subject,cover_i",
+    fields: "key,title,author_name,first_publish_year,subject,cover_i,isbn",
   });
   if (lang) params.set("language", lang);
   try {

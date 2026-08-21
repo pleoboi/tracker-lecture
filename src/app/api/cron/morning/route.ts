@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   await Promise.all(userIds.map((uid) => {
     const body = MORNING_MESSAGES[Math.floor(Math.random() * MORNING_MESSAGES.length)];
-    return sendPushToUser(uid, { title: "Swena", body });
+    return sendPushToUser(uid, { title: "Swena", body }, "reminders");
   }));
 
   return NextResponse.json({ sent: userIds.length });

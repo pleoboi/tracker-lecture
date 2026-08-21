@@ -10,22 +10,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Clé serveur manquante — contacte l'administrateur." }, { status: 503 });
     }
 
-    let body: { email?: string; password?: string; displayName?: string; inviteCode?: string };
+    let body: { email?: string; password?: string; displayName?: string };
     try {
       body = await req.json();
     } catch {
       return NextResponse.json({ error: "Corps de requête invalide." }, { status: 400 });
     }
 
-    const { email, password, displayName, inviteCode } = body;
+    const { email, password, displayName } = body;
 
     if (!email || !password || !displayName?.trim()) {
       return NextResponse.json({ error: "Champs manquants." }, { status: 400 });
-    }
-
-    const expectedCode = process.env.NEXT_PUBLIC_INVITE_CODE ?? "";
-    if (expectedCode && inviteCode?.trim() !== expectedCode) {
-      return NextResponse.json({ error: "Code d'invitation incorrect." }, { status: 400 });
     }
 
     const admin = createClient(

@@ -1,19 +1,40 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { Button } from "../../components/ui";
 
-const INVITE_CODE = process.env.NEXT_PUBLIC_INVITE_CODE ?? "";
+const REFERRAL_STORAGE_KEY = "swena_ref";
 
+// useSearchParams() exige un contexte Suspense pour ne pas bloquer la
+// génération statique de la page.
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={null}>
+      <RegisterForm />
+    </Suspense>
+  );
+}
+
+function RegisterForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Le lien de parrainage contient l'id du parrain (?ref=uuid). On le mémorise
+  // dès l'arrivée sur la page : la confirmation d'e-mail peut recharger la page
+  // sans le paramètre, donc on ne peut pas compter sur l'URL au moment du submit.
+  useEffect(() => {
+    const ref = searchParams.get("ref");
+    if (ref) {
+      try { localStorage.setItem(REFERRAL_STORAGE_KEY, ref); } catch { /* ignore */ }
+    }
+  }, [searchParams]);
+
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -22,9 +43,6 @@ export default function RegisterPage() {
     setError(null);
 
     if (!displayName.trim()) return setError("Ton pseudo est obligatoire.");
-    if (INVITE_CODE && inviteCode.trim() !== INVITE_CODE) {
-      return setError("Code d'invitation incorrect.");
-    }
 
     setLoading(true);
 
@@ -116,22 +134,6 @@ export default function RegisterPage() {
               className="rounded-xl border border-line bg-paper px-3.5 py-3 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
             />
           </div>
-
-          {INVITE_CODE && (
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                Code d&apos;invitation
-              </label>
-              <input
-                type="text"
-                required
-                value={inviteCode}
-                onChange={(e) => setInviteCode(e.target.value)}
-                placeholder="Code partagé par l'admin"
-                className="rounded-xl border border-line bg-paper px-3.5 py-3 text-sm text-ink outline-none placeholder:text-muted focus:border-violet"
-              />
-            </div>
-          )}
 
           {error && (
             <p className="rounded-xl border border-danger-soft bg-danger-soft px-3.5 py-2.5 text-xs font-medium text-danger">

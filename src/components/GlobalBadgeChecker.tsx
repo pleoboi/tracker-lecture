@@ -43,6 +43,20 @@ export default function GlobalBadgeChecker() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, pathname]);
 
+  // Affichage immédiat quand un badge vient d'être gagné (ex. après une session),
+  // sans attendre le prochain changement de page ni le throttle de 5 min.
+  useEffect(() => {
+    const onAwarded = (e: Event) => {
+      const detail = (e as CustomEvent<{ id: string }[]>).detail || [];
+      const newBadges = detail
+        .map((a) => BADGE_DEFS.find((d) => d.id === a.id))
+        .filter((d): d is BadgeDef => d !== undefined);
+      if (newBadges.length > 0) setQueue((q) => [...q, ...newBadges]);
+    };
+    window.addEventListener("swena:badges-awarded", onAwarded);
+    return () => window.removeEventListener("swena:badges-awarded", onAwarded);
+  }, []);
+
   if (!queue.length) return null;
 
   return (

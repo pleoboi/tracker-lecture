@@ -1,11 +1,14 @@
 export type BadgeTier = 1 | 2 | 3 | 4;
 export type BadgeType =
   | "volume" | "genre" | "sessions" | "pages" | "review" | "streak" | "monthly"
-  | "event" | "time_of_day" | "performance" | "social" | "quiz" | "monthly_books";
+  | "event" | "time_of_day" | "performance" | "social" | "monthly_books"
+  | "goal" | "monthly_goal" | "author" | "champion_month" | "challenge"
+  | "milestone" | "referral";
 
 export type IconKey =
   | "books" | "compass" | "lightning" | "quill" | "pages" | "flame" | "calendar"
-  | "moon" | "sunrise" | "heart" | "camera" | "chart" | "crown" | "seal";
+  | "moon" | "sunrise" | "heart" | "camera" | "chart" | "crown" | "seal" | "target"
+  | "invite";
 
 export interface BadgeDef {
   id: string;
@@ -100,9 +103,64 @@ export const BADGE_DEFS: BadgeDef[] = [
   { id:"social-photo",   name:"Illustrateur",description:"Ajouter une photo à une session de lecture",        type:"social", tier:1, targetValue:1,  points:15, iconKey:"camera", isSpecial:true },
   { id:"social-archive", name:"Archiviste",  description:"Ajouter manuellement un livre dans la base",        type:"social", tier:2, targetValue:1,  points:25, iconKey:"books",  isSpecial:true },
 
-  // ── Validation de lecture (cumulatif : +30 pts par livre validé) ─────────
-  { id:"sans-faute", name:"Sans Faute", description:"Valider le QCM de fin de lecture avec la bonne réponse",
-    type:"quiz", tier:3, targetValue:1, points:0, iconKey:"seal", isSpecial:true },
+  // ── Objectifs personnels ──────────────────────────────────────────────────
+  { id:"goal-set-pages", name:"Objectif Pages",  description:"Définir un objectif de pages pour l'année",  type:"goal", tier:1, targetValue:1, points:10, iconKey:"target", isSpecial:true },
+  { id:"goal-set-books", name:"Objectif Livres", description:"Définir un objectif de livres pour l'année", type:"goal", tier:1, targetValue:1, points:10, iconKey:"target", isSpecial:true },
+  { id:"goal-exceeded",  name:"Objectif Dépassé", description:"Dépasser son objectif annuel de pages ou de livres de 20 %", type:"goal", tier:3, targetValue:1, points:60, iconKey:"target", isSpecial:true },
+  { id:"goal-3-months",  name:"Trois Mois d'Affilée", description:"Atteindre son objectif personnel du mois, 3 mois consécutifs", type:"goal", tier:2, targetValue:1, points:50, iconKey:"target", isSpecial:true },
+  { id:"goal-12-months", name:"Année Parfaite", description:"Atteindre son objectif personnel chaque mois d'une année complète", type:"goal", tier:4, targetValue:1, points:250, iconKey:"target", isSpecial:true },
+
+  // ── Performance (suite) ───────────────────────────────────────────────────
+  { id:"perf-brick2",   name:"Le Pavé Ultime",     description:"Terminer un livre de 1 000 pages ou plus",                 type:"performance", tier:2, targetValue:1, points:40, iconKey:"books",     isSpecial:true },
+  { id:"perf-shorts",   name:"Format Court",       description:"Terminer 10 livres de moins de 150 pages",                 type:"performance", tier:2, targetValue:10, points:35, iconKey:"pages",    isSpecial:true },
+  { id:"perf-week1000", name:"Le Millier",         description:"Lire 1 000 pages en une seule semaine",                    type:"performance", tier:2, targetValue:1, points:45, iconKey:"pages",     isSpecial:true },
+  { id:"perf-century",  name:"Le Century",         description:"Lire 100 pages en une seule session",                      type:"performance", tier:1, targetValue:1, points:20, iconKey:"lightning", isSpecial:true },
+  { id:"perf-100days",  name:"Le Centenaire",      description:"100 jours consécutifs de lecture",                         type:"performance", tier:3, targetValue:1, points:110, iconKey:"flame",    isSpecial:true },
+  { id:"perf-comeback", name:"Retour de Flamme",   description:"Reprendre la lecture après 30 jours d'inactivité",         type:"performance", tier:1, targetValue:1, points:15, iconKey:"flame",     isSpecial:true },
+
+  // ── Genres & auteurs ──────────────────────────────────────────────────────
+  { id:"polyglot",       name:"Polyglotte",     description:"Lire dans 15 genres distincts",         type:"genre",  tier:4, targetValue:15, points:180, iconKey:"compass" },
+  { id:"genre-specialist",name:"Le Spécialiste", description:"Lire 10 livres d'un même genre",        type:"genre",  tier:2, targetValue:10, points:35,  iconKey:"compass", isSpecial:true },
+  { id:"author-loyal",   name:"Le Fidèle",       description:"Lire 3 livres d'un même auteur",        type:"author", tier:1, targetValue:3,  points:20,  iconKey:"quill",   isSpecial:true },
+  { id:"author-collect", name:"Le Collectionneur", description:"Lire 20 auteurs différents",          type:"author", tier:3, targetValue:20, points:90,  iconKey:"quill",   isSpecial:true },
+  { id:"author-contemp", name:"Le Contemporain", description:"Lire 5 livres publiés cette année",     type:"author", tier:2, targetValue:5,  points:40,  iconKey:"quill",   isSpecial:true },
+  { id:"author-classic", name:"Le Classique",    description:"Lire 5 livres publiés avant 1950",      type:"author", tier:2, targetValue:5,  points:40,  iconKey:"quill",   isSpecial:true },
+
+  // ── Reviews, notes & évaluations ──────────────────────────────────────────
+  { id:"review-long",   name:"Le Chroniqueur", description:"Rédiger une critique de plus de 500 caractères",        type:"review", tier:2, targetValue:1,  points:30, iconKey:"quill", isSpecial:true },
+  { id:"review-curator",name:"Le Curateur",    description:"Rédiger un avis sur 15 livres",                          type:"review", tier:2, targetValue:15, points:45, iconKey:"quill" },
+  { id:"note-quote",    name:"Le Citateur",    description:"10 notes de session contenant une citation",             type:"review", tier:2, targetValue:10, points:30, iconKey:"quill", isSpecial:true },
+  { id:"rating-harsh",  name:"Le Juge Sévère", description:"Attribuer moins de 2 étoiles à 5 livres",                type:"review", tier:1, targetValue:5,  points:20, iconKey:"heart", isSpecial:true },
+  { id:"rating-lover",  name:"Coup de Cœur",   description:"Attribuer 5 étoiles à 10 livres",                        type:"review", tier:2, targetValue:10, points:30, iconKey:"heart", isSpecial:true },
+  { id:"rating-balanced", name:"L'Équilibré",  description:"Note moyenne entre 3 et 4 étoiles sur 20 livres notés",  type:"review", tier:2, targetValue:20, points:25, iconKey:"heart", isSpecial:true },
+
+  // ── Social ────────────────────────────────────────────────────────────────
+  { id:"social-photographer", name:"Photographe Confirmé", description:"Ajouter 20 photos de session", type:"social", tier:2, targetValue:20, points:35, iconKey:"camera", isSpecial:true },
+  { id:"social-influencer",   name:"L'Influenceur",        description:"Être suivi par 10 membres",     type:"social", tier:2, targetValue:10, points:35, iconKey:"heart",  isSpecial:true },
+  { id:"social-generous",     name:"Le Généreux",          description:"Recommander 10 livres à des amis", type:"social", tier:2, targetValue:10, points:35, iconKey:"heart", isSpecial:true },
+  { id:"social-liked-2",      name:"Plébiscité+",          description:"Recevoir 50 J'aime cumulés",    type:"social", tier:4, targetValue:50, points:100, iconKey:"heart", isSpecial:true },
+  { id:"social-commenter",    name:"Le Commentateur",      description:"Rédiger 20 commentaires sur les sessions d'autres membres", type:"social", tier:2, targetValue:20, points:35, iconKey:"quill", isSpecial:true },
+  { id:"social-mentor",       name:"Le Mentor",            description:"Suivre 5 membres ayant rejoint Swena récemment", type:"social", tier:2, targetValue:5, points:30, iconKey:"heart", isSpecial:true },
+
+  // ── Défis de club ─────────────────────────────────────────────────────────
+  { id:"challenge-winner",  name:"Le Vainqueur",  description:"Terminer premier d'un défi de club",       type:"challenge", tier:3, targetValue:1, points:70, iconKey:"crown", isSpecial:true },
+  { id:"challenge-finisher",name:"Le Finisher",   description:"Aller au bout d'un défi de club",           type:"challenge", tier:1, targetValue:1, points:20, iconKey:"chart", isSpecial:true },
+  { id:"challenge-addict",  name:"L'Increvable",  description:"Participer à 5 défis de club différents",   type:"challenge", tier:2, targetValue:5, points:45, iconKey:"chart", isSpecial:true },
+
+  // ── Ancienneté & bibliothèque ─────────────────────────────────────────────
+  { id:"anniversary-1", name:"Un An Déjà",     description:"1 an depuis la création du compte",       type:"milestone", tier:2, targetValue:1, points:40, iconKey:"seal", isSpecial:true },
+  { id:"anniversary-2", name:"Vétéran",        description:"2 ans depuis la création du compte",      type:"milestone", tier:3, targetValue:1, points:80, iconKey:"seal", isSpecial:true },
+  { id:"import-migrator", name:"Le Migrateur", description:"Importer 50 livres ou plus depuis Goodreads", type:"milestone", tier:2, targetValue:50, points:35, iconKey:"seal", isSpecial:true },
+  { id:"isbn-librarian", name:"Le Bibliothécaire", description:"Renseigner l'ISBN de 20 livres",       type:"milestone", tier:2, targetValue:20, points:30, iconKey:"seal", isSpecial:true },
+
+  // ── Événements calendaires (suite) ───────────────────────────────────────
+  { id:"event-sep1",  name:"Rentrée Littéraire", description:"Session de lecture le 1er septembre",                    type:"event", tier:2, targetValue:1, points:25, iconKey:"calendar", isSpecial:true },
+  { id:"event-oct31", name:"Halloween",          description:"Session de lecture le 31 octobre sur un livre du genre Thriller, Horreur ou Policier", type:"event", tier:2, targetValue:1, points:30, iconKey:"calendar", isSpecial:true },
+
+  // ── Parrainage ────────────────────────────────────────────────────────────
+  { id:"referral-1",  name:"Le Parrain", description:"Parrainer 1 ami qui rejoint Swena",     type:"referral", tier:1, targetValue:1,  points:20,  iconKey:"invite", isSpecial:true },
+  { id:"referral-3",  name:"Le Parrain", description:"Parrainer 3 amis qui rejoignent Swena", type:"referral", tier:2, targetValue:3,  points:60,  iconKey:"invite", isSpecial:true },
+  { id:"referral-10", name:"Le Parrain", description:"Parrainer 10 amis qui rejoignent Swena",type:"referral", tier:3, targetValue:10, points:200, iconKey:"invite", isSpecial:true },
 ];
 
 // ── Helpers date ─────────────────────────────────────────────────────────────
@@ -157,6 +215,54 @@ for (let y = 2026; y <= 2027; y++) {
 }
 BADGE_DEFS.push(...MONTHLY_SESSIONS_DEFS);
 
+// ── Badges Objectif du mois (Juillet 2026 → Décembre 2027) ──────────────────
+// Atteindre l'objectif personnel du mois (pages ou livres, au prorata de l'objectif
+// annuel fixé par l'utilisateur — pas un défi à cible fixe comme les précédents).
+const MONTHLY_GOAL_DEFS: BadgeDef[] = [];
+for (let y = 2026; y <= 2027; y++) {
+  for (let m = (y === 2026 ? 7 : 1); m <= 12; m++) {
+    const mm = String(m).padStart(2, "0");
+    MONTHLY_GOAL_DEFS.push({
+      id: `goal-month-${y}-${mm}`,
+      name: `Objectif de ${MONTHS_FR[m - 1]} ${y}`,
+      description: `Atteindre ton objectif personnel de pages ou de livres du mois de ${MONTHS_FR[m - 1]} ${y}`,
+      type: "monthly_goal",
+      tier: 2,
+      targetValue: 1,
+      points: 25,
+      iconKey: "target",
+      startDate: `${y}-${mm}-01`,
+      endDate:   `${y}-${mm}-${lastDayOf(y, m)}`,
+      isSpecial: true,
+    });
+  }
+}
+BADGE_DEFS.push(...MONTHLY_GOAL_DEFS);
+
+// ── Badges Champion du mois (Juillet 2026 → Décembre 2027) ──────────────────
+// Être champion du jour (le plus de pages lues, ex æquo compris) 20 jours dans
+// le même mois calendaire.
+const CHAMPION_MONTH_DEFS: BadgeDef[] = [];
+for (let y = 2026; y <= 2027; y++) {
+  for (let m = (y === 2026 ? 7 : 1); m <= 12; m++) {
+    const mm = String(m).padStart(2, "0");
+    CHAMPION_MONTH_DEFS.push({
+      id: `champion-month-${y}-${mm}`,
+      name: `Champion de ${MONTHS_FR[m - 1]} ${y}`,
+      description: `Être champion du jour 20 fois durant le mois de ${MONTHS_FR[m - 1]} ${y}`,
+      type: "champion_month",
+      tier: 3,
+      targetValue: 20,
+      points: 70,
+      iconKey: "crown",
+      startDate: `${y}-${mm}-01`,
+      endDate:   `${y}-${mm}-${lastDayOf(y, m)}`,
+      isSpecial: true,
+    });
+  }
+}
+BADGE_DEFS.push(...CHAMPION_MONTH_DEFS);
+
 export const BADGE_CUTOFF_DATE = "2026-06-20";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -175,7 +281,6 @@ export function getStatValue(def: BadgeDef, stats: UserBadgeStats): number {
     case "time_of_day":
     case "performance":
     case "social":
-    case "quiz":
     default:
       return -1; // logique spéciale dans l'API
   }

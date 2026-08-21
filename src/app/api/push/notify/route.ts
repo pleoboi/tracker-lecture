@@ -15,13 +15,13 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await admin.auth.getUser(token);
   if (!user) return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
 
-  const { targetUserId, title, body, url } = await req.json();
+  const { targetUserId, title, body, url, type } = await req.json();
   if (!targetUserId || !title || !body) {
     return NextResponse.json({ error: "Paramètres manquants" }, { status: 400 });
   }
 
   try {
-    await sendPushToUser(targetUserId, { title, body, url });
+    await sendPushToUser(targetUserId, { title, body, url }, type);
   } catch (err) {
     console.error("[push/notify] error:", err);
   }

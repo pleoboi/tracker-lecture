@@ -29,6 +29,25 @@ export async function GET(req: Request) {
   const allCovers: string[] = [];
   const seen = new Set<string>();
 
+  // Apple Books (iTunes Search API) — pochettes haute résolution, en priorité.
+  // artworkUrl100 se termine par « /100x100bb.jpg » ; on demande 600x600 pour du net.
+  try {
+    const term = [title, author].filter(Boolean).join(" ").trim();
+    const res = await fetch(
+      `https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=ebook&limit=10&country=FR`,
+      { next: { revalidate: 86400 } },
+    );
+    if (res.ok) {
+      const data = await res.json();
+      for (const r of (data.results || []) as { artworkUrl100?: string }[]) {
+        const art = r.artworkUrl100;
+        if (!art) continue;
+        const hi = art.replace(/\/\d+x\d+bb\.(jpg|png)$/, "/1000x1000bb.$1");
+        if (!seen.has(hi)) { seen.add(hi); allCovers.push(hi); }
+      }
+    }
+  } catch { /* ignore */ }
+
   // Google Books — zoom=1 (thumbnail fiable) ou zoom=2 (qualité)
   await Promise.allSettled(
     queries.map(async (q) => {
@@ -64,7 +83,7 @@ export async function GET(req: Request) {
         const olData = await olRes.json();
         for (const doc of ((olData.docs || []) as { cover_i?: number }[])) {
           if (doc.cover_i) {
-            const olUrl = `https://covers.openlibrary.org/b/id/${doc.cover_i}-M.jpg`;
+            const olUrl = `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
             if (!seen.has(olUrl)) { seen.add(olUrl); allCovers.push(olUrl); }
           }
         }

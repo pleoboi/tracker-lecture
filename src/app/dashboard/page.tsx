@@ -157,6 +157,20 @@ export default function DashboardPage() {
     if (!userId) return;
     setGoals((prev) => ({ ...prev, [key]: value }));
     await updateGoal(key, value, userId);
+    // Débloque immédiatement le badge "Objectif fixé" plutôt que d'attendre le
+    // prochain changement de page (throttle de GlobalBadgeChecker).
+    fetch("/api/badges/check", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    })
+      .then((r) => r.json())
+      .then((data: { awarded?: { id: string }[] }) => {
+        if (data.awarded?.length) {
+          window.dispatchEvent(new CustomEvent("swena:badges-awarded", { detail: data.awarded }));
+        }
+      })
+      .catch(() => {});
   };
 
   // ── Calculs ──────────────────────────────────────────────────────────────────

@@ -102,6 +102,25 @@ export function formatDateLong(d: Date | string | null): string {
   return FR_DATE_LONG.format(typeof d === "string" ? new Date(d) : d);
 }
 
+/**
+ * Date au format YYYY-MM-DD en heure LOCALE.
+ * On n'utilise pas toISOString() : il convertit en UTC, si bien qu'une session
+ * enregistrée après minuit (heure française) était datée de la veille.
+ */
+export function localISO(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function todayISO(): string {
-  return new Date().toISOString().split("T")[0];
+  return localISO();
+}
+
+/** Date locale décalée de n jours (négatif = passé). */
+export function shiftISO(days: number, from: Date = new Date()): string {
+  const d = new Date(from);
+  d.setDate(d.getDate() + days);
+  return localISO(d);
 }

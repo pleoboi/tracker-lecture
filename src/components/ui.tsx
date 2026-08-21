@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { spineColor, initials } from "../lib/books";
 
 /* ---------------- Couverture ---------------- */
@@ -137,11 +138,14 @@ export function Modal({
   onClose,
   title,
   children,
+  footer,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: React.ReactNode;
+  /** Zone d'action ancrée en bas, hors zone de défilement (reste toujours visible). */
+  footer?: React.ReactNode;
 }) {
   useEffect(() => {
     if (!open) return;
@@ -154,30 +158,69 @@ export function Modal({
     };
   }, [open, onClose]);
 
-  if (!open) return null;
+  // `open` ne passe à true que côté client, donc document est disponible ici.
+  if (!open || typeof document === "undefined") return null;
 
-  return (
+  // Rendu via portal sur <body> : les pages utilisent .animate-fadeIn / .reveal,
+  // dont le transform/filter persistant crée un bloc conteneur qui capturerait
+  // un position:fixed enfant (modale coincée dans la zone de contenu).
+  return createPortal((
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-ink/40 backdrop-blur-sm px-4 pt-4 pb-24 [touch-action:none]"
+      className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/40 px-0 backdrop-blur-sm sm:items-center sm:px-4 [touch-action:none]"
       onClick={onClose}
     >
       <div
-        className="animate-fadeIn w-full max-w-md overflow-x-hidden rounded-t-3xl border border-line bg-paper p-6 shadow-2xl sm:rounded-3xl"
+        // Hauteur bornée en dvh pour que le clavier virtuel / la barre Safari ne masquent rien.
+        className="animate-fadeIn flex max-h-[90dvh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-line bg-paper shadow-2xl sm:max-h-[88dvh] sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="mb-5 flex items-center justify-between">
-          <h2 className="font-serif text-2xl font-black text-ink">{title}</h2>
-          <button
-            onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-xl border border-line bg-card text-ink-2 hover:text-ink"
-            aria-label="Fermer"
-          >
-            ✕
-          </button>
+        {/* Corps défilant */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 [touch-action:pan-y]">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="font-serif text-2xl font-black text-ink">{title}</h2>
+            <button
+              onClick={onClose}
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-line bg-card text-ink-2 hover:text-ink"
+              aria-label="Fermer"
+            >
+              ✕
+            </button>
+          </div>
+          {children}
         </div>
-        {children}
+
+        {/* Pied d'action ancré (sticky), toujours visible, respecte la safe-area iOS */}
+        {footer && (
+          <div className="shrink-0 border-t border-line bg-paper px-6 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
+  ), document.body);
+}
+
+/* ---------------- Interrupteur ---------------- */
+
+/**
+ * Interrupteur on/off. Le rail est en inline-flex et ne peut pas se comprimer
+ * (shrink-0) : le curseur restait sinon coincé hors du rail quand le libellé
+ * voisin était long. Le décalage est calculé pour laisser 2px de marge des deux côtés.
+ */
+export function Toggle({ on, className = "" }: { on: boolean; className?: string }) {
+  return (
+    <span
+      aria-hidden
+      className={`inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors duration-200 ${
+        on ? "bg-violet" : "bg-line"
+      } ${className}`}
+    >
+      <span
+        className={`inline-block h-5 w-5 rounded-full bg-cream shadow transition-transform duration-200 ${
+          on ? "translate-x-[22px]" : "translate-x-0.5"
+        }`}
+      />
+    </span>
   );
 }
 

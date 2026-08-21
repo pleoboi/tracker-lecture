@@ -7,7 +7,9 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book } from "../../lib/types";
 import { pct, isCompleted } from "../../lib/books";
-import { Cover, ProgressBar, Button } from "../../components/ui";
+import { Cover, ProgressBar, Button, Toggle } from "../../components/ui";
+import NotificationPrefsModal from "../../components/NotificationPrefsModal";
+import ReferralSection from "../../components/ReferralSection";
 import { searchBooks, fetchOpenLibraryCover, isFrench } from "../../lib/googleBooks";
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array, ensurePushSubscription } from "../../lib/push.client";
 
@@ -909,6 +911,7 @@ export default function ComptePage() {
   const [notifEnabled, setNotifEnabled] = useState(false);
   const [notifLoading, setNotifLoading] = useState(false);
   const [notifError, setNotifError] = useState<string | null>(null);
+  const [showNotifPrefs, setShowNotifPrefs] = useState(false);
   const [notifTestResult, setNotifTestResult] = useState<string | null>(null);
 
   useEffect(() => {
@@ -1022,7 +1025,9 @@ export default function ComptePage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setNotifTestResult(`Échec : ${json.error}`);
+        const d = json.debug;
+        const debugStr = d ? ` [vapid:${d.vapidPresent ? d.vapidLength + "c" : "ABSENT"}]` : "";
+        setNotifTestResult(`Échec : ${json.error}${debugStr}`);
       } else {
         setNotifTestResult("Envoyée — vérifie tes notifications");
       }
@@ -1348,10 +1353,8 @@ export default function ComptePage() {
           Profil
         </button>
         <button
-          onClick={() => setTab("biblio")}
-          className={`flex-1 rounded-xl py-2 text-sm font-semibold transition-colors ${
-            tab === "biblio" ? "bg-violet text-cream shadow-sm" : "text-muted hover:text-ink"
-          }`}
+          onClick={() => router.push("/bibliotheque")}
+          className="flex-1 rounded-xl py-2 text-sm font-semibold text-muted transition-colors hover:text-ink"
         >
           Ma bibliothèque
         </button>
@@ -1693,9 +1696,7 @@ export default function ComptePage() {
                 </p>
               </div>
             </div>
-            <div className={`relative h-6 w-11 rounded-full transition-colors ${darkMode ? "bg-violet" : "bg-line"}`}>
-              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-cream shadow transition-transform ${darkMode ? "translate-x-5" : "translate-x-0.5"}`} />
-            </div>
+            <Toggle on={darkMode} />
           </button>
 
           {/* Toggle notifications */}
@@ -1721,12 +1722,32 @@ export default function ComptePage() {
                     </p>
                   </div>
                 </div>
-                {notifStatus !== "denied" && (
-                  <div className={`relative h-6 w-11 shrink-0 rounded-full transition-colors duration-200 ${notifEnabled ? "bg-violet" : "bg-line"}`}>
-                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-cream shadow transition-transform duration-200 ${notifEnabled ? "translate-x-5" : "translate-x-0.5"}`} />
-                  </div>
-                )}
+                {notifStatus !== "denied" && <Toggle on={notifEnabled} />}
               </button>
+
+              {/* Choix des types de notifications */}
+              {notifEnabled && notifStatus !== "denied" && (
+                <button
+                  onClick={() => setShowNotifPrefs(true)}
+                  className="flex w-full items-center justify-between rounded-2xl border border-line bg-card px-4 py-3 transition-colors hover:border-violet/40"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-base">⚙️</span>
+                    <div>
+                      <p className="text-left text-[13.5px] font-medium text-ink">
+                        Gérer les notifications
+                      </p>
+                      <p className="text-left text-[11.5px] text-muted">
+                        Choisis les types que tu veux recevoir
+                      </p>
+                    </div>
+                  </div>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-muted">
+                    <path d="m9 18 6-6-6-6" />
+                  </svg>
+                </button>
+              )}
+
               {notifError && (
                 <p className="rounded-xl border border-danger/20 bg-[#f6e7e1] px-3 py-2 text-[11px] text-danger">
                   {notifError}
@@ -1777,6 +1798,8 @@ export default function ComptePage() {
             </div>
           )}
 
+          <ReferralSection userId={userId} />
+
           <Button
             variant="ghost"
             onClick={handleLogout}
@@ -1791,6 +1814,25 @@ export default function ComptePage() {
           >
             Supprimer mon compte
           </button>
+
+          <NotificationPrefsModal
+            open={showNotifPrefs}
+            onClose={() => setShowNotifPrefs(false)}
+            userId={user?.id}
+          />
+
+          {/* Informations légales */}
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 border-t border-line pt-4">
+            <Link href="/mentions-legales" className="text-[11px] text-muted transition-colors hover:text-ink">
+              Mentions légales
+            </Link>
+            <Link href="/confidentialite" className="text-[11px] text-muted transition-colors hover:text-ink">
+              Confidentialité
+            </Link>
+            <Link href="/conditions" className="text-[11px] text-muted transition-colors hover:text-ink">
+              Conditions d&apos;utilisation
+            </Link>
+          </div>
         </div>
       )}
 

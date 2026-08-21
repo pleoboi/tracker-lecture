@@ -5,8 +5,9 @@ import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book, ReadingLog } from "../../lib/types";
-import { formatDateLong } from "../../lib/books";
+import { formatDateLong, localISO } from "../../lib/books";
 import { Cover, Pill } from "../../components/ui";
+import Lightbox from "../../components/Lightbox";
 
 const DAILY_GOAL = 69;
 const MS_DAY = 86_400_000;
@@ -34,6 +35,7 @@ export default function JournalPage() {
   const [error, setError] = useState<string | null>(null);
 
   // État pour la modale d'édition
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [editEntry, setEditEntry] = useState<DayEntry | null>(null);
   const [editPage, setEditPage] = useState("");
   const [editSaving, setEditSaving] = useState(false);
@@ -108,14 +110,15 @@ export default function JournalPage() {
       }
     });
 
+    // Streak en dates locales (toISOString reculait d'un jour en UTC), et on
+    // décale via setDate pour rester juste aux changements d'heure.
     let s = 0;
     const cur = new Date();
-    cur.setHours(0, 0, 0, 0);
-    if (!daySet.has(cur.toISOString().split("T")[0]))
-      cur.setTime(cur.getTime() - MS_DAY);
-    while (daySet.has(cur.toISOString().split("T")[0])) {
+    cur.setHours(12, 0, 0, 0);
+    if (!daySet.has(localISO(cur))) cur.setDate(cur.getDate() - 1);
+    while (daySet.has(localISO(cur))) {
       s++;
-      cur.setTime(cur.getTime() - MS_DAY);
+      cur.setDate(cur.getDate() - 1);
     }
 
     setEntries(merged);
@@ -334,14 +337,19 @@ export default function JournalPage() {
               ))}
 
               {e.photos.map((url, i) => (
-                <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setLightboxUrl(url)}
+                  className="group relative block w-full overflow-hidden rounded-xl border border-line bg-card"
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={url}
                     alt="Photo de session"
-                    className="h-36 w-full rounded-xl object-cover"
+                    className="aspect-[4/3] w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                   />
-                </a>
+                </button>
               ))}
             </div>
           ))}
@@ -404,6 +412,8 @@ export default function JournalPage() {
           </div>
         </div>
       )}
+
+      <Lightbox src={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </div>
   );
 }

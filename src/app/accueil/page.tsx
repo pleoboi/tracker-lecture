@@ -5,11 +5,12 @@ import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book, ReadingLog } from "../../lib/types";
-import { pct } from "../../lib/books";
+import { pct, todayISO, shiftISO } from "../../lib/books";
 import { Cover, ProgressBar, Button, AvatarImg } from "../../components/ui";
 import AddBookModal from "../../components/AddBookModal";
 import LogReadingModal from "../../components/LogReadingModal";
 import PodiumModal from "../../components/PodiumModal";
+import Lightbox from "../../components/Lightbox";
 import { notifyUser } from "../../lib/push.client";
 
 const today = new Intl.DateTimeFormat("fr-FR", {
@@ -95,10 +96,18 @@ export default function AccueilPage() {
     bookId: number;
     reviewerUserId: string;
     bookTitle: string;
+    logId: number;
   } | null>(null);
   const [noteLiked, setNoteLiked] = useState(false);
   const [noteLikeCount, setNoteLikeCount] = useState(0);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const [noteLikeLoading, setNoteLikeLoading] = useState(false);
+  // Commentaires de la session ouverte dans la modale
+  const [comments, setComments] = useState<
+    { id: number; user_id: string; content: string; created_at: string; name: string; avatar: string | null }[]
+  >([]);
+  const [commentText, setCommentText] = useState("");
+  const [commentSending, setCommentSending] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -115,10 +124,9 @@ export default function AccueilPage() {
     if (!userId) return;
     setActivityLoading(true);
 
-    const todayStr = new Date().toISOString().split("T")[0];
-    const yesterdayStr = new Date(Date.now() - 86_400_000).toISOString().split("T")[0];
-    const threeDaysAgoDate = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
-      .toISOString().split("T")[0]; // YYYY-MM-DD — date effective de lecture
+    const todayStr = todayISO();
+    const yesterdayStr = shiftISO(-1);
+    const threeDaysAgoDate = shiftISO(-3); // YYYY-MM-DD — date effective de lecture
 
     // Étape 1 : profils, champion du jour (non filtré), champion d'hier, et liste des suivis
     const [{ data: profilesData }, { data: todayAllLogs }, { data: followData }, { data: yesterdayAllLogs }] = await Promise.all([
@@ -372,7 +380,7 @@ export default function AccueilPage() {
           book_id: log.bookId,
           book_title: log.bookTitle,
         });
-        notifyUser(log.user_id, "Swena", `${displayName} a aimé ton activité sur «${log.bookTitle || "ton livre"}»`);
+        notifyUser(log.user_id, "Swena", `${displayName} a aimé ton activité sur «${log.bookTitle || "ton livre"}»`, undefined, "likes");
       }
     }
   }, [userId, likeMap]);
@@ -380,7 +388,7 @@ export default function AccueilPage() {
   // Challenges actifs
   useEffect(() => {
     if (!userId) return;
-    const today = new Date().toISOString().split("T")[0];
+    const today = todayISO();
     (async () => {
       const { data: parts } = await supabase
         .from("challenge_participants")
@@ -432,12 +440,13 @@ export default function AccueilPage() {
     })();
   }, [userId]);
 
-  // Écoute les mises à jour déclenchées depuis AppShell
+  // Écoute les mises à jour déclenchées depuis AppShell (ex. session enregistrée
+  // via le bouton « + »). On recharge aussi le feed d'activité, pas seulement les livres.
   useEffect(() => {
-    const onUpdate = () => load();
+    const onUpdate = () => { load(); loadClub(); };
     window.addEventListener("books-updated", onUpdate);
     return () => window.removeEventListener("books-updated", onUpdate);
-  }, [load]);
+  }, [load, loadClub]);
 
   // IntersectionObserver — révélation des éléments .reveal au scroll
   useEffect(() => {
@@ -461,54 +470,167 @@ export default function AccueilPage() {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // Like state — chargé à l'ouverture de la modale
+  // Like + commentaires — chargés à l'ouverture de la modale.
+  // Type "session" → like sur la session (session_likes) et commentaires (session_comments).
+  // Type "review"  → like sur la review du livre (review_likes), pas de commentaires.
   useEffect(() => {
-    if (!noteModal || !userId) { setNoteLiked(false); setNoteLikeCount(0); return; }
-    const fetchLikes = async () => {
-      const [{ count }, { data: mine }] = await Promise.all([
-        supabase.from("review_likes").select("*", { count: "exact", head: true })
-          .eq("book_id", noteModal.bookId).eq("reviewer_user_id", noteModal.reviewerUserId),
-        supabase.from("review_likes").select("id")
-          .eq("book_id", noteModal.bookId).eq("reviewer_user_id", noteModal.reviewerUserId)
-          .eq("liker_user_id", userId).maybeSingle(),
-      ]);
-      setNoteLikeCount(count ?? 0);
-      setNoteLiked(!!mine);
+    if (!noteModal || !userId) {
+      setNoteLiked(false); setNoteLikeCount(0); setComments([]); setCommentText("");
+      return;
+    }
+    const fetchAll = async () => {
+      if (noteModal.type === "session") {
+        const logIdStr = String(noteModal.logId);
+        const [{ count }, { data: mine }] = await Promise.all([
+          supabase.from("session_likes").select("*", { count: "exact", head: true })
+            .eq("log_id", logIdStr),
+          supabase.from("session_likes").select("id")
+            .eq("log_id", logIdStr).eq("liker_id", userId).maybeSingle(),
+        ]);
+        setNoteLikeCount(count ?? 0);
+        setNoteLiked(!!mine);
+
+        // Commentaires de la session, enrichis du nom + avatar
+        const { data: rows } = await supabase
+          .from("session_comments")
+          .select("id, user_id, content, created_at")
+          .eq("log_id", noteModal.logId)
+          .order("created_at", { ascending: true });
+        const list = (rows as { id: number; user_id: string; content: string; created_at: string }[]) || [];
+        const ids = [...new Set(list.map((c) => c.user_id))];
+        const profMap = new Map<string, { name: string; avatar: string | null }>();
+        if (ids.length > 0) {
+          const { data: profs } = await supabase
+            .from("user_profiles").select("id, display_name, avatar_url").in("id", ids);
+          ((profs as { id: string; display_name: string; avatar_url: string | null }[]) || [])
+            .forEach((p) => profMap.set(p.id, { name: p.display_name || "Membre", avatar: p.avatar_url }));
+        }
+        setComments(list.map((c) => ({
+          ...c,
+          name: profMap.get(c.user_id)?.name ?? "Membre",
+          avatar: profMap.get(c.user_id)?.avatar ?? null,
+        })));
+      } else {
+        const [{ count }, { data: mine }] = await Promise.all([
+          supabase.from("review_likes").select("*", { count: "exact", head: true })
+            .eq("book_id", noteModal.bookId).eq("reviewer_user_id", noteModal.reviewerUserId),
+          supabase.from("review_likes").select("id")
+            .eq("book_id", noteModal.bookId).eq("reviewer_user_id", noteModal.reviewerUserId)
+            .eq("liker_user_id", userId).maybeSingle(),
+        ]);
+        setNoteLikeCount(count ?? 0);
+        setNoteLiked(!!mine);
+        setComments([]);
+      }
+      setCommentText("");
     };
-    fetchLikes();
+    fetchAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [noteModal?.bookId, noteModal?.reviewerUserId, userId]);
+  }, [noteModal?.logId, noteModal?.type, noteModal?.bookId, noteModal?.reviewerUserId, userId]);
 
   const toggleNoteLike = async () => {
     if (!noteModal || !userId || noteModal.reviewerUserId === userId || noteLikeLoading) return;
     setNoteLikeLoading(true);
-    if (noteLiked) {
-      await supabase.from("review_likes").delete()
-        .eq("book_id", noteModal.bookId).eq("reviewer_user_id", noteModal.reviewerUserId)
-        .eq("liker_user_id", userId);
-      setNoteLiked(false);
-      setNoteLikeCount((n) => Math.max(0, n - 1));
+    if (noteModal.type === "session") {
+      const logIdStr = String(noteModal.logId);
+      if (noteLiked) {
+        await supabase.from("session_likes").delete()
+          .eq("log_id", logIdStr).eq("liker_id", userId);
+        setNoteLiked(false);
+        setNoteLikeCount((n) => Math.max(0, n - 1));
+      } else {
+        await supabase.from("session_likes").insert({ log_id: logIdStr, liker_id: userId });
+        setNoteLiked(true);
+        setNoteLikeCount((n) => n + 1);
+        await supabase.from("notifications").insert({
+          user_id: noteModal.reviewerUserId,
+          type: "review_like",
+          from_user_id: userId,
+          book_id: noteModal.bookId,
+          book_title: noteModal.bookTitle,
+        });
+        notifyUser(
+          noteModal.reviewerUserId,
+          "Swena",
+          `${displayName} a aimé ton activité sur «${noteModal.bookTitle || "ton livre"}»`,
+          undefined,
+          "likes",
+        );
+      }
     } else {
-      await supabase.from("review_likes").upsert(
-        { book_id: noteModal.bookId, reviewer_user_id: noteModal.reviewerUserId, liker_user_id: userId },
-        { onConflict: "book_id,reviewer_user_id,liker_user_id" }
-      );
-      setNoteLiked(true);
-      setNoteLikeCount((n) => n + 1);
-      await supabase.from("notifications").insert({
-        user_id: noteModal.reviewerUserId,
-        type: "review_like",
-        from_user_id: userId,
-        book_id: noteModal.bookId,
-        book_title: noteModal.bookTitle,
-      });
-      notifyUser(
-        noteModal.reviewerUserId,
-        "Swena",
-        `${displayName} a aimé ta review sur «${noteModal.bookTitle || "ton livre"}»`,
-      );
+      if (noteLiked) {
+        await supabase.from("review_likes").delete()
+          .eq("book_id", noteModal.bookId).eq("reviewer_user_id", noteModal.reviewerUserId)
+          .eq("liker_user_id", userId);
+        setNoteLiked(false);
+        setNoteLikeCount((n) => Math.max(0, n - 1));
+      } else {
+        await supabase.from("review_likes").upsert(
+          { book_id: noteModal.bookId, reviewer_user_id: noteModal.reviewerUserId, liker_user_id: userId },
+          { onConflict: "book_id,reviewer_user_id,liker_user_id" }
+        );
+        setNoteLiked(true);
+        setNoteLikeCount((n) => n + 1);
+        await supabase.from("notifications").insert({
+          user_id: noteModal.reviewerUserId,
+          type: "review_like",
+          from_user_id: userId,
+          book_id: noteModal.bookId,
+          book_title: noteModal.bookTitle,
+        });
+        notifyUser(
+          noteModal.reviewerUserId,
+          "Swena",
+          `${displayName} a aimé ton activité sur «${noteModal.bookTitle || "ton livre"}»`,
+          undefined,
+          "likes",
+        );
+      }
     }
     setNoteLikeLoading(false);
+  };
+
+  const sendComment = async () => {
+    if (!noteModal || !userId || commentSending) return;
+    const content = commentText.trim();
+    if (!content) return;
+    setCommentSending(true);
+    const { data, error } = await supabase
+      .from("session_comments")
+      .insert({ log_id: noteModal.logId, user_id: userId, content })
+      .select("id, user_id, content, created_at")
+      .single();
+    if (!error && data) {
+      const row = data as { id: number; user_id: string; content: string; created_at: string };
+      setComments((prev) => [
+        ...prev,
+        { ...row, name: displayName || "Moi", avatar: user?.user_metadata?.avatar_url ?? null },
+      ]);
+      setCommentText("");
+      // Notifie le propriétaire de la session (sauf si c'est soi-même)
+      if (noteModal.reviewerUserId !== userId) {
+        await supabase.from("notifications").insert({
+          user_id: noteModal.reviewerUserId,
+          type: "review_like",
+          from_user_id: userId,
+          book_id: noteModal.bookId,
+          book_title: noteModal.bookTitle,
+        });
+        notifyUser(
+          noteModal.reviewerUserId,
+          "Swena",
+          `${displayName} a commenté ta note de lecture sur «${noteModal.bookTitle || "ton livre"}»`,
+          undefined,
+          "comments",
+        );
+      }
+    }
+    setCommentSending(false);
+  };
+
+  const deleteComment = async (id: number) => {
+    await supabase.from("session_comments").delete().eq("id", id);
+    setComments((prev) => prev.filter((c) => c.id !== id));
   };
 
   const reading = books.filter((b) => b.status === "reading");
@@ -627,7 +749,7 @@ export default function AccueilPage() {
               <h2 className="font-serif text-lg font-semibold text-ink">En cours</h2>
               <span className="font-sans text-sm text-muted">({reading.length})</span>
             </div>
-            <Link href="/compte" className="text-[11px] font-semibold text-violet-deep transition-opacity hover:opacity-70">
+            <Link href="/bibliotheque" className="text-[11px] font-semibold text-violet-deep transition-opacity hover:opacity-70">
               Bibliothèque →
             </Link>
           </div>
@@ -686,8 +808,8 @@ export default function AccueilPage() {
             <p className="text-sm text-muted">Pas encore d&apos;activité dans le club.</p>
           </div>
         ) : (() => {
-          const todayStr = new Date().toISOString().split("T")[0];
-          const yesterdayStr = new Date(Date.now() - 86_400_000).toISOString().split("T")[0];
+          const todayStr = todayISO();
+          const yesterdayStr = shiftISO(-1);
           const dayGroups: { dateKey: string; label: string; logs: ActivityLog[] }[] = [];
           for (const log of activity) {
             const dk = log.date ?? "";
@@ -711,8 +833,8 @@ export default function AccueilPage() {
                         likeData={likeMap.get(String(log.id))}
                         currentUserId={userId}
                         onLike={() => handleLike(log)}
-                        onNoteClick={(type, text, photoUrl, date, bookId, reviewerUserId, bookTitle) =>
-                          setNoteModal({ type, text, member: log.memberName, date, photoUrl, bookId, reviewerUserId, bookTitle })
+                        onNoteClick={(type, text, photoUrl, date, bookId, reviewerUserId, bookTitle, logId) =>
+                          setNoteModal({ type, text, member: log.memberName, date, photoUrl, bookId, reviewerUserId, bookTitle, logId })
                         }
                       />
                     ))}
@@ -776,13 +898,13 @@ export default function AccueilPage() {
       <AddBookModal
         open={showAdd}
         onClose={() => setShowAdd(false)}
-        onAdded={(m) => { showToast(m); load(); }}
+        onAdded={(m) => { showToast(m); load(); loadClub(); }}
       />
       <LogReadingModal
         open={showLog}
         onClose={() => setShowLog(false)}
         books={books.filter((b) => b.status === "reading")}
-        onSaved={(m) => { setShowLog(false); showToast(m); load(); }}
+        onSaved={(m) => { setShowLog(false); showToast(m); load(); loadClub(); }}
       />
       {showPodium && <PodiumModal onClose={() => setShowPodium(false)} />}
 
@@ -817,24 +939,98 @@ export default function AccueilPage() {
 
             {/* Contenu scrollable */}
             <div className="flex flex-col gap-3 overflow-y-auto px-5 pb-3 [touch-action:pan-y]">
-              {noteModal.text?.startsWith("<") ? (
-                <div className="prose-review font-serif text-[14px] leading-relaxed text-ink" dangerouslySetInnerHTML={{ __html: noteModal.text }} />
-              ) : (
-                <p className="font-serif text-[14px] leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
-                  {noteModal.text}
-                </p>
+              {noteModal.text?.trim() && (
+                noteModal.text.startsWith("<") ? (
+                  <div className="prose-review font-serif text-[14px] leading-relaxed text-ink" dangerouslySetInnerHTML={{ __html: noteModal.text }} />
+                ) : (
+                  <p className="font-serif text-[14px] leading-relaxed text-ink" style={{ whiteSpace: "pre-line" }}>
+                    {noteModal.text}
+                  </p>
+                )
               )}
               {noteModal.photoUrl && (
-                <a href={noteModal.photoUrl} target="_blank" rel="noopener noreferrer">
+                <button
+                  type="button"
+                  onClick={() => setLightboxUrl(noteModal.photoUrl!)}
+                  className="group relative block w-full overflow-hidden rounded-xl border border-line bg-card"
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={noteModal.photoUrl} alt="" className="w-full rounded-xl object-cover max-h-48" />
-                </a>
+                  <img
+                    src={noteModal.photoUrl}
+                    alt=""
+                    className="aspect-[4/3] w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                  />
+                  <span className="pointer-events-none absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-white backdrop-blur-sm">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M15 3h6v6" />
+                      <path d="M9 21H3v-6" />
+                      <path d="M21 3l-7 7" />
+                      <path d="M3 21l7-7" />
+                    </svg>
+                  </span>
+                </button>
+              )}
+
+              {/* Commentaires (sessions uniquement) */}
+              {noteModal.type === "session" && (
+                <div className="mt-1 flex flex-col gap-2 border-t border-line pt-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                    {comments.length > 0 ? `Commentaires (${comments.length})` : "Commentaires"}
+                  </p>
+                  {comments.length === 0 ? (
+                    <p className="text-[12px] text-muted">Sois le premier à commenter.</p>
+                  ) : (
+                    comments.map((c) => (
+                      <div key={c.id} className="flex items-start gap-2">
+                        <AvatarImg url={c.avatar} name={c.name} className="mt-0.5 h-6 w-6 shrink-0 text-[9px]" />
+                        <div className="min-w-0 flex-1 rounded-xl bg-input px-3 py-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="truncate text-[11px] font-semibold text-ink">{c.name}</span>
+                            {c.user_id === userId && (
+                              <button
+                                onClick={() => deleteComment(c.id)}
+                                className="shrink-0 text-[10px] font-medium text-muted hover:text-danger"
+                              >
+                                Supprimer
+                              </button>
+                            )}
+                          </div>
+                          <p className="mt-0.5 whitespace-pre-line break-words text-[12.5px] leading-relaxed text-ink-2">
+                            {c.content}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               )}
             </div>
 
             {/* Footer fixe */}
-            <div className="flex shrink-0 flex-col gap-2 px-5 py-4">
-              {noteModal.reviewerUserId !== userId && (
+            <div className="flex shrink-0 flex-col gap-2 border-t border-line px-5 py-4">
+              {/* Champ commentaire (sessions uniquement) */}
+              {noteModal.type === "session" && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={commentText}
+                    onChange={(e) => setCommentText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") sendComment(); }}
+                    placeholder="Ajouter un commentaire…"
+                    maxLength={500}
+                    className="min-w-0 flex-1 rounded-xl border border-line bg-input px-3 py-2 text-[12.5px] text-ink outline-none placeholder:text-muted focus:border-violet"
+                  />
+                  <button
+                    onClick={sendComment}
+                    disabled={commentSending || !commentText.trim()}
+                    className="shrink-0 rounded-xl bg-violet px-3 py-2 text-[12px] font-semibold text-cream transition-opacity disabled:opacity-40"
+                  >
+                    {commentSending ? "…" : "Envoyer"}
+                  </button>
+                </div>
+              )}
+
+              {noteModal.reviewerUserId !== userId ? (
                 <button
                   onClick={toggleNoteLike}
                   disabled={noteLikeLoading}
@@ -847,6 +1043,13 @@ export default function AccueilPage() {
                   <span className="text-sm">{noteLiked ? "♥" : "♡"}</span>
                   {noteLikeCount > 0 ? `${noteLikeCount} j'aime` : "J'aime"}
                 </button>
+              ) : (
+                noteLikeCount > 0 && (
+                  <p className="flex items-center gap-1.5 px-1 text-[12px] font-medium text-muted">
+                    <span className="text-danger">♥</span>
+                    {noteLikeCount} j&apos;aime
+                  </p>
+                )
               )}
               <button
                 onClick={() => setNoteModal(null)}
@@ -858,6 +1061,8 @@ export default function AccueilPage() {
           </div>
         </div>
       )}
+
+      <Lightbox src={lightboxUrl} onClose={() => setLightboxUrl(null)} />
     </div>
   );
 }
@@ -959,9 +1164,9 @@ function ActivityCarouselItem({
   likeData?: { count: number; liked: boolean };
   currentUserId?: string;
   onLike?: (logId: string) => void;
-  onNoteClick?: (type: "review" | "session", text: string, photoUrl: string | null | undefined, date: string, bookId: number, reviewerUserId: string, bookTitle: string) => void;
+  onNoteClick?: (type: "review" | "session", text: string, photoUrl: string | null | undefined, date: string, bookId: number, reviewerUserId: string, bookTitle: string, logId: number) => void;
 }) {
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = todayISO();
   const showBadge = isChampion && log.date === todayStr;
 
   const actionLabel = log.eventType === "start"
@@ -978,7 +1183,10 @@ function ActivityCarouselItem({
     : (children: React.ReactNode) => <div className="flex items-center gap-1.5 overflow-hidden">{children}</div>;
 
   const hasReview = !!log.bookReview;
-  const hasSessionNote = (log.allNotes?.length ?? 0) > 0 || !!log.session_notes;
+  const hasSessionText = (log.allNotes?.length ?? 0) > 0 || !!log.session_notes;
+  const hasSessionPhoto = (log.allPhotos?.length ?? 0) > 0 || !!log.session_photo_url;
+  // Une photo seule doit aussi être partagée aux abonnés comme une note.
+  const hasSessionNote = hasSessionText || hasSessionPhoto;
 
   return (
     <div className="flex w-[128px] shrink-0 flex-col gap-2">
@@ -1031,7 +1239,7 @@ function ActivityCarouselItem({
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onNoteClick?.("review", log.bookReview!, null, log.date, log.bookId, log.user_id!, log.bookTitle);
+                  onNoteClick?.("review", log.bookReview!, null, log.date, log.bookId, log.user_id!, log.bookTitle, log.id);
                 }}
                 className="flex h-[18px] w-[18px] items-center justify-center rounded bg-[#e4c97e] text-[9px] font-bold text-[#7a5c00]"
                 title="Voir la review"
@@ -1050,13 +1258,20 @@ function ActivityCarouselItem({
                       ? log.allNotes.join("\n\n— \n\n")
                       : (log.allNotes?.[0] ?? log.session_notes ?? ""),
                     log.allPhotos?.[0] ?? log.session_photo_url ?? null,
-                    log.date, log.bookId, log.user_id!, log.bookTitle
+                    log.date, log.bookId, log.user_id!, log.bookTitle, log.id
                   );
                 }}
-                className="flex h-[18px] w-[18px] items-center justify-center rounded bg-violet-soft text-[9px] font-bold text-violet-deep"
-                title="Voir la note de session"
+                className="flex h-[18px] w-[18px] items-center justify-center rounded bg-violet-soft text-violet-deep"
+                title={hasSessionPhoto ? "Voir la photo et la note de session" : "Voir la note de session"}
               >
-                ≡
+                {hasSessionPhoto ? (
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+                    <circle cx="12" cy="13" r="4" />
+                  </svg>
+                ) : (
+                  <span className="text-[9px] font-bold">≡</span>
+                )}
               </button>
             )}
           </div>

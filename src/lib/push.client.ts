@@ -11,7 +11,15 @@ export function urlBase64ToUint8Array(b64: string): ArrayBuffer {
   return arr.buffer as ArrayBuffer;
 }
 
-export function notifyUser(targetUserId: string, title: string, body: string, url?: string) {
+import type { NotifType } from "./notificationPrefs";
+
+export function notifyUser(
+  targetUserId: string,
+  title: string,
+  body: string,
+  url?: string,
+  type?: NotifType,
+) {
   supabase.auth.getSession().then(async ({ data: { session } }) => {
     if (!session) {
       console.warn("[push] notifyUser: pas de session active, notification annulée");
@@ -24,7 +32,7 @@ export function notifyUser(targetUserId: string, title: string, body: string, ur
           "Content-Type": "application/json",
           Authorization: `Bearer ${session.access_token}`,
         },
-        body: JSON.stringify({ targetUserId, title, body, url }),
+        body: JSON.stringify({ targetUserId, title, body, url, type }),
       });
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({}));
