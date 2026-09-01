@@ -10,6 +10,7 @@ import { Cover, ProgressBar, Button, AvatarImg } from "../../components/ui";
 import AddBookModal from "../../components/AddBookModal";
 import LogReadingModal from "../../components/LogReadingModal";
 import PodiumModal from "../../components/PodiumModal";
+import ChallengeModal, { type ChallengeSummary } from "../../components/ChallengeModal";
 import Lightbox from "../../components/Lightbox";
 import WrappedStory, { IconGlyph } from "../../components/WrappedStory";
 import { getMonthlyWrapped, type WrappedStats } from "../../lib/wrapped";
@@ -77,6 +78,7 @@ export default function AccueilPage() {
   const [todayChampion, setTodayChampion] = useState<Champion | null>(null);
   const [yesterdayChampion, setYesterdayChampion] = useState<Champion | null>(null);
   const [showPodium, setShowPodium] = useState(false);
+  const [selectedChallenge, setSelectedChallenge] = useState<ChallengeSummary | null>(null);
   const [likeMap, setLikeMap] = useState<Map<string, { count: number; liked: boolean }>>(new Map());
 
   // Wrapped du mois précédent — teaser cliquable sur l'accueil
@@ -902,19 +904,46 @@ export default function AccueilPage() {
             {activeChallenges.map((c) => {
               const daysLeft = Math.max(0, Math.ceil((new Date(c.end_date).getTime() - Date.now()) / 86400000));
               const metricLabel = c.metric === "pages" ? "pages" : c.metric === "books" ? "livres" : "sessions";
+              const hasTarget = !!c.target_value;
+              const progress = hasTarget ? Math.min(1, c.myScore / c.target_value!) : 0;
+              const urgent = daysLeft <= 3;
               return (
-                <div key={c.id} className="flex w-[200px] shrink-0 flex-col gap-2 rounded-2xl border border-violet/30 bg-violet-soft p-3">
-                  <p className="line-clamp-1 text-[12.5px] font-semibold text-ink">{c.title}</p>
-                  <div className="flex items-baseline gap-1">
-                    <span className="font-serif text-[20px] font-black text-violet-deep">{c.myScore.toLocaleString("fr-FR")}</span>
-                    <span className="text-[11px] text-muted"> {metricLabel}</span>
+                <button
+                  key={c.id}
+                  onClick={() => setSelectedChallenge(c)}
+                  className="flex w-[220px] shrink-0 flex-col gap-3 rounded-2xl border border-violet/40 bg-card p-4 text-left shadow-sm transition-opacity hover:opacity-90"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <p className="line-clamp-2 font-serif text-[13.5px] font-semibold leading-tight text-ink">{c.title}</p>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${urgent ? "bg-danger-soft text-danger" : "bg-violet-soft text-violet-deep"}`}>
+                      {daysLeft === 0 ? "dernier jour" : `${daysLeft} j.`}
+                    </span>
                   </div>
-                  <p className="text-[10px] text-muted">{daysLeft} jour{daysLeft !== 1 ? "s" : ""} restant{daysLeft !== 1 ? "s" : ""}</p>
-                </div>
+                  <div className="flex items-baseline gap-1.5">
+                    <span className="font-serif text-[26px] font-black leading-none text-violet-deep">{c.myScore.toLocaleString("fr-FR")}</span>
+                    <span className="text-[11px] text-muted">
+                      {hasTarget ? `/ ${c.target_value!.toLocaleString("fr-FR")} ${metricLabel}` : metricLabel}
+                    </span>
+                  </div>
+                  {hasTarget && (
+                    <div className="flex flex-col gap-1">
+                      <ProgressBar value={progress} color="var(--color-violet)" />
+                      <p className="text-right text-[10px] font-medium text-muted">{Math.round(progress * 100)}%</p>
+                    </div>
+                  )}
+                </button>
               );
             })}
           </div>
         </section>
+      )}
+
+      {selectedChallenge && (
+        <ChallengeModal
+          challenge={selectedChallenge}
+          currentUserId={userId}
+          onClose={() => setSelectedChallenge(null)}
+        />
       )}
 
       {/* Membres du club */}
