@@ -11,6 +11,8 @@ import ProfileSetupModal from "./ProfileSetupModal";
 import ReferralPromptModal from "./ReferralPromptModal";
 import AddBookModal from "./AddBookModal";
 import LogReadingModal from "./LogReadingModal";
+import WrappedStory from "./WrappedStory";
+import { getMonthlyWrapped, type WrappedStats } from "../lib/wrapped";
 
 type NavItem = { name: string; href: string; icon: React.ReactNode; shortName?: string };
 
@@ -489,6 +491,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     created_at: string;
     isNew: boolean;
   }[]>([]);
+  const [wrapped, setWrapped] = useState<WrappedStats | null>(null);
   const [weeklyRecap, setWeeklyRecap] = useState<{
     weekLabel: string;
     totalPages: number;      // tout le club
@@ -752,6 +755,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       }
     })();
   }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Wrapped mensuel : proposé automatiquement en tout début de mois (1er → 7),
+  // une seule fois, pour le mois qui vient de se terminer.
+  useEffect(() => {
+    if (!user?.id || typeof window === "undefined") return;
+    const today = new Date();
+    if (today.getDate() > 7) return;
+    const prevMonthDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+    const year = prevMonthDate.getFullYear();
+    const month = prevMonthDate.getMonth() + 1; // 1-12
+    const seenKey = `swena_wrapped_seen_${user.id}_${year}-${String(month).padStart(2, "0")}`;
+    if (localStorage.getItem(seenKey)) return;
+
+    getMonthlyWrapped(user.id, year, month).then((stats) => {
+      if (stats) setWrapped(stats);
+    }).catch(() => {});
+  }, [user?.id]);
 
   // Restaure le thème persisté dès le montage
   useEffect(() => {
@@ -1043,6 +1063,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         onClose={() => setShowReferralPrompt(false)}
         userId={user?.id}
       />
+
+      {/* Wrapped mensuel */}
+      {wrapped && (
+        <WrappedStory
+          stats={wrapped}
+          profile={{ displayName, avatarUrl }}
+          onClose={() => {
+            if (user?.id) {
+              const seenKey = `swena_wrapped_seen_${user.id}_${wrapped.year}-${String(wrapped.month).padStart(2, "0")}`;
+              localStorage.setItem(seenKey, "1");
+            }
+            setWrapped(null);
+          }}
+        />
+      )}
 
       {/* Récap hebdo du lundi */}
       {weeklyRecap && (

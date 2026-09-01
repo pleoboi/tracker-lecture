@@ -14,6 +14,8 @@ import {
 } from "../../components/DashboardWidgets";
 import { DateRangePicker, buildRange, DEFAULT_RANGE, type DateRange } from "../../components/DateRangePicker";
 import PodiumModal from "../../components/PodiumModal";
+import WrappedStory, { IconGlyph } from "../../components/WrappedStory";
+import { getMonthlyWrapped, type WrappedStats } from "../../lib/wrapped";
 import {
   GenreBreakdown,
   FictionDonut,
@@ -86,6 +88,11 @@ export default function DashboardPage() {
   const [championDays, setChampionDays] = useState(0);
   const [showAllAuthors, setShowAllAuthors] = useState(false);
   const [showPodium, setShowPodium] = useState(false);
+  const [wrapped, setWrapped] = useState<WrappedStats | null>(null);
+  const [wrappedLoading, setWrappedLoading] = useState(false);
+  const [wrappedEmpty, setWrappedEmpty] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const displayName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "Toi";
 
   const [mutualProfiles, setMutualProfiles] = useState<{ id: string; name: string }[]>([]);
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
@@ -95,15 +102,17 @@ export default function DashboardPage() {
 
   const loadAll = useCallback(async () => {
     if (!userId) return;
-    const [g, { data: l }, { data: b }, { data: allLogs }] = await Promise.all([
+    const [g, { data: l }, { data: b }, { data: allLogs }, { data: profile }] = await Promise.all([
       loadGoals(userId),
       supabase.from("reading_logs").select("*").eq("user_id", userId),
       supabase.from("books").select("*").eq("user_id", userId),
       supabase.from("reading_logs").select("user_id, pages_read, date"),
+      supabase.from("user_profiles").select("avatar_url").eq("id", userId).single(),
     ]);
     setGoals(g);
     setLogs((l as ReadingLog[]) || []);
     setBooks((b as Book[]) || []);
+    setAvatarUrl((profile as { avatar_url?: string | null } | null)?.avatar_url ?? null);
 
     type LogRow = { user_id: string; pages_read: number; date: string };
     const rows = (allLogs as LogRow[]) || [];
@@ -322,6 +331,17 @@ export default function DashboardPage() {
   const extraAuthors = authorRanking.slice(5);
   const maxAuthorBooks = top5Authors[0]?.[1] ?? 1;
 
+  const openLastWrapped = async () => {
+    if (!userId || wrappedLoading) return;
+    setWrappedLoading(true);
+    setWrappedEmpty(false);
+    const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const stats = await getMonthlyWrapped(userId, prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1);
+    setWrappedLoading(false);
+    if (stats) setWrapped(stats);
+    else { setWrappedEmpty(true); setTimeout(() => setWrappedEmpty(false), 3000); }
+  };
+
   const periodLabel = dateRange.preset === "month" ? "ce mois" : dateRange.preset === "3m" ? "ces 3 mois" : "cette année";
   const rangeLabel = isYTD ? `YTD ${now.getFullYear()}` : dateRange.preset === "3m" ? "3 derniers mois" : now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
 
@@ -412,6 +432,28 @@ export default function DashboardPage() {
             </div>
           </button>
 
+          <button
+            onClick={openLastWrapped}
+            disabled={wrappedLoading}
+            className="relative w-full overflow-hidden rounded-2xl p-4 text-left shadow-md transition-opacity hover:opacity-90 disabled:opacity-60"
+            style={{ background: "linear-gradient(135deg, #2e9c98 0%, #1f6f6c 55%, #123f3d 100%)" }}
+          >
+            <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10" />
+            <div className="pointer-events-none absolute -bottom-5 right-10 h-20 w-20 rounded-full bg-white/5" />
+            <div className="relative flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/15 p-2.5">
+                <IconGlyph variant="sparkle" accent="#a8f2e5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-serif text-[15px] font-semibold text-white/90">Ton Wrapped du mois</p>
+                <p className="text-xs text-white/55">Retrouve le récap en stories de ton mois précédent</p>
+              </div>
+              <p className="shrink-0 text-[11px] font-medium text-white/60">
+                {wrappedLoading ? "…" : wrappedEmpty ? "Rien à afficher" : "Revoir →"}
+              </p>
+            </div>
+          </button>
+
           {top5Authors.length > 0 && (
             <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
               <h2 className="font-serif text-[15px] font-medium text-ink">Classement par auteur</h2>
@@ -486,6 +528,13 @@ export default function DashboardPage() {
       )}
 
       {showPodium && <PodiumModal onClose={() => setShowPodium(false)} />}
+      {wrapped && (
+        <WrappedStory
+          stats={wrapped}
+          profile={{ displayName, avatarUrl }}
+          onClose={() => setWrapped(null)}
+        />
+      )}
     </div>
   );
 }

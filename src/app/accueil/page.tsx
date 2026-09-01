@@ -11,6 +11,8 @@ import AddBookModal from "../../components/AddBookModal";
 import LogReadingModal from "../../components/LogReadingModal";
 import PodiumModal from "../../components/PodiumModal";
 import Lightbox from "../../components/Lightbox";
+import WrappedStory, { IconGlyph } from "../../components/WrappedStory";
+import { getMonthlyWrapped, type WrappedStats } from "../../lib/wrapped";
 import { notifyUser } from "../../lib/push.client";
 
 const today = new Intl.DateTimeFormat("fr-FR", {
@@ -76,6 +78,11 @@ export default function AccueilPage() {
   const [yesterdayChampion, setYesterdayChampion] = useState<Champion | null>(null);
   const [showPodium, setShowPodium] = useState(false);
   const [likeMap, setLikeMap] = useState<Map<string, { count: number; liked: boolean }>>(new Map());
+
+  // Wrapped du mois précédent — teaser cliquable sur l'accueil
+  const [wrapped, setWrapped] = useState<WrappedStats | null>(null);
+  const [showWrapped, setShowWrapped] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
   // Members
   const [members, setMembers] = useState<Profile[]>([]);
@@ -353,6 +360,20 @@ export default function AccueilPage() {
     load();
     loadClub();
   }, [load, loadClub]);
+
+  // Teaser du Wrapped du mois précédent, sur l'accueil
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      const { data: profile } = await supabase.from("user_profiles").select("avatar_url").eq("id", userId).single();
+      setAvatarUrl((profile as { avatar_url?: string | null } | null)?.avatar_url ?? null);
+
+      const now = new Date();
+      const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const stats = await getMonthlyWrapped(userId, prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1);
+      setWrapped(stats);
+    })();
+  }, [userId]);
 
   const handleLike = useCallback(async (log: ActivityLog) => {
     if (!userId || log.user_id === userId) return;
@@ -846,6 +867,33 @@ export default function AccueilPage() {
         })()}
       </section>
 
+      {/* Wrapped du mois précédent */}
+      {wrapped && (
+        <section className="reveal flex flex-col gap-3" style={{ "--delay": "0.2s" } as React.CSSProperties}>
+          <button
+            onClick={() => setShowWrapped(true)}
+            className="relative w-full overflow-hidden rounded-2xl p-4 text-left shadow-md transition-opacity hover:opacity-90"
+            style={{ background: "linear-gradient(135deg, #2e9c98 0%, #1f6f6c 55%, #123f3d 100%)" }}
+          >
+            <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10" />
+            <div className="pointer-events-none absolute -bottom-5 right-10 h-20 w-20 rounded-full bg-white/5" />
+            <div className="relative flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/15 p-2.5">
+                <IconGlyph variant="sparkle" accent="#a8f2e5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="font-serif text-[15px] font-semibold text-white/90">Ton Wrapped de {wrapped.monthLabel.split(" ")[0]}</p>
+                <p className="text-xs text-white/55">
+                  {wrapped.totalPages.toLocaleString("fr-FR")} pages lues
+                  {wrapped.booksCompleted.length > 0 && `, ${wrapped.booksCompleted.length} livre${wrapped.booksCompleted.length > 1 ? "s" : ""} terminé${wrapped.booksCompleted.length > 1 ? "s" : ""}`}
+                </p>
+              </div>
+              <p className="shrink-0 text-[11px] font-medium text-white/60">Revoir →</p>
+            </div>
+          </button>
+        </section>
+      )}
+
       {/* Challenges actifs */}
       {activeChallenges.length > 0 && (
         <section className="reveal flex flex-col gap-3" style={{ "--delay": "0.24s" } as React.CSSProperties}>
@@ -907,6 +955,14 @@ export default function AccueilPage() {
         onSaved={(m) => { setShowLog(false); showToast(m); load(); loadClub(); }}
       />
       {showPodium && <PodiumModal onClose={() => setShowPodium(false)} />}
+
+      {showWrapped && wrapped && (
+        <WrappedStory
+          stats={wrapped}
+          profile={{ displayName: displayName || "Toi", avatarUrl }}
+          onClose={() => setShowWrapped(false)}
+        />
+      )}
 
       {/* Mini-modale note / review (style Letterboxd) */}
       {noteModal && (
