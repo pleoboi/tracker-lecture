@@ -92,7 +92,7 @@ export default function AccueilPage() {
 
   // Challenges actifs
   const [activeChallenges, setActiveChallenges] = useState<
-    { id: string; title: string; metric: string; target_value: number | null; start_date: string; end_date: string; myScore: number }[]
+    { id: string; title: string; metric: string; target_value: number | null; reward_points: number; start_date: string; end_date: string; myScore: number }[]
   >([]);
 
   // Mini-modal note / review
@@ -422,13 +422,13 @@ export default function AccueilPage() {
       const ids = (parts as { challenge_id: string }[]).map((p) => p.challenge_id);
       const { data: chs } = await supabase
         .from("challenges")
-        .select("id, title, metric, target_value, start_date, end_date")
+        .select("id, title, metric, target_value, reward_points, start_date, end_date")
         .in("id", ids)
         .lte("start_date", today)
         .gte("end_date", today);
       if (!chs?.length) return;
       const enriched = await Promise.all(
-        (chs as { id: string; title: string; metric: string; target_value: number; start_date: string; end_date: string }[]).map(async (c) => {
+        (chs as { id: string; title: string; metric: string; target_value: number; reward_points: number; start_date: string; end_date: string }[]).map(async (c) => {
           let myScore = 0;
           if (c.metric === "pages") {
             const { data } = await supabase
@@ -927,8 +927,15 @@ export default function AccueilPage() {
                   </div>
                   {hasTarget && (
                     <div className="flex flex-col gap-1">
-                      <ProgressBar value={progress} color="var(--color-violet)" />
-                      <p className="text-right text-[10px] font-medium text-muted">{Math.round(progress * 100)}%</p>
+                      <ProgressBar value={progress} color={progress >= 1 ? "var(--color-success)" : "var(--color-violet)"} />
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-medium text-muted">
+                          {progress >= 1 ? "Objectif atteint ✓" : `${Math.round(progress * 100)}%`}
+                        </p>
+                        {c.reward_points > 0 && (
+                          <p className="text-[10px] font-bold text-violet-deep">+{c.reward_points} pts</p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </button>

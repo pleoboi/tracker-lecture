@@ -28,7 +28,7 @@ const FICTION_KEYS = [
   "romance", "mystery", "thriller", "horror", "adventure", "young adult",
   "comics", "manga", "children", "graphic novel", "literary fiction",
   "historical fiction", "crime", "detective", "suspense", "fantastique",
-  "policier", "jeunesse", "bande dessinée",
+  "policier", "jeunesse", "bande dessinée", "roman",
 ];
 const NONFICTION_KEYS = [
   "non-fiction", "nonfiction", "biography", "autobiography", "history",
@@ -38,12 +38,35 @@ const NONFICTION_KEYS = [
   "développement personnel", "guerre",
 ];
 
+const NONFICTION_EXACT = new Set(["non-fiction", "nonfiction"]);
+
+// La quasi-totalité des livres portent une étiquette EXPLICITE "Fiction" ou
+// "Non-Fiction" parmi leurs genres — elle doit toujours trancher en premier.
+// Le bug précédent : des thèmes comme "Crime", "Histoire" ou "Policier" (dans
+// FICTION_KEYS pour détecter un roman policier) apparaissent aussi sur des
+// livres NON-FICTION (un témoignage de guerre, un true crime…) — un livre
+// explicitement tagué "Non-Fiction" + "Crime" + "Histoire" se retrouvait
+// classé Fiction à cause de ces mots-clés thématiques, alors que l'étiquette
+// du livre disait le contraire. On ne retombe sur les mots-clés que si aucune
+// étiquette explicite n'est présente.
 function classifyFiction(genre: string | null | undefined): "Fiction" | "Non-Fiction" | "Inconnu" {
   if (!genre) return "Inconnu";
-  const g = genre.toLowerCase().trim();
-  if (FICTION_KEYS.some((k) => g.includes(k))) return "Fiction";
-  if (NONFICTION_KEYS.some((k) => g.includes(k))) return "Non-Fiction";
-  return "Inconnu";
+  const tokens = genre.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);
+  if (!tokens.length) return "Inconnu";
+
+  if (tokens.includes("fiction")) return "Fiction";
+  if (tokens.some((t) => NONFICTION_EXACT.has(t))) return "Non-Fiction";
+
+  // Pas d'étiquette explicite : on retombe sur les mots-clés de genre.
+  let sawFiction = false;
+  let sawNonFiction = false;
+  for (const t of tokens) {
+    if (FICTION_KEYS.some((k) => t.includes(k))) { sawFiction = true; continue; }
+    if (NONFICTION_KEYS.some((k) => t.includes(k))) sawNonFiction = true;
+  }
+  if (sawFiction && !sawNonFiction) return "Fiction";
+  if (sawNonFiction && !sawFiction) return "Non-Fiction";
+  return "Inconnu"; // signaux contradictoires sans étiquette explicite : indécidable
 }
 
 function SectionLabel({ label }: { label: string }) {

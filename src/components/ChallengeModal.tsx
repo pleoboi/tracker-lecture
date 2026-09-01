@@ -9,6 +9,7 @@ export interface ChallengeSummary {
   title: string;
   metric: string;
   target_value: number | null;
+  reward_points?: number | null;
   start_date: string;
   end_date: string;
 }
@@ -121,6 +122,7 @@ export default function ChallengeModal({
 
   const metricLabel = challenge.metric === "pages" ? "pages" : challenge.metric === "books" ? "livres" : "sessions";
   const daysLeft = Math.max(0, Math.ceil((new Date(challenge.end_date).getTime() - Date.now()) / 86_400_000));
+  const isGoal = !!challenge.target_value;
 
   return (
     <div
@@ -134,13 +136,20 @@ export default function ChallengeModal({
         {/* Header */}
         <div className="mb-4 flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">Classement du challenge</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted">
+              {isGoal ? "Progression du challenge" : "Classement du challenge"}
+            </p>
             <h2 className="font-serif text-xl font-bold leading-tight text-ink">{challenge.title}</h2>
             <p className="mt-0.5 text-[11px] text-muted">
               {daysLeft === 0 ? "Dernier jour" : `${daysLeft} jour${daysLeft > 1 ? "s" : ""} restant${daysLeft > 1 ? "s" : ""}`}
               {" · "}en {metricLabel}
-              {challenge.target_value ? ` · objectif ${challenge.target_value.toLocaleString("fr-FR")}` : ""}
+              {isGoal ? ` · objectif ${challenge.target_value!.toLocaleString("fr-FR")}` : ""}
             </p>
+            {isGoal && !!challenge.reward_points && (
+              <span className="mt-1 inline-flex items-center rounded-full bg-violet-soft px-2 py-0.5 text-[10px] font-bold text-violet-deep">
+                +{challenge.reward_points} pts pour ceux qui atteignent l&apos;objectif
+              </span>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -160,6 +169,7 @@ export default function ChallengeModal({
           <div className="flex flex-col gap-2">
             {ranking.map((r, i) => {
               const isMe = r.userId === currentUserId;
+              const done = isGoal && r.score >= (challenge.target_value ?? 0);
               return (
                 <div
                   key={r.userId}
@@ -167,20 +177,30 @@ export default function ChallengeModal({
                     isMe ? "border-violet/40 bg-violet-soft" : "border-line bg-card"
                   }`}
                 >
-                  <span
-                    className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-serif text-[12px] font-black ${
-                      i < 3 ? `${RANK_STYLES[i].bg} ${RANK_STYLES[i].text}` : "bg-input text-muted"
-                    }`}
-                  >
-                    {i + 1}
-                  </span>
+                  {isGoal ? (
+                    <span
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-black ${
+                        done ? "bg-success text-cream" : "border border-line text-muted"
+                      }`}
+                    >
+                      {done ? "✓" : ""}
+                    </span>
+                  ) : (
+                    <span
+                      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full font-serif text-[12px] font-black ${
+                        i < 3 ? `${RANK_STYLES[i].bg} ${RANK_STYLES[i].text}` : "bg-input text-muted"
+                      }`}
+                    >
+                      {i + 1}
+                    </span>
+                  )}
                   <AvatarImg url={r.avatarUrl} name={r.name} className="h-8 w-8 text-xs" />
                   <p className={`min-w-0 flex-1 truncate font-serif text-[14px] font-bold ${isMe ? "text-violet-deep" : "text-ink"}`}>
                     {isMe ? "Toi" : r.name}
                   </p>
                   <p className="shrink-0 text-[12px] font-semibold text-muted">
                     {r.score.toLocaleString("fr-FR")}
-                    {challenge.target_value ? ` / ${challenge.target_value.toLocaleString("fr-FR")}` : ""} {metricLabel}
+                    {isGoal ? ` / ${challenge.target_value!.toLocaleString("fr-FR")}` : ""} {metricLabel}
                   </p>
                 </div>
               );

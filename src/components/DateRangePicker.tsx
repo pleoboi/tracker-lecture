@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 
-export type Preset = "month" | "3m" | "ytd" | "custom";
+export type Preset = "month" | "3m" | "ytd" | "all" | "custom";
 
 export interface DateRange {
   from: string; // YYYY-MM-DD
@@ -29,6 +29,9 @@ export function buildRange(preset: Preset, customFrom?: string, customTo?: strin
     }
     case "ytd":
       return { from: fmt(y, 1, 1), to: today, preset };
+    case "all":
+      // Assez tôt pour couvrir tout l'historique réaliste d'un compte Swena.
+      return { from: "2000-01-01", to: today, preset };
     case "custom":
       return { from: customFrom ?? today, to: customTo ?? today, preset };
   }
@@ -40,6 +43,7 @@ const LABELS: Record<Preset, string> = {
   month: "Ce mois",
   "3m": "3 mois",
   ytd: "YTD",
+  all: "Tout",
   custom: "Perso",
 };
 
@@ -148,7 +152,7 @@ export function DateRangePicker({
   return (
     <div className="relative" ref={calRef}>
       <div className="flex flex-wrap gap-1.5">
-        {(["month", "3m", "ytd"] as Preset[]).map((p) => (
+        {(["month", "3m", "ytd", "all"] as Preset[]).map((p) => (
           <button
             key={p}
             onClick={() => { onChange(buildRange(p)); setShowCal(false); }}

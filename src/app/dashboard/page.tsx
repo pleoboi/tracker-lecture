@@ -235,14 +235,20 @@ export default function DashboardPage() {
   let chartPagesData: { name: string; value: number }[];
   let chartBooksData: { name: string; value: number }[];
 
+  // Regroupe les livres terminés par une clé de date (année, ou jour du mois courant).
+  const completionDateOf = (book: Book): string | null => {
+    if (book.status !== "completed") return null;
+    let cs: string | null = book.date_read ?? null;
+    if (!cs) { const last = logs.filter((l) => l.book_id === book.id).sort((a, b) => b.date.localeCompare(a.date))[0]; if (last) cs = last.date; }
+    return cs;
+  };
+
   if (dateRange.preset === "month") {
     const y = now.getFullYear();
     const mo = now.getMonth() + 1;
     const dayBooksMap = new Map<string, number>();
     books.forEach((book) => {
-      if (book.status !== "completed") return;
-      let cs: string | null = book.date_read ?? null;
-      if (!cs) { const last = logs.filter((l) => l.book_id === book.id).sort((a, b) => b.date.localeCompare(a.date))[0]; if (last) cs = last.date; }
+      const cs = completionDateOf(book);
       if (cs && cs >= dateFrom && cs <= dateTo) dayBooksMap.set(cs, (dayBooksMap.get(cs) || 0) + 1);
     });
     chartPagesData = Array.from({ length: now.getDate() }, (_, i) => {
@@ -253,6 +259,26 @@ export default function DashboardPage() {
       const d = `${y}-${String(mo).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`;
       return { name: String(i + 1), value: dayBooksMap.get(d) || 0 };
     });
+  } else if (dateRange.preset === "all") {
+    // Trop d'historique pour un axe mensuel — on agrège par année, à partir de la
+    // première activité réelle (pas de 2000, qui serait vide).
+    const pagesByYear = new Map<number, number>();
+    logs.forEach((l) => {
+      if (l.date < dateFrom || l.date > dateTo) return;
+      const y = new Date(l.date + "T00:00:00").getFullYear();
+      pagesByYear.set(y, (pagesByYear.get(y) || 0) + (l.pages_read || 0));
+    });
+    const booksByYear = new Map<number, number>();
+    books.forEach((book) => {
+      const cs = completionDateOf(book);
+      if (!cs || cs < dateFrom || cs > dateTo) return;
+      const y = new Date(cs + "T00:00:00").getFullYear();
+      booksByYear.set(y, (booksByYear.get(y) || 0) + 1);
+    });
+    const years = new Set([...pagesByYear.keys(), ...booksByYear.keys()]);
+    const sortedYears = years.size ? [...years].sort((a, b) => a - b) : [now.getFullYear()];
+    chartPagesData = sortedYears.map((y) => ({ name: String(y), value: pagesByYear.get(y) || 0 }));
+    chartBooksData = sortedYears.map((y) => ({ name: String(y), value: booksByYear.get(y) || 0 }));
   } else {
     chartPagesData = chartMonths.map(({ name, m }) => ({ name, value: pagesByMonth[m] }));
     chartBooksData = chartMonths.map(({ name, m }) => ({ name, value: booksByMonth[m] }));
@@ -289,13 +315,34 @@ export default function DashboardPage() {
       return { name: String(i + 1), value: dayMap.get(d) || 0 };
     });
 
+  const friendPagesByYear = new Map<number, number>();
+  const friendBooksByYear = new Map<number, number>();
+  if (dateRange.preset === "all") {
+    friendLogs.forEach((log) => {
+      if (log.date < dateFrom || log.date > dateTo) return;
+      const y = new Date(log.date + "T00:00:00").getFullYear();
+      friendPagesByYear.set(y, (friendPagesByYear.get(y) || 0) + (log.pages_read || 0));
+    });
+    friendBooks.forEach((book) => {
+      let cs: string | null = book.date_read;
+      if (!cs) { const last = friendLogs.filter((l) => l.book_id === book.id).sort((a, b) => b.date.localeCompare(a.date))[0]; if (last) cs = last.date; }
+      if (!cs || cs < dateFrom || cs > dateTo) return;
+      const y = new Date(cs + "T00:00:00").getFullYear();
+      friendBooksByYear.set(y, (friendBooksByYear.get(y) || 0) + 1);
+    });
+  }
+
   const friendPageLineData = dateRange.preset === "month"
     ? mkDailyFriend(friendDayPages)
-    : chartMonths.map(({ name, m }) => ({ name, value: friendPagesByMonth[m] }));
+    : dateRange.preset === "all"
+      ? chartPagesData.map(({ name }) => ({ name, value: friendPagesByYear.get(Number(name)) || 0 }))
+      : chartMonths.map(({ name, m }) => ({ name, value: friendPagesByMonth[m] }));
 
   const friendBooksLineData = dateRange.preset === "month"
     ? mkDailyFriend(friendDayBooks)
-    : chartMonths.map(({ name, m }) => ({ name, value: friendBooksByMonth[m] }));
+    : dateRange.preset === "all"
+      ? chartBooksData.map(({ name }) => ({ name, value: friendBooksByYear.get(Number(name)) || 0 }))
+      : chartMonths.map(({ name, m }) => ({ name, value: friendBooksByMonth[m] }));
 
   // Solo par défaut : lignes d'amis uniquement quand un ami est explicitement sélectionné
   const activePagesLines: FriendLine[] | undefined = selectedFriendId
@@ -331,6 +378,21 @@ export default function DashboardPage() {
   const extraAuthors = authorRanking.slice(5);
   const maxAuthorBooks = top5Authors[0]?.[1] ?? 1;
 
+  // La suite "Analyse approfondie" (genres, fiction/non-fiction, pages, auteurs…)
+  // ignorait complètement la période sélectionnée et affichait toujours tout
+  // l'historique. On la fait maintenant porter uniquement sur les livres
+  // terminés dans la plage choisie (les livres non terminés ne comptent de
+  // toute façon pas dans ces analyses).
+  const booksInRange = books.filter((b) => {
+    if (b.status !== "completed") return true;
+    const cs = completionDateOf(b);
+    return !!cs && cs >= dateFrom && cs <= dateTo;
+  });
+  const completedInRangeCount = booksInRange.filter((b) => b.status === "completed").length;
+  // En dessous de 3 livres terminés sur la période, les graphiques (genres,
+  // fiction/non-fiction, auteurs…) n'ont rien de significatif à montrer.
+  const showDeepAnalysis = completedInRangeCount >= 3;
+
   const openLastWrapped = async () => {
     if (!userId || wrappedLoading) return;
     setWrappedLoading(true);
@@ -342,8 +404,16 @@ export default function DashboardPage() {
     else { setWrappedEmpty(true); setTimeout(() => setWrappedEmpty(false), 3000); }
   };
 
-  const periodLabel = dateRange.preset === "month" ? "ce mois" : dateRange.preset === "3m" ? "ces 3 mois" : "cette année";
-  const rangeLabel = isYTD ? `YTD ${now.getFullYear()}` : dateRange.preset === "3m" ? "3 derniers mois" : now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+  const periodLabel = dateRange.preset === "month" ? "ce mois"
+    : dateRange.preset === "3m" ? "ces 3 mois"
+    : dateRange.preset === "all" ? "au total"
+    : dateRange.preset === "custom" ? "sur la période"
+    : "cette année";
+  const rangeLabel = isYTD ? `YTD ${now.getFullYear()}`
+    : dateRange.preset === "3m" ? "3 derniers mois"
+    : dateRange.preset === "all" ? "Depuis le début"
+    : dateRange.preset === "custom" ? `${dateFrom} → ${dateTo}`
+    : now.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
 
   // Évite l'import inutilisé
   void buildRange;
@@ -507,23 +577,31 @@ export default function DashboardPage() {
 
           <RatingsChart counts={ratingCounts} average={ratingAvg} total={ratedCount} />
 
-          {/* ── Suite analytique avancée ─────────────────────────────── */}
-          <div className="flex items-center gap-2">
-            <div className="h-px flex-1 bg-line" />
-            <span className="text-[9.5px] font-bold uppercase tracking-widest text-muted">Analyse approfondie</span>
-            <div className="h-px flex-1 bg-line" />
-          </div>
+          {showDeepAnalysis ? (
+            <>
+              {/* ── Suite analytique avancée ─────────────────────────────── */}
+              <div className="flex items-center gap-2">
+                <div className="h-px flex-1 bg-line" />
+                <span className="text-[9.5px] font-bold uppercase tracking-widest text-muted">Analyse approfondie</span>
+                <div className="h-px flex-1 bg-line" />
+              </div>
 
-          <GenreBreakdown books={books} />
+              <GenreBreakdown books={booksInRange} />
 
-          <FictionDonut books={books} />
-          <PageCountHistogram books={books} />
+              <FictionDonut books={booksInRange} />
+              <PageCountHistogram books={booksInRange} />
 
-          <AuthorDeepDive books={books} />
+              <AuthorDeepDive books={booksInRange} />
 
-          <CriticalDivergence books={books} />
+              <CriticalDivergence books={booksInRange} />
 
-          <PublicationTimeline books={books} />
+              <PublicationTimeline books={booksInRange} />
+            </>
+          ) : completedInRangeCount > 0 ? (
+            <p className="py-4 text-center text-[11.5px] text-muted">
+              Pas assez de livres terminés sur cette période pour une analyse détaillée (genres, auteurs…).
+            </p>
+          ) : null}
         </>
       )}
 

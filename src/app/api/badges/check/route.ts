@@ -417,6 +417,64 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Défis à objectif individuel : points de récompense ───────────────────
+  // Contrairement au classement compétitif ci-dessus (un seul gagnant), ce
+  // mode récompense TOUT participant qui atteint la cible (ex. "Finir 5
+  // livres avant la fin de l'année"). On ne verse les points qu'une fois par
+  // participant, en marquant challenge_participants.completed_at.
+  let challengePointsAwarded = 0;
+  const { data: myPendingGoalParts } = await db
+    .from("challenge_participants")
+    .select("challenge_id")
+    .eq("user_id", userId)
+    .eq("status", "accepted")
+    .is("completed_at", null);
+  const pendingGoalChallengeIds = [...new Set(
+    ((myPendingGoalParts ?? []) as { challenge_id: string }[]).map((p) => p.challenge_id)
+  )];
+
+  if (pendingGoalChallengeIds.length > 0) {
+    const { data: goalChallengesData } = await db
+      .from("challenges")
+      .select("id, metric, target_value, reward_points, start_date, end_date")
+      .in("id", pendingGoalChallengeIds)
+      .not("target_value", "is", null)
+      .lte("start_date", todayStr);
+    const goalChallenges = (goalChallengesData ?? []) as {
+      id: string; metric: "pages" | "books" | "sessions";
+      target_value: number; reward_points: number; start_date: string; end_date: string;
+    }[];
+
+    for (const c of goalChallenges) {
+      const scores = await computeChallengeScores(c.metric, c.start_date, c.end_date, [userId]);
+      const myScore = scores.get(userId) ?? 0;
+      if (myScore < c.target_value) continue;
+      await db.from("challenge_participants")
+        .update({ completed_at: new Date().toISOString() })
+        .eq("challenge_id", c.id).eq("user_id", userId);
+      challengePointsAwarded += c.reward_points ?? 0;
+    }
+
+    if (challengePointsAwarded > 0) {
+      const { data: profRow } = await db.from("user_profiles")
+        .select("challenge_bonus_points").eq("id", userId).single();
+      const currentChallengePoints = (profRow as { challenge_bonus_points?: number } | null)?.challenge_bonus_points ?? 0;
+      await db.from("user_profiles")
+        .update({ challenge_bonus_points: currentChallengePoints + challengePointsAwarded })
+        .eq("id", userId);
+
+      try {
+        await sendPushToUser(userId, {
+          title: "Swena",
+          body: `Objectif de challenge atteint : +${challengePointsAwarded} points !`,
+          url: `/membre/${userId}`,
+        }, "badges");
+      } catch (e) {
+        console.error("[badges] push error (challenge points):", e);
+      }
+    }
+  }
+
   // ── Ancienneté du compte ──────────────────────────────────────────────────
   if (profile?.created_at) {
     const accountAgeDays = Math.floor((Date.now() - new Date(profile.created_at).getTime()) / 86400000);
@@ -611,6 +669,7 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     awarded: uniqueAward.map((d) => ({ id: d.id, name: d.name, tier: d.tier, points: d.points })),
+    challengePointsAwarded,
     stats,
   });
 }

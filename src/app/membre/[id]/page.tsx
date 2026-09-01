@@ -39,6 +39,7 @@ interface Profile {
 interface ChallengeParticipantRow {
   user_id: string;
   status: string;
+  completed_at?: string | null;
 }
 
 interface ChallengeRow {
@@ -47,6 +48,7 @@ interface ChallengeRow {
   title: string;
   metric: "pages" | "books" | "sessions";
   target_value: number | null;
+  reward_points: number;
   start_date: string;
   end_date: string;
   created_at: string;
@@ -151,6 +153,8 @@ function ChallengeCard({ challenge, currentUserId, profileMap, onUpdate }: {
     onUpdate();
   };
 
+  const isGoal = !!challenge.target_value;
+
   return (
     <div className="overflow-hidden rounded-2xl border border-line bg-card">
       <div className="flex items-start justify-between gap-2 p-4">
@@ -159,7 +163,13 @@ function ChallengeCard({ challenge, currentUserId, profileMap, onUpdate }: {
           <p className="mt-0.5 text-[11px] text-muted">
             {new Date(challenge.start_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} —{" "}
             {new Date(challenge.end_date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} · {metricLabel}
+            {isGoal && ` · objectif ${challenge.target_value!.toLocaleString("fr-FR")}`}
           </p>
+          {isGoal && challenge.reward_points > 0 && (
+            <span className="mt-1 inline-flex items-center rounded-full bg-violet-soft px-2 py-0.5 text-[10px] font-bold text-violet-deep">
+              +{challenge.reward_points} pts à l&apos;objectif
+            </span>
+          )}
         </div>
         <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${statusCls}`}>
           {statusLabel}
@@ -186,8 +196,11 @@ function ChallengeCard({ challenge, currentUserId, profileMap, onUpdate }: {
 
       {(isActive || isEnded) && accepted.length > 0 && (
         <div className="border-t border-line px-4 pb-4 pt-3">
+          {!isGoal && (
+            <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted">Classement</p>
+          )}
           {loadingScores ? (
-            <p className="py-2 text-center text-[11px] text-muted">Chargement du classement…</p>
+            <p className="py-2 text-center text-[11px] text-muted">Chargement…</p>
           ) : (
             <div className="flex flex-col gap-2.5">
               {sorted.map((p, i) => {
@@ -195,13 +208,23 @@ function ChallengeCard({ challenge, currentUserId, profileMap, onUpdate }: {
                 const prof = profileMap.get(p.user_id);
                 const isMe = p.user_id === currentUserId;
                 const maxScore = scores ? Math.max(...[...scores.values()], 1) : 1;
-                const barPct = Math.min(100, (score / maxScore) * 100);
+                const target = challenge.target_value ?? 0;
+                const done = isGoal ? (score >= target || !!p.completed_at) : false;
+                const barPct = isGoal ? Math.min(100, (score / Math.max(target, 1)) * 100) : Math.min(100, (score / maxScore) * 100);
                 return (
                   <div
                     key={p.user_id}
                     className={`flex items-center gap-2 rounded-xl p-2 ${isMe ? "bg-violet-soft" : ""}`}
                   >
-                    <span className="w-4 shrink-0 text-center text-[10px] font-bold text-muted">{i + 1}</span>
+                    {isGoal ? (
+                      <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold ${
+                        done ? "bg-success text-cream" : "border border-line text-transparent"
+                      }`}>
+                        {done ? "✓" : "·"}
+                      </span>
+                    ) : (
+                      <span className="w-4 shrink-0 text-center text-[10px] font-bold text-muted">{i + 1}</span>
+                    )}
                     <AvatarImg
                       url={prof?.avatar_url ?? null}
                       name={prof?.display_name ?? "?"}
@@ -213,11 +236,11 @@ function ChallengeCard({ challenge, currentUserId, profileMap, onUpdate }: {
                         {isMe && <span className="ml-1 text-[9.5px] font-normal text-muted">(toi)</span>}
                       </p>
                       <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-line">
-                        <div className="h-full rounded-full bg-violet" style={{ width: `${barPct}%` }} />
+                        <div className={`h-full rounded-full ${isGoal && done ? "bg-success" : "bg-violet"}`} style={{ width: `${barPct}%` }} />
                       </div>
                     </div>
                     <span className="shrink-0 text-[10.5px] font-bold text-ink">
-                      {score.toLocaleString("fr-FR")}
+                      {score.toLocaleString("fr-FR")}{isGoal && ` / ${target.toLocaleString("fr-FR")}`}
                     </span>
                   </div>
                 );
@@ -314,9 +337,12 @@ export default function MembrePage() {
   const [showCreateChallenge, setShowCreateChallenge] = useState(false);
   const [challengeForm, setChallengeForm] = useState({
     title: "",
+    mode: "classement" as "classement" | "objectif",
     metric: "pages" as "pages" | "books" | "sessions",
     startDate: todayISO(),
     endDate: "",
+    targetValue: "",
+    rewardPoints: "50",
   });
   const [inviteIds, setInviteIds] = useState<string[]>([]);
   const [followedMembers, setFollowedMembers] = useState<{ id: string; display_name: string; avatar_url: string | null }[]>([]);
@@ -517,7 +543,7 @@ export default function MembrePage() {
     if (!allIds.length) { setChallenges([]); setChallengesLoading(false); return; }
     const { data: challengeData } = await supabase
       .from("challenges")
-      .select("*, challenge_participants(user_id, status)")
+      .select("*, challenge_participants(user_id, status, completed_at)")
       .in("id", allIds)
       .order("end_date", { ascending: false });
     const rows = (challengeData ?? []) as ChallengeRow[];
@@ -551,12 +577,15 @@ export default function MembrePage() {
 
   const createChallenge = async () => {
     if (!user?.id || !challengeForm.title || !challengeForm.endDate) return;
+    const isGoal = challengeForm.mode === "objectif";
+    if (isGoal && (!challengeForm.targetValue || Number(challengeForm.targetValue) <= 0)) return;
     setSavingChallenge(true);
     const { data: ch } = await supabase.from("challenges").insert({
       creator_id: user.id,
       title: challengeForm.title.trim(),
       metric: challengeForm.metric,
-      target_value: null,
+      target_value: isGoal ? Number(challengeForm.targetValue) : null,
+      reward_points: isGoal ? (Number(challengeForm.rewardPoints) || 50) : 0,
       start_date: challengeForm.startDate,
       end_date: challengeForm.endDate,
     }).select("id").single();
@@ -584,7 +613,7 @@ export default function MembrePage() {
     }
     setSavingChallenge(false);
     setShowCreateChallenge(false);
-    setChallengeForm({ title: "", metric: "pages", startDate: todayISO(), endDate: "" });
+    setChallengeForm({ title: "", mode: "classement", metric: "pages", startDate: todayISO(), endDate: "", targetValue: "", rewardPoints: "50" });
     setInviteIds([]);
     loadChallenges();
   };
@@ -1302,13 +1331,37 @@ export default function MembrePage() {
               <button onClick={() => setShowCreateChallenge(false)} className="text-sm text-muted">✕</button>
             </div>
             <div className="flex flex-col gap-4 overflow-y-auto px-5 py-4 max-h-[70dvh]">
+              {/* Type de challenge */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] font-semibold uppercase tracking-wider text-muted">Type</label>
+                <div className="flex gap-2">
+                  {([
+                    { id: "classement" as const, label: "Classement", desc: "Un vainqueur, le plus gros score" },
+                    { id: "objectif" as const, label: "Objectif individuel", desc: "Chacun son rythme, tous récompensés" },
+                  ]).map(({ id, label, desc }) => (
+                    <button
+                      key={id}
+                      onClick={() => setChallengeForm((f) => ({ ...f, mode: id }))}
+                      className={`flex-1 rounded-xl border px-3 py-2 text-left transition-colors ${
+                        challengeForm.mode === id
+                          ? "border-violet bg-violet-soft"
+                          : "border-line bg-card"
+                      }`}
+                    >
+                      <p className={`text-[12px] font-semibold ${challengeForm.mode === id ? "text-violet-deep" : "text-ink"}`}>{label}</p>
+                      <p className="mt-0.5 text-[10px] text-muted">{desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Titre */}
               <div className="flex flex-col gap-1.5">
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-muted">Titre</label>
                 <input
                   value={challengeForm.title}
                   onChange={(e) => setChallengeForm((f) => ({ ...f, title: e.target.value }))}
-                  placeholder="Ex. : Juillet littéraire"
+                  placeholder={challengeForm.mode === "objectif" ? "Ex. : Finir 5 livres avant la fin de l'année" : "Ex. : Juillet littéraire"}
                   className="w-full rounded-xl border border-line bg-input px-3.5 py-2.5 text-sm text-ink outline-none focus:border-violet"
                 />
               </div>
@@ -1336,6 +1389,35 @@ export default function MembrePage() {
                   ))}
                 </div>
               </div>
+
+              {/* Objectif + points de récompense (mode "objectif individuel" uniquement) */}
+              {challengeForm.mode === "objectif" && (
+                <div className="flex gap-3">
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                      Objectif ({challengeForm.metric === "pages" ? "pages" : challengeForm.metric === "books" ? "livres" : "sessions"})
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      value={challengeForm.targetValue}
+                      onChange={(e) => setChallengeForm((f) => ({ ...f, targetValue: e.target.value }))}
+                      placeholder="Ex. : 5"
+                      className="w-full rounded-xl border border-line bg-input px-3.5 py-2.5 text-sm text-ink outline-none focus:border-violet"
+                    />
+                  </div>
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-muted">Points offerts</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={challengeForm.rewardPoints}
+                      onChange={(e) => setChallengeForm((f) => ({ ...f, rewardPoints: e.target.value }))}
+                      className="w-full rounded-xl border border-line bg-input px-3.5 py-2.5 text-sm text-ink outline-none focus:border-violet"
+                    />
+                  </div>
+                </div>
+              )}
 
               {/* Dates */}
               <div className="flex gap-3">
@@ -1386,7 +1468,10 @@ export default function MembrePage() {
 
               <button
                 onClick={createChallenge}
-                disabled={savingChallenge || !challengeForm.title || !challengeForm.endDate}
+                disabled={
+                  savingChallenge || !challengeForm.title || !challengeForm.endDate ||
+                  (challengeForm.mode === "objectif" && (!challengeForm.targetValue || Number(challengeForm.targetValue) <= 0))
+                }
                 className="mt-1 w-full rounded-2xl bg-violet py-3.5 text-[14px] font-bold text-cream disabled:opacity-40"
               >
                 {savingChallenge ? "Création…" : "Créer le challenge"}

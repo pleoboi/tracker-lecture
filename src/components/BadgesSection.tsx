@@ -441,7 +441,7 @@ function LeaderboardView({ currentUserId, limit }: { currentUserId?: string; lim
     const load = async () => {
       const [{ data: allBadges }, { data: profiles }] = await Promise.all([
         supabase.from("user_badges").select("user_id, badge_id"),
-        supabase.from("user_profiles").select("id, display_name, avatar_url"),
+        supabase.from("user_profiles").select("id, display_name, avatar_url, sprint_bonus_points, challenge_bonus_points"),
       ]);
       const pts = new Map<string, number>();
       const cnt = new Map<string, number>();
@@ -452,9 +452,10 @@ function LeaderboardView({ currentUserId, limit }: { currentUserId?: string; lim
         cnt.set(ub.user_id, (cnt.get(ub.user_id) ?? 0) + 1);
       }
       setEntries(
-        ((profiles ?? []) as { id: string; display_name: string; avatar_url: string | null }[])
+        ((profiles ?? []) as { id: string; display_name: string; avatar_url: string | null; sprint_bonus_points?: number; challenge_bonus_points?: number }[])
           .map((p) => ({ id: p.id, display_name: p.display_name, avatar_url: p.avatar_url,
-            totalPoints: pts.get(p.id) ?? 0, badgeCount: cnt.get(p.id) ?? 0 }))
+            totalPoints: (pts.get(p.id) ?? 0) + (p.sprint_bonus_points ?? 0) + (p.challenge_bonus_points ?? 0),
+            badgeCount: cnt.get(p.id) ?? 0 }))
           .sort((a, b) => b.totalPoints - a.totalPoints)
       );
     };
@@ -548,6 +549,7 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
   const [awardQueue,    setAwardQueue]    = useState<BadgeDef[]>([]);
   const [sprintCount,     setSprintCount]     = useState(0);
   const [sprintBonus,     setSprintBonus]     = useState(0);
+  const [challengeBonus,  setChallengeBonus]  = useState(0);
 
   useEffect(() => {
     const savedScroll = window.scrollY;
@@ -583,16 +585,17 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
       }
 
       const [profileRes, ubRes, computedStats] = await Promise.all([
-        supabase.from("user_profiles").select("display_name, avatar_url, sprint_eclair_count, sprint_bonus_points").eq("id", memberId).single(),
+        supabase.from("user_profiles").select("display_name, avatar_url, sprint_eclair_count, sprint_bonus_points, challenge_bonus_points").eq("id", memberId).single(),
         supabase.from("user_badges").select("badge_id, unlocked_at").eq("user_id", memberId)
           .order("unlocked_at", { ascending: false }),
         fetchBadgeStats(memberId),
       ]);
 
-      const prof = profileRes.data as { display_name: string; avatar_url: string | null; sprint_eclair_count?: number; sprint_bonus_points?: number } | null;
+      const prof = profileRes.data as { display_name: string; avatar_url: string | null; sprint_eclair_count?: number; sprint_bonus_points?: number; challenge_bonus_points?: number } | null;
       setProfile(prof);
       setSprintCount(prof?.sprint_eclair_count ?? 0);
       setSprintBonus(prof?.sprint_bonus_points ?? 0);
+      setChallengeBonus(prof?.challenge_bonus_points ?? 0);
       setUnlocked((ubRes.data ?? []) as { badge_id: string; unlocked_at: string }[]);
       setStats(computedStats);
       setAwardQueue(newlyAwarded);
@@ -602,7 +605,7 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
   }, [memberId, currentUserId]);
 
   const unlockedSet = new Set(unlocked.map((u) => u.badge_id));
-  const totalPoints = getTotalPoints(unlockedSet) + sprintBonus;
+  const totalPoints = getTotalPoints(unlockedSet) + sprintBonus + challengeBonus;
   const lvl         = getLevelProgress(totalPoints);
 
   // ── Grille dédupliquée : une seule carte par famille, palier le plus haut en couleur ──
