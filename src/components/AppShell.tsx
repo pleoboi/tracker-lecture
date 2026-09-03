@@ -380,7 +380,7 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
   );
 }
 
-function BottomNav({ pathname, onPlus }: { pathname: string; onPlus: () => void }) {
+function BottomNav({ pathname, onPlus, userId }: { pathname: string; onPlus: () => void; userId?: string }) {
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   useEffect(() => {
     const vv = window.visualViewport;
@@ -436,9 +436,14 @@ function BottomNav({ pathname, onPlus }: { pathname: string; onPlus: () => void 
           </button>
         </div>
 
-        {mobileNavRight.map((item) => (
-          <NavLink key={item.href} item={item} pathname={pathname} />
-        ))}
+        {mobileNavRight.map((item) => {
+          // "Profil" doit pointer vers la page profil publique (/membre/[id]),
+          // pas vers les réglages du compte (/compte).
+          const resolved = item.href === "/compte" && userId
+            ? { ...item, href: `/membre/${userId}` }
+            : item;
+          return <NavLink key={item.href} item={resolved} pathname={pathname} />;
+        })}
       </nav>
     </div>
   );
@@ -850,7 +855,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {children}
       </main>
 
-      <BottomNav pathname={pathname} onPlus={() => setShowActionMenu(true)} />
+      <BottomNav pathname={pathname} onPlus={() => setShowActionMenu(true)} userId={user?.id} />
 
       {/* Menu d'actions rapides */}
       {showActionMenu && (
