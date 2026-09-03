@@ -75,7 +75,7 @@ const allNavItems: NavItem[] = [
     ),
   },
   {
-    name: "Compte",
+    name: "Profil",
     href: "/compte",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-[22px] w-[22px]">
@@ -86,8 +86,9 @@ const allNavItems: NavItem[] = [
 ];
 
 const desktopNavItems = allNavItems.slice(0, 6);
+// Ordre gauche → droite : Accueil, Journal (futur "Communauté"), (+), Statistiques, Profil
 const mobileNavLeft  = [allNavItems[0], allNavItems[2]];  // Accueil, Journal
-const mobileNavRight = [allNavItems[1], allNavItems[4]];  // Bibliothèque, Statistiques
+const mobileNavRight = [allNavItems[4], allNavItems[6]];  // Statistiques, Compte (Profil)
 
 const NO_SHELL_PATHS = ["/login", "/register", "/", "/email-sent"];
 
