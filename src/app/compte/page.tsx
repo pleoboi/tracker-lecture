@@ -206,19 +206,62 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
     if (!preview) return;
     setImporting(true);
 
-    // ── Phase 1 : déduplication (ISBN13 → similarité Dice titre+auteur) ────────
+    // ── Phase 1 : déduplication (ISBN13 → œuvre Open Library → similarité titre) ─
     const { data: existing } = await supabase
       .from("books")
-      .select("title, author, isbn13")
+      .select("id, title, author, isbn13, openlibrary_work_id")
       .eq("user_id", userId);
 
-    const existingBooks = (existing as (Pick<Book, "title" | "author"> & { isbn13?: string | null })[]) || [];
+    const existingBooks = (existing as (Pick<Book, "title" | "author" | "openlibrary_work_id"> & { id: number; isbn13?: string | null })[]) || [];
     const existingIsbns = new Set(existingBooks.map((b) => b.isbn13).filter(Boolean) as string[]);
+
+    // B — Œuvre Open Library : une édition anglaise et sa traduction française ont
+    // des ISBN totalement différents et des titres sans similarité textuelle, donc
+    // ni le match ISBN ni la similarité de titre ne peuvent les rapprocher. Open
+    // Library regroupe toutes les éditions/traductions d'un livre sous un même
+    // identifiant "œuvre" (ex: OL82563W), résolu par ISBN.
+    const isbnsNeedingResolution = new Set<string>();
+    existingBooks.forEach((b) => { if (b.isbn13 && !b.openlibrary_work_id) isbnsNeedingResolution.add(b.isbn13); });
+    preview.forEach((r) => { if (r.isbn13) isbnsNeedingResolution.add(r.isbn13); });
+
+    const workIdByIsbn = new Map<string, string | null>();
+    existingBooks.forEach((b) => { if (b.isbn13 && b.openlibrary_work_id) workIdByIsbn.set(b.isbn13, b.openlibrary_work_id); });
+    if (isbnsNeedingResolution.size) {
+      try {
+        const res = await fetch("/api/openlibrary/work-id", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ isbns: [...isbnsNeedingResolution] }),
+        });
+        const data = await res.json() as { workIds?: Record<string, string | null> };
+        for (const [isbn, workId] of Object.entries(data.workIds ?? {})) {
+          if (workId) workIdByIsbn.set(isbn, workId);
+        }
+      } catch { /* Open Library indisponible : on continue sans cette détection */ }
+    }
+
+    // Met en cache les work id nouvellement résolus sur les livres existants qui
+    // n'en avaient pas encore, pour accélérer les prochains imports.
+    const toCache = existingBooks.filter((b) => b.isbn13 && !b.openlibrary_work_id && workIdByIsbn.get(b.isbn13));
+    if (toCache.length) {
+      await Promise.all(
+        toCache.map((b) => supabase.from("books").update({ openlibrary_work_id: workIdByIsbn.get(b.isbn13!) }).eq("id", b.id))
+      );
+    }
+
+    const existingWorkIds = new Set(
+      existingBooks.map((b) => b.isbn13 ? workIdByIsbn.get(b.isbn13) : null).filter(Boolean) as string[]
+    );
 
     const toInsert = preview.filter((r) => {
       // A — Match ISBN13 exact
       if (r.isbn13 && existingIsbns.has(r.isbn13)) return false;
-      // B — Similarité titre+auteur (Dice ≥ 85 %)
+      // B — Même œuvre Open Library (doublon multilingue)
+      if (r.isbn13) {
+        const workId = workIdByIsbn.get(r.isbn13);
+        if (workId && existingWorkIds.has(workId)) return false;
+      }
+      // C — Similarité titre+auteur (Dice ≥ 85 %) — doublons même langue
       const rSurname = (r.author || "").toLowerCase().split(/\s+/).pop() ?? "";
       for (const eb of existingBooks) {
         if (titleSimilarity(r.title, eb.title) >= 0.85) {
@@ -338,6 +381,7 @@ function GoodreadsImport({ userId, onDone }: { userId: string; onDone: () => voi
         date_started: r.date_started,
         import_source: "goodreads",
         user_id: userId,
+        openlibrary_work_id: r.isbn13 ? (workIdByIsbn.get(r.isbn13) ?? null) : null,
       }));
       await supabase.from("books").insert(batch);
       done += batch.length;

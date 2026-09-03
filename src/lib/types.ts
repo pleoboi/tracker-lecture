@@ -17,6 +17,10 @@ export interface Book {
   date_started?: string | null;
   import_source?: string | null;
   isbn13?: string | null;
+  // Identifiant "œuvre" Open Library (ex: "OL82563W") — regroupe toutes les
+  // éditions/traductions d'un même livre, contrairement à l'ISBN qui est
+  // propre à une édition. Sert à détecter les doublons multilingues à l'import.
+  openlibrary_work_id?: string | null;
 }
 
 export interface Follow {
