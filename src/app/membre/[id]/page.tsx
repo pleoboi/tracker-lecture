@@ -210,15 +210,21 @@ export default function MembrePage() {
   const memberSince = new Date(profile.created_at).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
   const reviewedCount = completed.filter((b) => !!b.notes?.trim()).length;
 
-  // Menu façon Letterboxd : chaque ligne pousse vers sa propre page.
-  const SECTIONS: { slug: string; label: string; count: number | null }[] = [
-    { slug: "journal",       label: "Journal",       count: logs.length },
-    { slug: "bibliotheque",  label: "Bibliothèque",  count: books.length },
-    { slug: "statistiques",  label: "Statistiques",  count: null },
-    { slug: "badges",        label: "Badges",        count: badgeCount },
-    { slug: "challenges",    label: "Challenges",    count: challengesCount },
-    { slug: "listes",        label: "Listes",        count: listsCount },
-    { slug: "reviews",       label: "Reviews",       count: reviewedCount },
+  // Menu façon Letterboxd : chaque ligne pousse vers sa propre page. Sur SON
+  // PROPRE profil, on renvoie vers l'outil complet et éditable déjà existant
+  // (/journal, /bibliotheque, /dashboard) plutôt que vers la version en
+  // lecture seule — celle-ci ne sert que pour consulter le profil d'un autre
+  // membre (ces pages perso ne savent afficher que "moi"). Badges/Challenges/
+  // Listes/Reviews n'ont pas d'équivalent "perso" hors profil, donc toujours
+  // la sous-page /membre/[id]/…
+  const SECTIONS: { label: string; href: string; count: number | null }[] = [
+    { label: "Journal",      href: isOwn ? "/journal" : `/membre/${memberId}/journal`,           count: logs.length },
+    { label: "Bibliothèque", href: isOwn ? "/bibliotheque" : `/membre/${memberId}/bibliotheque`,  count: books.length },
+    { label: "Statistiques", href: isOwn ? "/dashboard" : `/membre/${memberId}/statistiques`,     count: null },
+    { label: "Badges",       href: `/membre/${memberId}/badges`,     count: badgeCount },
+    { label: "Challenges",   href: `/membre/${memberId}/challenges`, count: challengesCount },
+    { label: "Listes",       href: `/membre/${memberId}/listes`,     count: listsCount },
+    { label: "Reviews",      href: `/membre/${memberId}/reviews`,    count: reviewedCount },
   ];
 
   return (
@@ -436,10 +442,10 @@ export default function MembrePage() {
 
       {/* ── Menu (façon Letterboxd) ────────────────────────────────────────── */}
       <div className="flex flex-col overflow-hidden rounded-2xl border border-line bg-card">
-        {SECTIONS.map(({ slug, label, count }, i) => (
+        {SECTIONS.map(({ label, href, count }, i) => (
           <Link
-            key={slug}
-            href={`/membre/${memberId}/${slug}`}
+            key={href}
+            href={href}
             className={`flex items-center justify-between px-4 py-3.5 text-left transition-colors hover:bg-violet-soft/50 ${i > 0 ? "border-t border-line" : ""}`}
           >
             <span className="text-[14px] font-medium text-ink">{label}</span>

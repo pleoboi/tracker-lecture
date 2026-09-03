@@ -62,7 +62,17 @@ export default function MemberReviewsPage() {
                 {!!b.rating && (
                   <p className="mt-1 text-[13px] font-bold text-gold">{"★".repeat(Math.round(b.rating))}</p>
                 )}
-                <p className="mt-1.5 whitespace-pre-line text-[13px] leading-relaxed text-ink-2">{b.notes}</p>
+                {/* Les reviews rédigées via l'éditeur enrichi sont stockées en HTML
+                    (balises <p>, <em>…) — on les interprète plutôt que de les
+                    afficher telles quelles ; fallback texte brut pour les anciennes
+                    reviews sans balisage. */}
+                <div
+                  className="prose-review mt-1.5 text-[13px] leading-relaxed text-ink-2"
+                  style={{ whiteSpace: "pre-line" }}
+                  dangerouslySetInnerHTML={b.notes?.trimStart().startsWith("<") ? { __html: b.notes } : undefined}
+                >
+                  {!b.notes?.trimStart().startsWith("<") ? b.notes : undefined}
+                </div>
               </div>
             </div>
           ))}
