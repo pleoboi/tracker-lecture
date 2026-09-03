@@ -29,6 +29,7 @@ const TYPE_GRADIENT: Record<BadgeType, [string, string][]> = {
   challenge:     [["#fbcfe8","#a21caf"],["#f9a8d4","#86198f"],["#f472b6","#701a75"],["#ec4899","#4a044e"]],
   milestone:     [["#ddd6fe","#5b21b6"],["#c4b5fd","#4c1d95"],["#a78bfa","#3b0764"],["#8b5cf6","#2e1065"]],
   referral:      [["#99f6e4","#0f766e"],["#5eead4","#0d6b63"],["#2dd4bf","#0b5e57"],["#14b8a6","#042f2e"]],
+  genre_specific:[["#a7f3d0","#0e9668"],["#6ee7b7","#059669"],["#34d399","#047857"],["#10b981","#065f46"]],
 };
 
 // ── Stats helper ──────────────────────────────────────────────────────────────
@@ -526,19 +527,26 @@ const TYPE_LABEL: Record<BadgeType, string> = {
   event:"Événements", time_of_day:"Horaires", performance:"Performance", social:"Social & Profil",
   goal:"Objectifs", monthly_goal:"Objectif du mois",
   author:"Auteurs", champion_month:"Champion du mois", challenge:"Défis de club",
-  milestone:"Ancienneté & bibliothèque", referral:"Parrainage",
+  milestone:"Ancienneté & bibliothèque", referral:"Parrainage", genre_specific:"Genres lus",
 };
 
 // ── Badges Hub (full-screen, style Garmin) ────────────────────────────────────
 const TYPE_ORDER: BadgeType[] = [
-  "volume", "genre", "author", "sessions", "review", "pages", "streak",
+  "volume", "genre", "genre_specific", "author", "sessions", "review", "pages", "streak",
   "performance", "time_of_day", "event", "social", "goal",
   "challenge", "milestone", "referral",
   "monthly_books", "monthly", "monthly_goal", "champion_month",
 ];
 
-function BadgesHub({ memberId, currentUserId, onClose }: {
-  memberId: string; currentUserId?: string; onClose: () => void;
+export function BadgesHub({ memberId, currentUserId, onClose, embedded }: {
+  memberId: string; currentUserId?: string;
+  // Utilisé en overlay plein écran (modale, avec son propre bouton retour) —
+  // onClose devient optionnel quand embedded=true : la page appelante fournit
+  // alors son propre en-tête/retour, et ce composant ne rend que le contenu,
+  // dans le flux normal de la page (pas de position fixed qui masquerait la
+  // barre de nav du bas ni de bouton retour mal placé sous l'encoche en PWA).
+  onClose?: () => void;
+  embedded?: boolean;
 }) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [loading,       setLoading]       = useState(true);
@@ -552,6 +560,7 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
   const [challengeBonus,  setChallengeBonus]  = useState(0);
 
   useEffect(() => {
+    if (embedded) return; // page normale : pas de verrouillage du scroll du body
     const savedScroll = window.scrollY;
     window.scrollTo({ top: 0, behavior: "instant" });
     document.body.style.overflow = "hidden";
@@ -559,14 +568,16 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
       document.body.style.overflow = "";
       window.scrollTo({ top: savedScroll, behavior: "instant" });
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Remet le scroll interne au début une fois le contenu chargé
+  // Remet le scroll interne au début une fois le contenu chargé (overlay uniquement)
   useEffect(() => {
+    if (embedded) return;
     if (!loading && scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
-  }, [loading]);
+  }, [loading, embedded]);
 
   useEffect(() => {
     const load = async () => {
@@ -664,28 +675,36 @@ function BadgesHub({ memberId, currentUserId, onClose }: {
   const unlockedFamilies = [...familyMap.values()].filter((tiers) => tiers.some((d) => unlockedSet.has(d.id))).length;
   const collectionPct = totalFamilies > 0 ? Math.round((unlockedFamilies / totalFamilies) * 100) : 0;
 
+  const wrapperClass = embedded ? "flex flex-col" : "fixed inset-0 z-[80] flex flex-col bg-paper";
+  const contentClass = embedded ? "flex flex-col" : "flex-1 overflow-y-auto pb-8";
+
   return (
-    <div className="fixed inset-0 z-[80] flex flex-col bg-paper">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-line px-5 py-4">
-        <button onClick={onClose}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-input text-muted transition-colors hover:text-ink">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
-            <path d="M19 12H5M5 12l7 7M5 12l7-7" />
-          </svg>
-        </button>
-        <p className="font-serif text-base font-semibold text-ink">
-          {currentUserId === memberId ? "Mes marque-pages" : "Marque-pages"}
-        </p>
-        <div className="w-8" />
-      </div>
+    <div className={wrapperClass}>
+      {/* Header — masqué en mode page : la page fournit son propre en-tête/retour */}
+      {!embedded && (
+        <div
+          className="flex items-center justify-between border-b border-line px-5 pb-4"
+          style={{ paddingTop: "max(env(safe-area-inset-top), 1rem)" }}
+        >
+          <button onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-input text-muted transition-colors hover:text-ink">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4">
+              <path d="M19 12H5M5 12l7 7M5 12l7-7" />
+            </svg>
+          </button>
+          <p className="font-serif text-base font-semibold text-ink">
+            {currentUserId === memberId ? "Mes marque-pages" : "Marque-pages"}
+          </p>
+          <div className="w-8" />
+        </div>
+      )}
 
       {loading ? (
-        <div className="flex flex-1 items-center justify-center">
+        <div className="flex flex-1 items-center justify-center py-16">
           <p className="text-sm text-muted">Chargement…</p>
         </div>
       ) : (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto pb-8">
+        <div ref={embedded ? undefined : scrollRef} className={contentClass}>
 
           {/* ── Section 1 : Tableau de bord ── */}
           <div className="border-b border-line px-5 py-4">

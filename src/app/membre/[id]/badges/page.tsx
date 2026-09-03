@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
 import { useAuth } from "../../../../lib/auth-context";
-import BadgesSection from "../../../../components/BadgesSection";
+import { BadgesHub } from "../../../../components/BadgesSection";
 import MemberSectionHeader from "../../../../components/MemberSectionHeader";
 
 export default function MemberBadgesPage() {
@@ -21,7 +21,7 @@ export default function MemberBadgesPage() {
   return (
     <div className="animate-fadeIn flex flex-col gap-5 pt-4">
       <MemberSectionHeader memberId={memberId} firstName={firstName} title="Badges" />
-      <BadgesSection memberId={memberId} currentUserId={user?.id} />
+      <BadgesHub memberId={memberId} currentUserId={user?.id} embedded />
     </div>
   );
 }

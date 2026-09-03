@@ -3,7 +3,7 @@ export type BadgeType =
   | "volume" | "genre" | "sessions" | "pages" | "review" | "streak" | "monthly"
   | "event" | "time_of_day" | "performance" | "social" | "monthly_books"
   | "goal" | "monthly_goal" | "author" | "champion_month" | "challenge"
-  | "milestone" | "referral";
+  | "milestone" | "referral" | "genre_specific";
 
 export type IconKey =
   | "books" | "compass" | "lightning" | "quill" | "pages" | "flame" | "calendar"
@@ -57,6 +57,25 @@ export const BADGE_DEFS: BadgeDef[] = [
   { id:"explorer-2", name:"Explorateur", description:"Lire dans 5 genres distincts",  type:"genre", tier:2, targetValue:5,  points:25,  iconKey:"compass" },
   { id:"explorer-3", name:"Explorateur", description:"Lire dans 8 genres distincts",  type:"genre", tier:3, targetValue:8,  points:60,  iconKey:"compass" },
   { id:"explorer-4", name:"Explorateur", description:"Lire dans 12 genres distincts", type:"genre", tier:4, targetValue:12, points:150, iconKey:"compass" },
+  // ── Badges de genre — un badge par genre, débloqué dès qu'un livre terminé
+  // porte ce genre parmi les siens (un livre peut en avoir plusieurs). Le nom
+  // du badge EST le genre à faire correspondre (voir api/badges/check).
+  { id:"genre-fantasy",     name:"Fantasy",                  description:"Terminer un livre du genre Fantasy",                  type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-scifi",       name:"Science-Fiction",          description:"Terminer un livre de Science-Fiction",                type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-romance",     name:"Romance",                  description:"Terminer un livre du genre Romance",                  type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-thriller",    name:"Thriller",                 description:"Terminer un livre du genre Thriller",                 type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-policier",    name:"Policier",                 description:"Terminer un livre du genre Policier",                 type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-aventure",    name:"Aventure",                 description:"Terminer un livre du genre Aventure",                 type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-jeunesse",    name:"Jeunesse",                 description:"Terminer un livre du genre Jeunesse",                 type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-manga",       name:"Manga",                    description:"Terminer un manga ou une BD",                         type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-classique",   name:"Classique",                description:"Terminer un livre classique",                         type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-histoire",    name:"Histoire",                 description:"Terminer un livre d'Histoire",                        type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-biographie",  name:"Biographie",               description:"Terminer une biographie",                             type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-devperso",    name:"Développement personnel",  description:"Terminer un livre de développement personnel",         type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-philosophie", name:"Philosophie",              description:"Terminer un livre de philosophie",                    type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-psychologie", name:"Psychologie",              description:"Terminer un livre de psychologie",                    type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-essai",       name:"Essai",                    description:"Terminer un essai",                                   type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
+  { id:"genre-guerre",      name:"Guerre",                   description:"Terminer un livre sur la guerre",                     type:"genre_specific", tier:1, targetValue:1, points:15, iconKey:"compass", isSpecial:true },
   // ── Marathonien — sessions enregistrées ─────────────────────────────────
   { id:"marathon-1", name:"Marathonien", description:"10 sessions de lecture",  type:"sessions", tier:1, targetValue:10,  points:10,  iconKey:"lightning" },
   { id:"marathon-2", name:"Marathonien", description:"50 sessions de lecture",  type:"sessions", tier:2, targetValue:50,  points:30,  iconKey:"lightning" },
@@ -290,22 +309,26 @@ export function getTotalPoints(unlockedIds: Set<string>): number {
   return BADGE_DEFS.filter(d => unlockedIds.has(d.id)).reduce((s, d) => s + d.points, 0);
 }
 
-export function getLevel(points: number): { level: number; title: string } {
-  if (points >= 1000) return { level: 5, title: "Légende"  };
-  if (points >= 400)  return { level: 4, title: "Expert"   };
-  if (points >= 150)  return { level: 3, title: "Confirmé" };
-  if (points >= 50)   return { level: 2, title: "Apprenti" };
-  return { level: 1, title: "Débutant" };
-}
+// Barème recalibré : avec les badges de genre en plus, le total de points
+// obtenables dépasse largement 5000 (badges fixes + badges mensuels récurrents
+// dans le temps). L'ancien plafond à 1000 pts faisait atteindre le niveau
+// "maximum" avec à peine 45 % de la collection débloquée — corrigé avec une
+// progression plus longue (8 paliers) et un plafond bien plus élevé.
+const LEVEL_THRESHOLDS = [0, 80, 250, 600, 1200, 2200, 3800, 6000] as const;
+const LEVEL_TITLES     = ["", "Débutant", "Apprenti", "Confirmé", "Expert", "Maître", "Virtuose", "Légende", "Mythique"] as const;
 
-const LEVEL_THRESHOLDS = [0, 50, 150, 400, 1000] as const;
-const LEVEL_TITLES     = ["", "Débutant", "Apprenti", "Confirmé", "Expert", "Légende"] as const;
+export function getLevel(points: number): { level: number; title: string } {
+  for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (points >= LEVEL_THRESHOLDS[i]) return { level: i + 1, title: LEVEL_TITLES[i + 1] };
+  }
+  return { level: 1, title: LEVEL_TITLES[1] };
+}
 
 export function getLevelProgress(points: number): {
   level: number; title: string; pct: number; toNext: number; nextTitle: string;
 } {
   const { level, title } = getLevel(points);
-  if (level === 5) return { level, title, pct: 100, toNext: 0, nextTitle: "" };
+  if (level >= LEVEL_THRESHOLDS.length) return { level, title, pct: 100, toNext: 0, nextTitle: "" };
   const from = LEVEL_THRESHOLDS[level - 1];
   const to   = LEVEL_THRESHOLDS[level];
   return {

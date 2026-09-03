@@ -230,11 +230,11 @@ export default function MembrePage() {
   return (
     <div className="animate-fadeIn flex flex-col gap-6 pt-4">
 
-      {/* Back + settings */}
-      <div className="flex items-center justify-between">
-        <button onClick={() => router.back()} className="flex items-center gap-1 text-xs font-medium text-muted">
-          ← Membres
-        </button>
+      {/* Settings / message — le retour se fait via la navigation native
+          (bouton retour du navigateur/OS), plus besoin d'un bouton dédié ici
+          maintenant que chaque section a sa propre page avec son propre lien
+          de retour. */}
+      <div className="flex items-center justify-end">
         {!isOwn && user?.id && (
           <button
             onClick={() => { setMessageText(""); setShowMessageModal(true); }}

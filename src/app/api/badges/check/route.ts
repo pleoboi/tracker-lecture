@@ -475,6 +475,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Badges de genre ────────────────────────────────────────────────────────
+  // Un badge par genre, débloqué dès qu'un livre terminé porte ce genre parmi
+  // les siens (un livre peut en avoir plusieurs, séparés par une virgule — même
+  // convention que GenreBreakdown). Le nom du badge EST le genre à matcher.
+  for (const def of BADGE_DEFS.filter((d) => d.type === "genre_specific")) {
+    if (!can(def.id)) continue;
+    const hasGenre = completedBooks.some((b) =>
+      (b.genre ?? "").split(",").some((g) => g.trim().toLowerCase() === def.name.toLowerCase())
+    );
+    if (hasGenre) award(def.id);
+  }
+
   // ── Ancienneté du compte ──────────────────────────────────────────────────
   if (profile?.created_at) {
     const accountAgeDays = Math.floor((Date.now() - new Date(profile.created_at).getTime()) / 86400000);
