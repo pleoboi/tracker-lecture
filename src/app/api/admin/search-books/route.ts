@@ -5,7 +5,10 @@ export const dynamic = "force-dynamic";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const ADMIN_EMAIL  = process.env.ADMIN_EMAIL ?? "";
+// NEXT_PUBLIC_ADMIN_EMAIL, pas ADMIN_EMAIL (qui n'existe nulle part) — sans le
+// préfixe, cette variable n'était jamais définie et la route renvoyait
+// systématiquement 403, laissant l'outil de fusion vide en permanence.
+const ADMIN_EMAIL  = process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? "";
 
 export async function POST(req: NextRequest) {
   const { query, callerEmail } = (await req.json()) as { query?: string; callerEmail?: string };
@@ -15,11 +18,14 @@ export async function POST(req: NextRequest) {
   }
   const db = createClient(SUPABASE_URL, SERVICE_KEY);
 
+  // 600 était en dessous du nombre réel de livres en base (951 et ça grandit) —
+  // les livres qui triaient après le 600e par titre n'apparaissaient jamais,
+  // récemment importés ou non.
   let dbQuery = db
     .from("books")
     .select("id, title, author, isbn13, cover_url, status, user_id, import_source")
     .order("title")
-    .limit(600);
+    .limit(5000);
 
   if (query?.trim()) {
     dbQuery = dbQuery.ilike("title", `%${query.trim()}%`);

@@ -5,7 +5,9 @@ export const dynamic = "force-dynamic";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const ADMIN_EMAIL  = process.env.ADMIN_EMAIL ?? "";
+// NEXT_PUBLIC_ADMIN_EMAIL, pas ADMIN_EMAIL (qui n'existe nulle part, même bug
+// que dans search-books) — la route rejetait systématiquement l'appel.
+const ADMIN_EMAIL  = process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? "";
 
 type BookRow = {
   id: string;
