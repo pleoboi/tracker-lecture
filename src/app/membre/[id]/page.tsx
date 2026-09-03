@@ -25,7 +25,7 @@ const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep
 const VIOLET = "var(--color-violet)";
 const VIOLET_LT = "#d8cfe6";
 
-type TabId = "bibliotheque" | "statistiques" | "collection" | "challenges" | "listes";
+type TabId = "journal" | "bibliotheque" | "statistiques" | "collection" | "challenges" | "listes" | "reviews";
 
 interface Profile {
   id: string;
@@ -332,6 +332,7 @@ export default function MembrePage() {
 
   // Challenge state
   const [challenges, setChallenges] = useState<ChallengeRow[]>([]);
+  const [badgeCount, setBadgeCount] = useState<number | null>(null);
   const [challengesLoading, setChallengesLoading] = useState(false);
   const [challengeProfileMap, setChallengeProfileMap] = useState<Map<string, { display_name: string; avatar_url: string | null }>>(new Map());
   const [showCreateChallenge, setShowCreateChallenge] = useState(false);
@@ -559,10 +560,17 @@ export default function MembrePage() {
     setChallengesLoading(false);
   }, [memberId]);
 
+  // Chargés dès l'arrivée sur la page (plus seulement à l'ouverture de l'onglet) :
+  // le menu façon Letterboxd doit afficher un compteur sur chaque ligne.
   useEffect(() => {
-    if (activeTab === "challenges") loadChallenges();
-    if (activeTab === "listes") loadLists();
-  }, [activeTab, loadChallenges, loadLists]);
+    loadChallenges();
+    loadLists();
+  }, [loadChallenges, loadLists]);
+
+  useEffect(() => {
+    supabase.from("user_badges").select("id", { count: "exact", head: true }).eq("user_id", memberId)
+      .then(({ count }) => setBadgeCount(count ?? 0));
+  }, [memberId]);
 
   // Load followers for invite selector (own profile only)
   useEffect(() => {
@@ -658,6 +666,7 @@ export default function MembrePage() {
   const reading = books.filter((b) => b.status === "reading");
   const abandoned = books.filter((b) => b.status === "abandoned");
   const wantToRead = books.filter((b) => b.status === "to-read");
+  const bookById = new Map(books.map((b) => [b.id, b]));
 
   const bookSessionNoteMap = new Map<number, string>();
   logs.forEach((l) => { if (l.session_notes) bookSessionNoteMap.set(l.book_id, l.session_notes); });
@@ -706,12 +715,18 @@ export default function MembrePage() {
   const chartData = pagesByMonth.map((v, i) => ({ name: MONTHS[i], value: v }));
   const memberSince = new Date(profile.created_at).toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
 
-  const TABS: { id: TabId; label: string }[] = [
-    { id: "bibliotheque", label: "Bibliothèque" },
-    { id: "statistiques", label: "Statistiques" },
-    { id: "collection", label: "Collection" },
-    { id: "challenges", label: "Challenges" },
-    { id: "listes", label: "Listes" },
+  const reviewedBooks = completed.filter((b) => !!b.notes?.trim());
+
+  // Menu façon Letterboxd : un compteur par ligne quand il est disponible sans
+  // requête supplémentaire coûteuse ; sinon juste le chevron.
+  const TABS: { id: TabId; label: string; count: number | null }[] = [
+    { id: "journal",       label: "Journal",       count: logs.length },
+    { id: "bibliotheque",  label: "Bibliothèque",  count: books.length },
+    { id: "statistiques",  label: "Statistiques",  count: null },
+    { id: "collection",    label: "Badges",        count: badgeCount },
+    { id: "challenges",    label: "Challenges",    count: challenges.length },
+    { id: "listes",        label: "Listes",        count: lists.length },
+    { id: "reviews",       label: "Reviews",       count: reviewedBooks.length },
   ];
 
   return (
@@ -927,12 +942,9 @@ export default function MembrePage() {
         </section>
       )}
 
-      {/* ── Tab bar ─────────────────────────────────────────────────────────── */}
-      <div
-        className="flex gap-1 overflow-x-auto rounded-2xl p-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        style={{ background: "#1a1040" }}
-      >
-        {TABS.map(({ id, label }) => (
+      {/* ── Menu (façon Letterboxd) ────────────────────────────────────────── */}
+      <div className="flex flex-col overflow-hidden rounded-2xl border border-line bg-card">
+        {TABS.map(({ id, label, count }, i) => (
           <button
             key={id}
             onClick={() => {
@@ -941,15 +953,68 @@ export default function MembrePage() {
               document.documentElement.scrollTop = 0;
               document.body.scrollTop = 0;
             }}
-            className="flex-1 whitespace-nowrap rounded-xl px-3 py-2 text-[12px] font-semibold transition-all"
-            style={activeTab === id
-              ? { background: "#7c3aed", color: "#ffffff" }
-              : { background: "transparent", color: "#9b8ec4" }}
+            className={`flex items-center justify-between px-4 py-3.5 text-left transition-colors ${
+              activeTab === id ? "bg-violet-soft" : "hover:bg-violet-soft/50"
+            } ${i > 0 ? "border-t border-line" : ""}`}
           >
-            {label}
+            <span className={`text-[14px] ${activeTab === id ? "font-semibold text-violet-deep" : "font-medium text-ink"}`}>
+              {label}
+            </span>
+            <span className="flex items-center gap-2">
+              {count !== null && <span className="text-[13px] font-semibold text-muted">{count.toLocaleString("fr-FR")}</span>}
+              <span className="text-muted">›</span>
+            </span>
           </button>
         ))}
       </div>
+
+      {/* ── Journal tab ──────────────────────────────────────────────────────── */}
+      {activeTab === "journal" && (
+        <div className="flex flex-col gap-5">
+          {logs.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-line bg-card p-8 text-center">
+              <p className="font-serif text-base text-ink">Aucune session enregistrée.</p>
+            </div>
+          ) : (
+            (() => {
+              const byDate = new Map<string, ReadingLog[]>();
+              [...logs].sort((a, b) => b.date.localeCompare(a.date)).forEach((l) => {
+                if (!byDate.has(l.date)) byDate.set(l.date, []);
+                byDate.get(l.date)!.push(l);
+              });
+              return [...byDate.entries()].map(([date, dayLogs]) => (
+                <div key={date} className="flex flex-col gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                    {new Date(date + "T12:00:00").toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+                  </p>
+                  <div className="flex flex-col gap-2">
+                    {dayLogs.map((l) => {
+                      const b = bookById.get(l.book_id);
+                      if (!b) return null;
+                      return (
+                        <Link
+                          key={l.id}
+                          href={`/livre/${b.id}`}
+                          className="flex items-center gap-3 rounded-2xl border border-line bg-card p-3 transition-colors hover:border-violet/40"
+                        >
+                          <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-14 w-10 shrink-0" rounded="rounded-lg" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-serif text-[14px] font-semibold text-ink">{b.title}</p>
+                            <p className="truncate text-[11px] text-muted">
+                              +{l.pages_read} page{l.pages_read > 1 ? "s" : ""}
+                              {l.session_notes ? ` · ${l.session_notes}` : ""}
+                            </p>
+                          </div>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </div>
+              ));
+            })()
+          )}
+        </div>
+      )}
 
       {/* ── Bibliothèque tab ─────────────────────────────────────────────────── */}
       {activeTab === "bibliotheque" && (
@@ -1269,6 +1334,40 @@ export default function MembrePage() {
                 </Link>
               ))}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Reviews tab ──────────────────────────────────────────────────────── */}
+      {activeTab === "reviews" && (
+        <div className="flex flex-col gap-4">
+          {reviewedBooks.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-line bg-card p-8 text-center">
+              <p className="font-serif text-base text-ink">Aucune review pour le moment.</p>
+            </div>
+          ) : (
+            [...reviewedBooks]
+              .sort((a, b) => (b.date_read ?? "").localeCompare(a.date_read ?? ""))
+              .map((b) => (
+                <div key={b.id} className="flex gap-3 border-b border-line pb-4 last:border-0">
+                  <Link href={`/livre/${b.id}`} className="shrink-0">
+                    <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-24 w-16" rounded="rounded-lg" />
+                  </Link>
+                  <div className="min-w-0 flex-1">
+                    <Link href={`/livre/${b.id}`}>
+                      <p className="font-serif text-[15px] font-semibold leading-tight text-ink">
+                        {b.title}{" "}
+                        {b.published_year && <span className="font-sans text-[12px] font-normal text-muted">{b.published_year}</span>}
+                      </p>
+                      <p className="text-[12px] text-muted">{b.author}</p>
+                    </Link>
+                    {!!b.rating && (
+                      <p className="mt-1 text-[13px] font-bold text-gold">{"★".repeat(Math.round(b.rating))}</p>
+                    )}
+                    <p className="mt-1.5 whitespace-pre-line text-[13px] leading-relaxed text-ink-2">{b.notes}</p>
+                  </div>
+                </div>
+              ))
           )}
         </div>
       )}
