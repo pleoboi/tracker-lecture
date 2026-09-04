@@ -8,6 +8,7 @@ import { searchBooks, type BookSuggestion } from "../lib/googleBooks";
 import type { Book } from "../lib/types";
 import { Modal, Button, FieldLabel, inputClass, Cover } from "./ui";
 import CoverPickerModal from "./CoverPickerModal";
+import BarcodeScannerModal from "./BarcodeScannerModal";
 
 type Status = "to-read" | "reading" | "completed" | "paused";
 
@@ -73,6 +74,8 @@ export default function AddBookModal({
   const [summary, setSummary] = useState("");
   const [enriching, setEnriching] = useState(false);
   const [enrichMsg, setEnrichMsg] = useState<string | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
   const coverDebounce = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -101,6 +104,8 @@ export default function AddBookModal({
       setSummary("");
       setEnriching(false);
       setEnrichMsg(null);
+      setShowScanner(false);
+      setScanning(false);
     }
   }, [open]);
 
@@ -326,6 +331,43 @@ export default function AddBookModal({
       summary: summary.trim() || null,
       isbn: draft.isbn.trim() || null,
     });
+  };
+
+  // Code-barres scanné (ou saisi manuellement dans le scanner) : on cherche le
+  // livre par ISBN. Trouvé → on passe directement à l'écran de confirmation,
+  // comme un résultat de recherche classique. Sinon → saisie manuelle avec
+  // l'ISBN déjà rempli.
+  const handleBarcodeDetected = async (rawCode: string) => {
+    setShowScanner(false);
+    const code = rawCode.replace(/[^0-9Xx]/g, "");
+    if (!code) return;
+    setScanning(true);
+    setError(null);
+    try {
+      const found = await searchBooks(`isbn:${code}`).catch((): BookSuggestion[] => []);
+      const best = found.find((b) => b.isbn === code) ?? found[0];
+      if (best) {
+        setSelected(best);
+        setPages("");
+        setCurrentPage("");
+        setStatus("reading");
+        setStartDate("");
+        setEndDate("");
+        setRating(0);
+      } else {
+        setManual(true);
+        setDraft({ ...emptyDraft, isbn: code });
+        setStatus("reading");
+        setPages("");
+        setCurrentPage("");
+        setStartDate("");
+        setEndDate("");
+        setRating(0);
+        setError("Aucun livre trouvé pour ce code-barres. Renseigne-le manuellement ci-dessous.");
+      }
+    } finally {
+      setScanning(false);
+    }
   };
 
   // Récupère automatiquement les infos du livre depuis le web.
@@ -753,13 +795,28 @@ export default function AddBookModal({
   return (
     <Modal open={open} onClose={onClose} title="Ajouter un livre">
       <div className="flex flex-col gap-3">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Titre ou auteur…"
-          className={inputClass}
-          autoFocus
-        />
+        <div className="flex gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Titre ou auteur…"
+            className={`${inputClass} flex-1`}
+            autoFocus
+          />
+          <button
+            type="button"
+            onClick={() => setShowScanner(true)}
+            aria-label="Scanner un code-barres"
+            title="Scanner un code-barres"
+            className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-line bg-card text-ink-2 transition-colors hover:border-violet/40 hover:text-violet-deep"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
+              <path d="M4 6v12M8 6v12M11 6v12M15 6v12M17.5 6v12M21 6v12" />
+              <path d="M2 4v2M2 18v2M22 4v2M22 18v2" />
+            </svg>
+          </button>
+        </div>
+        {scanning && <p className="text-xs font-medium text-muted">Recherche du livre scanné…</p>}
         {loading && <p className="text-xs font-medium text-muted">Recherche en cours…</p>}
         {error && <p className="text-xs font-medium text-danger">{error}</p>}
 
@@ -897,6 +954,12 @@ export default function AddBookModal({
           Saisir le livre manuellement
         </button>
       </div>
+
+      <BarcodeScannerModal
+        open={showScanner}
+        onClose={() => setShowScanner(false)}
+        onDetected={handleBarcodeDetected}
+      />
     </Modal>
   );
 }

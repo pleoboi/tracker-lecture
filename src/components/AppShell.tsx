@@ -339,7 +339,8 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
   return (
     <Link
       href={item.href}
-      className="flex flex-1 flex-col items-center gap-0.5 py-1"
+      aria-label={item.shortName ?? item.name}
+      className="flex flex-1 flex-col items-center py-1"
       style={{ transition: "opacity 0.18s cubic-bezier(0.32,0.72,0,1)" }}
     >
       <span
@@ -356,15 +357,6 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
         }}
       >
         {item.icon}
-      </span>
-      <span
-        className="whitespace-nowrap text-[9px] font-semibold tracking-wide"
-        style={{
-          color: active ? "var(--color-violet-deep)" : "var(--color-muted)",
-          transition: "color 0.22s cubic-bezier(0.32,0.72,0,1)",
-        }}
-      >
-        {item.shortName ?? item.name}
       </span>
     </Link>
   );
