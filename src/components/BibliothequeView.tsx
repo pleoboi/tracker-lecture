@@ -31,7 +31,8 @@ const SORT_OPTIONS: { value: SortKey; label: string }[] = [
 ];
 
 // Genres canoniques (français) — sert à filtrer le bruit des imports Google Books.
-const GENRES = [
+// Exporté pour être réutilisé ailleurs (ex. sélection des genres d'un book club).
+export const GENRES = [
   "Roman", "Fiction", "Non-Fiction", "Classique", "Nouvelle",
   "Thriller", "Policier", "Crime", "Mystère",
   "Fantasy", "Science-Fiction",

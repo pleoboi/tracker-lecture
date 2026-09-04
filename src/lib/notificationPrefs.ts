@@ -5,6 +5,7 @@ export type NotifType =
   | "follows"
   | "recommendations"
   | "challenges"
+  | "clubs"
   | "messages"
   | "badges"
   | "reminders"
@@ -29,6 +30,7 @@ export const NOTIF_GROUPS: {
       { type: "follows", label: "Nouveaux abonnés", desc: "Quand quelqu'un s'abonne à toi" },
       { type: "recommendations", label: "Recommandations", desc: "Quand un ami te conseille un livre" },
       { type: "challenges", label: "Invitations aux défis", desc: "Quand on t'invite à rejoindre un défi" },
+      { type: "clubs", label: "Invitations aux book clubs", desc: "Quand on t'invite à rejoindre un book club" },
       { type: "messages", label: "Messages directs", desc: "Quand un ami t'envoie un message personnel" },
     ],
   },

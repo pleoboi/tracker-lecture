@@ -22,6 +22,34 @@ const today = new Intl.DateTimeFormat("fr-FR", {
   month: "long",
 }).format(new Date());
 
+// Cache session (survit à une navigation SPA aller-retour, pas au-delà) pour
+// éviter que le teaser Wrapped / les challenges actifs disparaissent le temps
+// d'un rechargement réseau lent sur mobile — on affiche la dernière valeur
+// connue pendant que la vraie requête tourne en arrière-plan.
+function readSessionCache<T>(key: string): T | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
+function writeSessionCache<T>(key: string, value: T) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* stockage indisponible (navigation privée, quota) — tant pis */
+  }
+}
+function clearSessionCache(key: string) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(key);
+  } catch { /* ignore */ }
+}
+
 function greeting() {
   const h = new Date().getHours();
   if (h < 6) return "Bonne nuit";
@@ -363,9 +391,16 @@ export default function AccueilPage() {
     loadClub();
   }, [load, loadClub]);
 
-  // Teaser du Wrapped du mois précédent, sur l'accueil
+  // Teaser du Wrapped du mois précédent, sur l'accueil.
+  // Les données du mois précédent sont figées (le mois est terminé) : si un
+  // cache existe déjà et que la requête revient vide, c'est plus probablement
+  // un raté réseau qu'une vraie disparition des données — on garde le cache
+  // affiché plutôt que de vider la carte.
   useEffect(() => {
     if (!userId) return;
+    const cacheKey = `swena_wrapped_teaser_${userId}`;
+    const cached = readSessionCache<WrappedStats>(cacheKey);
+    if (cached) setWrapped(cached);
     (async () => {
       const { data: profile } = await supabase.from("user_profiles").select("avatar_url").eq("id", userId).single();
       setAvatarUrl((profile as { avatar_url?: string | null } | null)?.avatar_url ?? null);
@@ -373,7 +408,12 @@ export default function AccueilPage() {
       const now = new Date();
       const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const stats = await getMonthlyWrapped(userId, prevMonthDate.getFullYear(), prevMonthDate.getMonth() + 1);
-      setWrapped(stats);
+      if (stats) {
+        setWrapped(stats);
+        writeSessionCache(cacheKey, stats);
+      } else if (!cached) {
+        setWrapped(null);
+      }
     })();
   }, [userId]);
 
@@ -408,25 +448,32 @@ export default function AccueilPage() {
     }
   }, [userId, likeMap]);
 
-  // Challenges actifs
+  // Challenges actifs. On distingue une réponse vide (aucun challenge en
+  // cours → on vide réellement) d'une erreur réseau transitoire (on garde le
+  // cache / l'état affiché plutôt que de laisser un grand vide).
   useEffect(() => {
     if (!userId) return;
+    const cacheKey = `swena_active_challenges_${userId}`;
+    const cached = readSessionCache<typeof activeChallenges>(cacheKey);
+    if (cached) setActiveChallenges(cached);
     const today = todayISO();
     (async () => {
-      const { data: parts } = await supabase
+      const { data: parts, error: partsErr } = await supabase
         .from("challenge_participants")
         .select("challenge_id")
         .eq("user_id", userId)
         .eq("status", "accepted");
-      if (!parts?.length) return;
+      if (partsErr) return;
+      if (!parts?.length) { setActiveChallenges([]); clearSessionCache(cacheKey); return; }
       const ids = (parts as { challenge_id: string }[]).map((p) => p.challenge_id);
-      const { data: chs } = await supabase
+      const { data: chs, error: chsErr } = await supabase
         .from("challenges")
         .select("id, title, metric, target_value, reward_points, start_date, end_date")
         .in("id", ids)
         .lte("start_date", today)
         .gte("end_date", today);
-      if (!chs?.length) return;
+      if (chsErr) return;
+      if (!chs?.length) { setActiveChallenges([]); clearSessionCache(cacheKey); return; }
       const enriched = await Promise.all(
         (chs as { id: string; title: string; metric: string; target_value: number; reward_points: number; start_date: string; end_date: string }[]).map(async (c) => {
           let myScore = 0;
@@ -460,6 +507,7 @@ export default function AccueilPage() {
         })
       );
       setActiveChallenges(enriched);
+      writeSessionCache(cacheKey, enriched);
     })();
   }, [userId]);
 

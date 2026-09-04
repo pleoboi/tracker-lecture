@@ -37,21 +37,12 @@ const allNavItems: NavItem[] = [
     ),
   },
   {
-    name: "Journal",
-    href: "/journal",
+    name: "Communauté",
+    href: "/communaute",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-[22px] w-[22px]">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9 9 0 1 0-9-9M3 12V3m0 0h9M3 3l7.5 7.5" />
-      </svg>
-    ),
-  },
-  {
-    name: "Découverte",
-    href: "/decouverte",
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-[22px] w-[22px]">
-        <circle cx="12" cy="12" r="9" strokeLinecap="round" />
-        <path strokeLinecap="round" strokeLinejoin="round" d="m16.5 7.5-3.66 5.5L9 14.5l3.66-5.5L16.5 7.5z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 19V6.8c0-1 .8-1.8 1.8-1.8h12.4c1 0 1.8.8 1.8 1.8v8.4c0 1-.8 1.8-1.8 1.8H9l-5 3z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M8 9.5h8M8 12.7h5" />
       </svg>
     ),
   },
@@ -86,9 +77,9 @@ const allNavItems: NavItem[] = [
 ];
 
 const desktopNavItems = allNavItems.slice(0, 6);
-// Ordre gauche → droite : Accueil, Journal (futur "Communauté"), (+), Statistiques, Profil
-const mobileNavLeft  = [allNavItems[0], allNavItems[2]];  // Accueil, Journal
-const mobileNavRight = [allNavItems[4], allNavItems[6]];  // Statistiques, Compte (Profil)
+// Ordre gauche → droite : Accueil, Communauté, (+), Statistiques, Profil
+const mobileNavLeft  = [allNavItems[0], allNavItems[2]];  // Accueil, Communauté
+const mobileNavRight = [allNavItems[3], allNavItems[5]];  // Statistiques, Compte (Profil)
 
 const NO_SHELL_PATHS = ["/login", "/register", "/", "/email-sent"];
 
@@ -184,26 +175,34 @@ function AvatarRound({
   );
 }
 
+// ── Paramètres (remplace l'avatar en haut à droite : le profil reste
+//    accessible depuis la nav). Mode sombre et déconnexion restent
+//    uniquement sur /compte — pas de doublon ici, juste le lien. ──────────
+function AccountSettingsButton() {
+  return (
+    <Link
+      href="/compte"
+      aria-label="Paramètres"
+      className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-card text-muted transition-colors hover:border-violet hover:text-violet-deep"
+    >
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.13.31.35.58.62.78" />
+      </svg>
+    </Link>
+  );
+}
+
 // ── Header mobile ──────────────────────────────────────────────────────────
 function MobileTopBar({
-  avatarUrl,
-  initial,
-  userId,
-  pathname,
   onGuide,
   newFollowersCount,
   onNotifClick,
 }: {
-  avatarUrl: string | null;
-  initial: string;
-  userId: string | undefined;
-  pathname: string;
   onGuide: () => void;
   newFollowersCount: number;
   onNotifClick: () => void;
 }) {
-  const profileHref = userId ? `/membre/${userId}` : "/compte";
-  const isProfileActive = userId ? pathname === `/membre/${userId}` : pathname === "/compte";
   return (
     <header
       className="sticky top-0 z-50 flex items-center justify-between border-b border-line bg-paper/90 px-5 pb-2.5 backdrop-blur-md md:hidden"
@@ -242,9 +241,7 @@ function MobileTopBar({
             </span>
           )}
         </div>
-        <Link href={profileHref} aria-label="Mon profil">
-          <AvatarRound avatarUrl={avatarUrl} initial={initial} active={isProfileActive} />
-        </Link>
+        <AccountSettingsButton />
       </div>
     </header>
   );
@@ -253,16 +250,12 @@ function MobileTopBar({
 // ── Header desktop ─────────────────────────────────────────────────────────
 function TopBar({
   pathname,
-  avatarUrl,
-  initial,
   userId,
   onGuide,
   newFollowersCount,
   onNotifClick,
 }: {
   pathname: string;
-  avatarUrl: string | null;
-  initial: string;
   userId: string | undefined;
   onGuide: () => void;
   newFollowersCount: number;
@@ -285,11 +278,14 @@ function TopBar({
 
         <nav className="flex items-center gap-0.5">
           {desktopNavItems.map((item) => {
-            const active = isActive(pathname, item.href);
+            // "Profil" doit pointer vers la page profil publique (/membre/[id]),
+            // pas vers les réglages du compte (/compte) — même résolution que la nav mobile.
+            const resolved = item.href === "/compte" && userId ? { ...item, href: `/membre/${userId}` } : item;
+            const active = isActive(pathname, resolved.href);
             return (
               <Link
-                key={item.href}
-                href={item.href}
+                key={resolved.href}
+                href={resolved.href}
                 className="flex items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-medium"
                 style={{
                   background: active ? "color-mix(in srgb, var(--color-violet) 12%, transparent)" : "transparent",
@@ -330,13 +326,7 @@ function TopBar({
               </span>
             )}
           </div>
-          <Link href={userId ? `/membre/${userId}` : "/compte"} aria-label="Mon profil">
-            <AvatarRound
-              avatarUrl={avatarUrl}
-              initial={initial}
-              active={userId ? pathname === `/membre/${userId}` : isActive(pathname, "/compte")}
-            />
-          </Link>
+          <AccountSettingsButton />
         </div>
       </div>
     </header>
@@ -512,7 +502,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const displayName =
     user?.user_metadata?.display_name || user?.email?.split("@")[0] || "?";
-  const initial = displayName[0]?.toUpperCase() ?? "?";
 
   const fetchAvatar = async (uid: string) => {
     const { data } = await supabase
@@ -834,18 +823,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen">
       <TopBar
         pathname={pathname}
-        avatarUrl={avatarUrl}
-        initial={initial}
         userId={user?.id}
         onGuide={() => setShowGuide(true)}
         newFollowersCount={newFollowersCount}
         onNotifClick={openNotif}
       />
       <MobileTopBar
-        avatarUrl={avatarUrl}
-        initial={initial}
-        userId={user?.id}
-        pathname={pathname}
         onGuide={() => setShowGuide(true)}
         newFollowersCount={newFollowersCount}
         onNotifClick={openNotif}

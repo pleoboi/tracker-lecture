@@ -29,6 +29,7 @@
   --color-gold: #d7a33f;
   --color-success: #5e8c61;
   --color-danger: #c0563f;
+  --color-rose: #c15f88;
 
   /* Couleurs de couvertures (placeholder par défaut) */
   --color-spine-1: #8b79be;
@@ -57,6 +58,14 @@ body {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+}
+
+/* Tailwind retire le curseur "main" par défaut sur les <button> (contrairement
+   aux <a>) — on le remet globalement pour que tout élément cliquable réagisse
+   au survol comme attendu. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
 }
 
 /* ── Typographie globale ────────────────────────────────────────────────── */
@@ -287,6 +296,7 @@ html.dark {
   --color-gold: #e8b84b;
   --color-success: #6fa872;
   --color-danger: #e06b54;
+  --color-rose: #e0839f;
 }
 
 html.dark body {
