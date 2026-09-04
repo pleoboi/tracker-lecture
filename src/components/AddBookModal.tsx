@@ -333,6 +333,75 @@ export default function AddBookModal({
     });
   };
 
+  // Dernier recours de résolution ISBN : la BnF catalogue par dépôt légal
+  // quasiment tout ce qui est publié en France, y compris de petites
+  // maisons absentes d'Open Library / Google Books. Pas de couverture ni de
+  // résumé côté BnF — juste de quoi amorcer runEnrichment ensuite.
+  const bnfLookup = async (isbnCode: string) => {
+    try {
+      const res = await fetch(`/api/books/bnf?isbn=${encodeURIComponent(isbnCode)}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return (data.result ?? null) as { title: string; author: string | null; year: number | null } | null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Enrichit couverture / résumé / genre pour un titre+auteur déjà connus.
+  // Partagé entre le bouton manuel et la résolution automatique après scan.
+  const runEnrichment = async (title: string, author: string) => {
+    const [results, enrichRes, coversRes] = await Promise.all([
+      searchBooks(`${title} ${author}`.trim()).catch((): BookSuggestion[] => []),
+      fetch(`/api/books/enrich?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`)
+        .then((r) => (r.ok ? r.json() : { summary: null, genres: [], year: null, isbn: null }))
+        .catch(() => ({ summary: null as string | null, genres: [] as string[], year: null as number | null, isbn: null as string | null })),
+      fetch(`/api/books/covers?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`)
+        .then((r) => (r.ok ? r.json() : { covers: [] }))
+        .catch(() => ({ covers: [] as string[] })),
+    ]);
+
+    const best = results[0];
+    setDraft((d) => ({
+      ...d,
+      author: d.author.trim() || best?.author || "",
+      year: enrichRes.year ? String(enrichRes.year) : best?.year ? String(best.year) : d.year,
+      isbn: d.isbn.trim() || enrichRes.isbn || best?.isbn || "",
+    }));
+
+    // Genres : on ajoute tous ceux détectés qui existent dans la liste canonique,
+    // sans retirer ceux déjà choisis à la main.
+    const canonical = new Set(GENRE_LIST);
+    const detected: string[] = [...(enrichRes.genres || [])];
+    if (best?.genre) detected.push(best.genre);
+    const toAdd = detected.filter((g) => canonical.has(g));
+    if (toAdd.length > 0) {
+      setSelectedGenres((prev) => {
+        const s = new Set(prev);
+        toAdd.forEach((g) => s.add(g));
+        return [...s];
+      });
+    }
+
+    if (enrichRes.summary) setSummary(enrichRes.summary);
+
+    const covers: string[] = coversRes.covers || [];
+    if (covers.length > 0) {
+      setCoverSuggestions(covers);
+      setSelectedSuggestionCover(covers[0]);
+    } else if (best?.coverUrl) {
+      setCoverSuggestions([best.coverUrl]);
+      setSelectedSuggestionCover(best.coverUrl);
+    }
+
+    const gotSomething = !!best || !!enrichRes.summary || (enrichRes.genres?.length ?? 0) > 0 || covers.length > 0;
+    setEnrichMsg(
+      gotSomething
+        ? "Infos récupérées. Choisis la bonne couverture ci-dessous si besoin."
+        : "Aucune information trouvée pour ce titre.",
+    );
+  };
+
   // Code-barres scanné (ou saisi manuellement dans le scanner) — on cherche
   // par ISBN, dans cet ordre :
   //  1. Déjà dans TA bibliothèque → on ne relance pas l'ajout, on prévient.
@@ -340,7 +409,10 @@ export default function AddBookModal({
   //     on réutilise directement sa fiche (couverture, résumé, genre déjà
   //     renseignés) plutôt que de repartir d'une recherche externe.
   //  3. Sinon → recherche externe (Open Library / Google Books).
-  //  4. Rien trouvé nulle part → saisie manuelle avec l'ISBN déjà rempli.
+  //  4. Rien nulle part → la BnF (dépôt légal, forte pour les éditions
+  //     franco-françaises) donne au moins titre/auteur, puis on enrichit
+  //     couverture/résumé/genre à partir de ça.
+  //  5. Toujours rien → saisie manuelle avec l'ISBN déjà rempli.
   const handleBarcodeDetected = async (rawCode: string) => {
     setShowScanner(false);
     const code = rawCode.replace(/[^0-9Xx]/g, "");
@@ -392,15 +464,31 @@ export default function AddBookModal({
         setEndDate("");
         setRating(0);
       } else {
+        const bnf = await bnfLookup(code);
         setManual(true);
-        setDraft({ ...emptyDraft, isbn: code });
+        setDraft({
+          ...emptyDraft,
+          isbn: code,
+          title: bnf?.title ?? "",
+          author: bnf?.author ?? "",
+          year: bnf?.year ? String(bnf.year) : "",
+        });
         setStatus("reading");
         setPages("");
         setCurrentPage("");
         setStartDate("");
         setEndDate("");
         setRating(0);
-        setError(`Aucun livre trouvé pour le code ${code}. Renseigne le titre puis réessaie "Récupérer les infos", ou complète à la main.`);
+        if (bnf) {
+          setEnriching(true);
+          try {
+            await runEnrichment(bnf.title, bnf.author ?? "");
+          } finally {
+            setEnriching(false);
+          }
+        } else {
+          setError(`Aucun livre trouvé pour le code ${code}. Renseigne le titre puis réessaie "Récupérer les infos", ou complète à la main.`);
+        }
       }
     } finally {
       setScanning(false);
@@ -411,7 +499,8 @@ export default function AddBookModal({
   // Métadonnées : Google Books / Open Library. Résumé : Google Books FR puis Wikipédia FR.
   // Couvertures : route /api/books/covers (plusieurs images de qualité, placeholders filtrés).
   // Si on n'a que l'ISBN (ex. scan sans résultat côté catalogue), on résout
-  // d'abord le titre/auteur à partir de l'ISBN avant de lancer l'enrichissement.
+  // d'abord le titre/auteur à partir de l'ISBN (Open Library/Google, puis
+  // BnF en dernier recours) avant de lancer l'enrichissement.
   const enrichFromWeb = async () => {
     let title = draft.title.trim();
     let author = draft.author.trim();
@@ -427,63 +516,21 @@ export default function AddBookModal({
         if (hit) {
           title = hit.title;
           if (!author && hit.author && hit.author !== "Auteur inconnu") author = hit.author;
-          setDraft((d) => ({ ...d, title: hit.title, author: d.author.trim() || author }));
+        } else {
+          const bnf = await bnfLookup(isbn);
+          if (bnf) {
+            title = bnf.title;
+            if (!author && bnf.author) author = bnf.author;
+          }
         }
         if (!title) {
           setEnrichMsg("Aucune information trouvée pour cet ISBN. Renseigne le titre manuellement.");
           setEnriching(false);
           return;
         }
+        setDraft((d) => ({ ...d, title, author: d.author.trim() || author }));
       }
-      const [results, enrichRes, coversRes] = await Promise.all([
-        searchBooks(`${title} ${author}`.trim()).catch((): BookSuggestion[] => []),
-        fetch(`/api/books/enrich?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`)
-          .then((r) => (r.ok ? r.json() : { summary: null, genres: [], year: null, isbn: null }))
-          .catch(() => ({ summary: null as string | null, genres: [] as string[], year: null as number | null, isbn: null as string | null })),
-        fetch(`/api/books/covers?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`)
-          .then((r) => (r.ok ? r.json() : { covers: [] }))
-          .catch(() => ({ covers: [] as string[] })),
-      ]);
-
-      const best = results[0];
-      setDraft((d) => ({
-        ...d,
-        author: d.author.trim() || best?.author || "",
-        year: enrichRes.year ? String(enrichRes.year) : best?.year ? String(best.year) : d.year,
-        isbn: d.isbn.trim() || enrichRes.isbn || best?.isbn || "",
-      }));
-
-      // Genres : on ajoute tous ceux détectés qui existent dans la liste canonique,
-      // sans retirer ceux déjà choisis à la main.
-      const canonical = new Set(GENRE_LIST);
-      const detected: string[] = [...(enrichRes.genres || [])];
-      if (best?.genre) detected.push(best.genre);
-      const toAdd = detected.filter((g) => canonical.has(g));
-      if (toAdd.length > 0) {
-        setSelectedGenres((prev) => {
-          const s = new Set(prev);
-          toAdd.forEach((g) => s.add(g));
-          return [...s];
-        });
-      }
-
-      if (enrichRes.summary) setSummary(enrichRes.summary);
-
-      const covers: string[] = coversRes.covers || [];
-      if (covers.length > 0) {
-        setCoverSuggestions(covers);
-        setSelectedSuggestionCover(covers[0]);
-      } else if (best?.coverUrl) {
-        setCoverSuggestions([best.coverUrl]);
-        setSelectedSuggestionCover(best.coverUrl);
-      }
-
-      const gotSomething = !!best || !!enrichRes.summary || (enrichRes.genres?.length ?? 0) > 0 || covers.length > 0;
-      setEnrichMsg(
-        gotSomething
-          ? "Infos récupérées. Choisis la bonne couverture ci-dessous si besoin."
-          : "Aucune information trouvée pour ce titre.",
-      );
+      await runEnrichment(title, author);
     } catch {
       setEnrichMsg("Récupération indisponible pour le moment.");
     } finally {
