@@ -1451,7 +1451,7 @@ export default function BookDetailPage() {
                         <p className="text-[10px] text-muted">Lu le {new Date(m.dateRead).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}</p>
                       )}
                       <p className="mt-1.5 line-clamp-3 font-serif text-[12.5px] italic leading-relaxed text-ink-2">
-                        « {m.review} »
+                        « {cleanSummaryText(m.review || "")} »
                       </p>
                     </div>
                   </button>
@@ -1689,9 +1689,16 @@ export default function BookDetailPage() {
               <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-amber-label">Review globale</p>
               {selectedMember.review ? (
                 <>
-                  <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
-                    « {selectedMember.review} »
-                  </p>
+                  {selectedMember.review.startsWith("<") ? (
+                    <div
+                      className="prose-review font-serif text-[13.5px] italic leading-relaxed text-ink-2"
+                      dangerouslySetInnerHTML={{ __html: selectedMember.review }}
+                    />
+                  ) : (
+                    <p className="font-serif text-[13.5px] italic leading-relaxed text-ink-2" style={{ whiteSpace: "pre-line" }}>
+                      « {selectedMember.review} »
+                    </p>
+                  )}
                   {selectedMember.userId !== userId && (
                     <button
                       onClick={toggleReviewLike}
