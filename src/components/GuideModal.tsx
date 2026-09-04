@@ -34,6 +34,11 @@ function VisualAddBook() {
           <path d="m20 20-3.5-3.5" strokeLinecap="round" />
         </svg>
         <span className="text-[9.5px] text-muted">Germinal</span>
+        <span className="ml-auto flex h-4 w-4 shrink-0 items-center justify-center rounded bg-card text-violet-deep">
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+            <path d="M4 6v12M8 6v12M11 6v12M15 6v12M17.5 6v12" />
+          </svg>
+        </span>
       </div>
       <div className="flex items-center gap-2 rounded-lg border border-violet/30 bg-violet-soft p-1.5">
         <div className="h-[34px] w-[24px] shrink-0 rounded" style={{ backgroundColor: "#7c5e3b" }} />
@@ -44,7 +49,7 @@ function VisualAddBook() {
         <span className="shrink-0 rounded-md bg-violet px-1.5 py-0.5 text-[8px] font-bold text-cream">+</span>
       </div>
       <p className="mt-1.5 text-center text-[8px] text-muted">
-        Couverture, résumé et pages remplis tout seuls
+        Cherche, ou scanne le code-barres — tout est rempli tout seul
       </p>
     </div>
   );
@@ -97,6 +102,31 @@ function VisualClub() {
   );
 }
 
+function VisualCommunaute() {
+  return (
+    <div className="w-full max-w-[230px]">
+      <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-input px-2 py-1.5">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="text-muted">
+          <circle cx="11" cy="11" r="7" />
+          <path d="m20 20-3.5-3.5" strokeLinecap="round" />
+        </svg>
+        <span className="text-[9.5px] text-muted">Un club ou un livre…</span>
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        {[
+          { name: "Club Polar", c: "#4f46e5" },
+          { name: "Lecture d'été", c: "#8b5a6b" },
+        ].map((club) => (
+          <div key={club.name} className="overflow-hidden rounded-lg border border-line bg-card">
+            <div className="h-6" style={{ background: club.c }} />
+            <p className="truncate px-1.5 py-1 text-[8px] font-semibold text-ink">{club.name}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function VisualInstall() {
   return (
     <div className="relative w-[92px] rounded-2xl border-2 border-line bg-card p-1.5">
@@ -138,9 +168,15 @@ const SLIDES = [
   },
   {
     label: "Étape 3",
-    title: "Retrouve ton club",
+    title: "Ton accueil, en direct",
     body: "L'accueil affiche l'activité de tes amis : ce qu'ils lisent, leurs notes, le champion du jour. Tu peux aimer, commenter et recommander des livres.",
     visual: <VisualClub />,
+  },
+  {
+    label: "Étape 4",
+    title: "La Communauté",
+    body: "Rejoins ou crée un club de lecture pour échanger en direct sur un livre, découvre un classement des plus grand·es lecteur·rices, et reçois des suggestions de prochaines lectures selon tes goûts.",
+    visual: <VisualCommunaute />,
   },
   {
     label: "Astuce",

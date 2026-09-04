@@ -333,10 +333,14 @@ export default function AddBookModal({
     });
   };
 
-  // Code-barres scanné (ou saisi manuellement dans le scanner) : on cherche le
-  // livre par ISBN. Trouvé → on passe directement à l'écran de confirmation,
-  // comme un résultat de recherche classique. Sinon → saisie manuelle avec
-  // l'ISBN déjà rempli.
+  // Code-barres scanné (ou saisi manuellement dans le scanner) — on cherche
+  // par ISBN, dans cet ordre :
+  //  1. Déjà dans TA bibliothèque → on ne relance pas l'ajout, on prévient.
+  //  2. Le même livre existe déjà sur Swena (ajouté par quelqu'un d'autre) →
+  //     on réutilise directement sa fiche (couverture, résumé, genre déjà
+  //     renseignés) plutôt que de repartir d'une recherche externe.
+  //  3. Sinon → recherche externe (Open Library / Google Books).
+  //  4. Rien trouvé nulle part → saisie manuelle avec l'ISBN déjà rempli.
   const handleBarcodeDetected = async (rawCode: string) => {
     setShowScanner(false);
     const code = rawCode.replace(/[^0-9Xx]/g, "");
@@ -344,11 +348,44 @@ export default function AddBookModal({
     setScanning(true);
     setError(null);
     try {
-      const found = await searchBooks(`isbn:${code}`).catch((): BookSuggestion[] => []);
-      const best = found.find((b) => b.isbn === code) ?? found[0];
+      const { data: existingRows } = await supabase
+        .from("books")
+        .select("id, user_id, title, author, cover_url, genre, published_year, summary, isbn13, pages")
+        .eq("isbn13", code)
+        .limit(20);
+      const rows = (existingRows ?? []) as {
+        id: number; user_id: string; title: string; author: string; cover_url: string | null;
+        genre: string | null; published_year: number | null; summary: string | null;
+        isbn13: string | null; pages: number | null;
+      }[];
+
+      const own = user ? rows.find((r) => r.user_id === user.id) : undefined;
+      if (own) {
+        setError(`« ${own.title} » est déjà dans ta bibliothèque.`);
+        return;
+      }
+
+      const fromSwena = rows.find((r) => r.cover_url) ?? rows[0];
+      let best: BookSuggestion | undefined;
+      if (fromSwena) {
+        best = {
+          googleId: `club-${fromSwena.id}`,
+          title: fromSwena.title,
+          author: fromSwena.author,
+          coverUrl: fromSwena.cover_url,
+          genre: fromSwena.genre,
+          year: fromSwena.published_year,
+          summary: fromSwena.summary,
+          isbn: fromSwena.isbn13,
+        };
+      } else {
+        const found = await searchBooks(`isbn:${code}`).catch((): BookSuggestion[] => []);
+        best = found.find((b) => b.isbn === code) ?? found[0];
+      }
+
       if (best) {
-        setSelected(best);
-        setPages("");
+        setSelected(fromSwena ? { ...best, pages: fromSwena.pages || undefined } : best);
+        setPages(fromSwena?.pages ? String(fromSwena.pages) : "");
         setCurrentPage("");
         setStatus("reading");
         setStartDate("");

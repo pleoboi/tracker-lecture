@@ -7,6 +7,7 @@ import { useAuth } from "../lib/auth-context";
 import { supabase } from "../lib/supabase";
 import type { Book } from "../lib/types";
 import GuideModal from "./GuideModal";
+import WhatsNewModal from "./WhatsNewModal";
 import ProfileSetupModal from "./ProfileSetupModal";
 import ReferralPromptModal from "./ReferralPromptModal";
 import AddBookModal from "./AddBookModal";
@@ -15,6 +16,10 @@ import WrappedStory from "./WrappedStory";
 import { getMonthlyWrapped, type WrappedStats } from "../lib/wrapped";
 
 type NavItem = { name: string; href: string; icon: React.ReactNode; shortName?: string };
+
+// Incrémenter pour refaire apparaître le rappel "Nouveautés" (une fois par
+// compte déjà en place) après un prochain lot de fonctionnalités.
+const WHATS_NEW_VERSION = "2026-09-communaute-scanner";
 
 const allNavItems: NavItem[] = [
   {
@@ -437,6 +442,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user } = useAuth();
   const [showGuide, setShowGuide] = useState(false);
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [showReferralPrompt, setShowReferralPrompt] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
@@ -505,17 +511,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
     // Nouveau compte : on ouvre d'abord la personnalisation du profil, puis le
     // tutoriel s'enchaîne (ProfileSetupModal.onClose déclenche setShowGuide).
+    // Compte déjà en place : on montre plutôt le rappel des nouveautés
+    // récentes, une fois par version (WHATS_NEW_VERSION).
     const hasSeen = (data as { has_seen_onboarding?: boolean | null } | null)?.has_seen_onboarding;
+    let showingWhatsNew = false;
     if (hasSeen === false) {
       setShowProfileSetup(true);
     } else if (data === null && typeof window !== "undefined") {
       const lsKey = `onboarding_done_${uid}`;
       if (!localStorage.getItem(lsKey)) setShowProfileSetup(true);
+    } else if (hasSeen === true && typeof window !== "undefined") {
+      const wnKey = `whats_new_seen_${uid}_${WHATS_NEW_VERSION}`;
+      if (!localStorage.getItem(wnKey)) {
+        setShowWhatsNew(true);
+        showingWhatsNew = true;
+      }
     }
 
     // Rappel de parrainage : une fois, à partir du 7e jour du compte.
+    // On évite de l'empiler par-dessus le rappel des nouveautés.
     const createdAt = (data as { created_at?: string | null } | null)?.created_at;
-    if (createdAt && typeof window !== "undefined") {
+    if (createdAt && typeof window !== "undefined" && !showingWhatsNew) {
       const ageDays = (Date.now() - new Date(createdAt).getTime()) / 86_400_000;
       const seenKey = `referral_prompt_seen_${uid}`;
       if (ageDays >= 7 && !localStorage.getItem(seenKey)) {
@@ -1037,6 +1053,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         open={showGuide}
         onClose={() => setShowGuide(false)}
         onAddBook={() => setShowAdd(true)}
+      />
+
+      <WhatsNewModal
+        open={showWhatsNew}
+        onClose={() => {
+          setShowWhatsNew(false);
+          if (user?.id && typeof window !== "undefined") {
+            localStorage.setItem(`whats_new_seen_${user.id}_${WHATS_NEW_VERSION}`, "1");
+          }
+        }}
       />
 
       <ReferralPromptModal
