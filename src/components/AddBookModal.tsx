@@ -400,7 +400,7 @@ export default function AddBookModal({
         setStartDate("");
         setEndDate("");
         setRating(0);
-        setError("Aucun livre trouvé pour ce code-barres. Renseigne-le manuellement ci-dessous.");
+        setError(`Aucun livre trouvé pour le code ${code}. Renseigne le titre puis réessaie "Récupérer les infos", ou complète à la main.`);
       }
     } finally {
       setScanning(false);
@@ -410,14 +410,31 @@ export default function AddBookModal({
   // Récupère automatiquement les infos du livre depuis le web.
   // Métadonnées : Google Books / Open Library. Résumé : Google Books FR puis Wikipédia FR.
   // Couvertures : route /api/books/covers (plusieurs images de qualité, placeholders filtrés).
+  // Si on n'a que l'ISBN (ex. scan sans résultat côté catalogue), on résout
+  // d'abord le titre/auteur à partir de l'ISBN avant de lancer l'enrichissement.
   const enrichFromWeb = async () => {
-    const title = draft.title.trim();
-    if (!title) { setError("Renseigne au moins le titre."); return; }
+    let title = draft.title.trim();
+    let author = draft.author.trim();
+    const isbn = draft.isbn.trim();
+    if (!title && !isbn) { setError("Renseigne au moins le titre ou l'ISBN."); return; }
     setEnriching(true);
     setError(null);
     setEnrichMsg(null);
-    const author = draft.author.trim();
     try {
+      if (!title && isbn) {
+        const isbnHits = await searchBooks(`isbn:${isbn}`).catch((): BookSuggestion[] => []);
+        const hit = isbnHits[0];
+        if (hit) {
+          title = hit.title;
+          if (!author && hit.author && hit.author !== "Auteur inconnu") author = hit.author;
+          setDraft((d) => ({ ...d, title: hit.title, author: d.author.trim() || author }));
+        }
+        if (!title) {
+          setEnrichMsg("Aucune information trouvée pour cet ISBN. Renseigne le titre manuellement.");
+          setEnriching(false);
+          return;
+        }
+      }
       const [results, enrichRes, coversRes] = await Promise.all([
         searchBooks(`${title} ${author}`.trim()).catch((): BookSuggestion[] => []),
         fetch(`/api/books/enrich?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`)
@@ -689,7 +706,7 @@ export default function AddBookModal({
             <button
               type="button"
               onClick={enrichFromWeb}
-              disabled={enriching || draft.title.trim().length < 2}
+              disabled={enriching || (draft.title.trim().length < 2 && draft.isbn.trim().length < 10)}
               className="flex items-center justify-center gap-2 rounded-xl border border-violet/40 bg-violet-soft py-2.5 text-[12.5px] font-semibold text-violet-deep transition-colors hover:border-violet disabled:opacity-50"
             >
               {enriching ? (
