@@ -56,8 +56,9 @@ const allNavItems: NavItem[] = [
     shortName: "Stats",
     href: "/dashboard",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-[22px] w-[22px]">
-        <path strokeLinecap="round" strokeLinejoin="round" d="M5 20V11M12 20V4M19 20v-6" />
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-[22px] w-[22px]">
+        <polyline points="2 17 9.5 9.5 14 14 22 5" />
+        <polyline points="16 5 22 5 22 11" />
       </svg>
     ),
   },
