@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import type { Book } from "../lib/types";
-import { todayISO } from "../lib/books";
+import { todayISO, pct } from "../lib/books";
 import { Modal, Button, FieldLabel, inputClass, Cover } from "./ui";
 import RichTextEditor from "./RichTextEditor";
 import { compressImage } from "../lib/image";
@@ -167,8 +167,15 @@ export default function LogReadingModal({
   }, [open, defaultBookId, books]);
 
   const book = books.find((b) => String(b.id) === bookId);
-  const target = Number(endPage);
-  const validNumber = endPage !== "" && !isNaN(target);
+  // Saisie en pages (par défaut) ou en pourcentage selon la préférence du
+  // livre — la page atteinte reste toujours ce qui est stocké/comparé.
+  const isPercentMode = book?.progress_mode === "percent";
+  const rawValue = endPage !== "" ? Number(endPage) : NaN;
+  const validNumber =
+    endPage !== "" && !isNaN(rawValue) && (!isPercentMode || (rawValue >= 0 && rawValue <= 100));
+  const target = book && validNumber
+    ? (isPercentMode ? Math.round((rawValue / 100) * book.pages) : rawValue)
+    : 0;
   const diff = book && validNumber ? target - book.progress : 0;
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -494,22 +501,25 @@ export default function LogReadingModal({
           </div>
 
           <div>
-            <FieldLabel>Page d&apos;arrêt</FieldLabel>
+            <FieldLabel>{isPercentMode ? "Avancement d'arrêt" : "Page d'arrêt"}</FieldLabel>
             <div className="flex items-center gap-3">
               <input
                 type="number"
                 min={0}
-                max={book?.pages || 9999}
+                max={isPercentMode ? 100 : (book?.pages || 9999)}
                 value={endPage}
                 onChange={(e) => setEndPage(e.target.value)}
-                placeholder={book ? String(book.progress) : "0"}
+                placeholder={book ? String(isPercentMode ? pct(book) : book.progress) : "0"}
                 className={inputClass + " text-lg font-bold"}
                 autoFocus
               />
               <span className="whitespace-nowrap text-sm font-medium text-muted">
-                / {book?.pages ?? "—"}
+                {isPercentMode ? "%" : `/ ${book?.pages ?? "—"}`}
               </span>
             </div>
+            {isPercentMode && book && validNumber && (
+              <p className="mt-1.5 text-[11px] text-muted">≈ page {target} / {book.pages}</p>
+            )}
             {/* Badge "Livre terminé" quand la page = total */}
             {book && validNumber && target === book.pages && (
               <p className="mt-1.5 text-[11.5px] font-semibold text-violet-deep">

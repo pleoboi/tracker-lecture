@@ -5,6 +5,9 @@ export interface Book {
   author: string;
   pages: number;
   progress: number;
+  // Préférence d'affichage pour saisir la progression — "progress" reste
+  // toujours stocké en pages quel que soit ce réglage, purement présentationnel.
+  progress_mode?: "pages" | "percent" | null;
   status: "reading" | "completed" | "abandoned" | "to-read" | "paused" | string;
   cover_url?: string | null;
   rating?: number | null;
