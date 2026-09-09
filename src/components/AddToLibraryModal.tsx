@@ -40,6 +40,10 @@ export default function AddToLibraryModal({
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [pages, setPages] = useState("");
+  const [currentPage, setCurrentPage] = useState("");
+  // Unité de saisie de la progression — purement présentationnelle : la page
+  // atteinte est toujours convertie et stockée en pages (progress).
+  const [progressMode, setProgressMode] = useState<"pages" | "percent">("pages");
   const [rating, setRating] = useState(0);
   const [coverUrl, setCoverUrl] = useState<string | null>(null);
   const [showCoverPicker, setShowCoverPicker] = useState(false);
@@ -52,6 +56,8 @@ export default function AddToLibraryModal({
       setStartDate("");
       setEndDate("");
       setPages(book.pages ? String(book.pages) : "");
+      setCurrentPage("");
+      setProgressMode("pages");
       setRating(0);
       setCoverUrl(book.cover_url ?? null);
       setShowCoverPicker(false);
@@ -61,10 +67,18 @@ export default function AddToLibraryModal({
 
   if (!book) return null;
 
+  // Pages totales effectives : le champ saisi, sinon celles déjà connues du livre.
+  const effectivePages = Number(pages) || book.pages || 0;
+
   const handleSave = async () => {
     if (!user) return;
 
     const n = Number(pages) || book.pages || 0;
+
+    if (status === "reading" && progressMode === "percent" && n <= 0) {
+      setError("Renseigne le nombre de pages total pour utiliser le pourcentage.");
+      return;
+    }
 
     setSaving(true);
     setError(null);
@@ -82,11 +96,19 @@ export default function AddToLibraryModal({
       return;
     }
 
+    // La page atteinte est toujours stockée en pages, même saisie en %.
+    const currentAsPages = currentPage
+      ? progressMode === "percent"
+        ? Math.round((Math.min(Number(currentPage), 100) / 100) * n)
+        : Math.min(Number(currentPage), n)
+      : 0;
+
     const bookData: Record<string, unknown> = {
       title: book.title,
       author: book.author,
       pages: n,
-      progress: status === "completed" ? n : 0,
+      progress: status === "completed" ? n : currentAsPages,
+      progress_mode: progressMode,
       status,
       cover_url: coverUrl ?? null,
       genre: book.genre ?? null,
@@ -234,6 +256,50 @@ export default function AddToLibraryModal({
                 placeholder={book.pages ? String(book.pages) : "Ex : 320"}
                 className={inputClass}
               />
+            </div>
+          )}
+
+          {/* Page actuelle — uniquement "En cours" */}
+          {status === "reading" && (
+            <div>
+              <div className="flex items-center justify-between">
+                <FieldLabel>{progressMode === "percent" ? "Avancement actuel (optionnel)" : "Page actuelle (optionnel)"}</FieldLabel>
+                <div className="flex overflow-hidden rounded-full border border-line text-[11px] font-semibold">
+                  {(["pages", "percent"] as const).map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      onClick={() => { setProgressMode(m); setCurrentPage(""); }}
+                      className={`min-h-[34px] px-3.5 py-2 transition-colors active:opacity-80 ${
+                        progressMode === m ? "bg-violet text-cream" : "bg-card text-muted"
+                      }`}
+                    >
+                      {m === "pages" ? "Pages" : "%"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  max={progressMode === "percent" ? 100 : undefined}
+                  value={currentPage}
+                  onChange={(e) => setCurrentPage(e.target.value)}
+                  placeholder={progressMode === "percent" ? "ex. 40" : "ex. 47"}
+                  className={inputClass}
+                />
+                {progressMode === "percent" && <span className="text-sm font-medium text-muted">%</span>}
+              </div>
+              {progressMode === "percent" && effectivePages <= 0 ? (
+                <p className="mt-1.5 text-[11px] font-medium text-danger">
+                  Renseigne le nombre de pages total ci-dessus pour utiliser le pourcentage.
+                </p>
+              ) : progressMode === "percent" && currentPage && effectivePages > 0 ? (
+                <p className="mt-1.5 text-[11px] text-muted">
+                  ≈ {Math.round((Math.min(Number(currentPage), 100) / 100) * effectivePages)} / {effectivePages} pages
+                </p>
+              ) : null}
             </div>
           )}
 
