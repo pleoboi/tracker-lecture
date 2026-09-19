@@ -16,6 +16,7 @@ import {
   PublicationTimeline,
 } from "../../../../components/AdvancedStats";
 import MemberSectionHeader from "../../../../components/MemberSectionHeader";
+import { fetchAllReadingLogsForChampionDays, computeChampionDays } from "../../../../lib/championDays";
 
 const MONTHS = ["Jan", "Fév", "Mar", "Avr", "Mai", "Juin", "Juil", "Aoû", "Sep", "Oct", "Nov", "Déc"];
 const VIOLET = "var(--color-violet)";
@@ -37,12 +38,11 @@ export default function MemberStatistiquesPage() {
 
   useEffect(() => {
     (async () => {
-      type LogRow = { user_id: string; pages_read: number; date: string };
-      const [{ data: prof }, { data: bs }, { data: ls }, { data: allLogs }, { data: logsWithPhotos }] = await Promise.all([
+      const [{ data: prof }, { data: bs }, { data: ls }, allLogs, { data: logsWithPhotos }] = await Promise.all([
         supabase.from("user_profiles").select("display_name").eq("id", memberId).single(),
         supabase.from("books").select("*").eq("user_id", memberId),
         supabase.from("reading_logs").select("*").eq("user_id", memberId),
-        supabase.from("reading_logs").select("user_id, pages_read, date"),
+        fetchAllReadingLogsForChampionDays(),
         supabase
           .from("reading_logs")
           .select("session_photo_url, date, book_id")
@@ -67,19 +67,7 @@ export default function MemberStatistiquesPage() {
           .map((r) => ({ url: r.session_photo_url!, date: r.date, bookTitle: bookMap.get(r.book_id) ?? "" }))
       );
 
-      const rows = (allLogs as LogRow[]) || [];
-      const dateMap = new Map<string, Map<string, number>>();
-      rows.forEach(({ date, user_id, pages_read }) => {
-        if (!dateMap.has(date)) dateMap.set(date, new Map());
-        const m = dateMap.get(date)!;
-        m.set(user_id, (m.get(user_id) || 0) + pages_read);
-      });
-      let count = 0;
-      for (const userMap of dateMap.values()) {
-        const maxPages = Math.max(...userMap.values());
-        if (maxPages > 0 && (userMap.get(memberId) || 0) >= maxPages) count++;
-      }
-      setChampionDays(count);
+      setChampionDays(computeChampionDays(allLogs, memberId));
       setLoading(false);
     })();
   }, [memberId]);

@@ -5,6 +5,7 @@ import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import type { Book, ReadingLog } from "../../lib/types";
 import { loadGoals, updateGoal, DEFAULT_GOALS, type Goals } from "../../lib/settings";
+import { fetchAllReadingLogsForChampionDays, computeChampionDays } from "../../lib/championDays";
 import {
   GoalIndicator,
   ObjectiveChart,
@@ -102,11 +103,11 @@ export default function DashboardPage() {
 
   const loadAll = useCallback(async () => {
     if (!userId) return;
-    const [g, { data: l }, { data: b }, { data: allLogs }, { data: profile }] = await Promise.all([
+    const [g, { data: l }, { data: b }, allLogs, { data: profile }] = await Promise.all([
       loadGoals(userId),
       supabase.from("reading_logs").select("*").eq("user_id", userId),
       supabase.from("books").select("*").eq("user_id", userId),
-      supabase.from("reading_logs").select("user_id, pages_read, date"),
+      fetchAllReadingLogsForChampionDays(),
       supabase.from("user_profiles").select("avatar_url").eq("id", userId).single(),
     ]);
     setGoals(g);
@@ -114,20 +115,7 @@ export default function DashboardPage() {
     setBooks((b as Book[]) || []);
     setAvatarUrl((profile as { avatar_url?: string | null } | null)?.avatar_url ?? null);
 
-    type LogRow = { user_id: string; pages_read: number; date: string };
-    const rows = (allLogs as LogRow[]) || [];
-    const dateMap = new Map<string, Map<string, number>>();
-    rows.forEach(({ date, user_id, pages_read }) => {
-      if (!dateMap.has(date)) dateMap.set(date, new Map());
-      const m = dateMap.get(date)!;
-      m.set(user_id, (m.get(user_id) || 0) + pages_read);
-    });
-    let count = 0;
-    for (const userMap of dateMap.values()) {
-      const maxPages = Math.max(...userMap.values());
-      if (maxPages > 0 && (userMap.get(userId) || 0) >= maxPages) count++;
-    }
-    setChampionDays(count);
+    setChampionDays(computeChampionDays(allLogs, userId));
     setLoading(false);
   }, [userId]);
 
