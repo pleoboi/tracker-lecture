@@ -14,7 +14,6 @@ import AddToLibraryModal from "../../../components/AddToLibraryModal";
 import CoverPickerModal from "../../../components/CoverPickerModal";
 import RichTextEditor from "../../../components/RichTextEditor";
 import Lightbox from "../../../components/Lightbox";
-import { getBuyLinks, normalizeIsbn } from "../../../lib/affiliate";
 import { notifyUser } from "../../../lib/push.client";
 import { stripHtml } from "../../../lib/googleBooks";
 
@@ -795,38 +794,6 @@ export default function BookDetailPage() {
             rounded="rounded-lg"
           />
 
-          {/* ISBN + achat affilié — masqué tant qu'aucun ISBN valide n'est renseigné */}
-          {(() => {
-            const isbn = normalizeIsbn(book.isbn13);
-            const buyLinks = getBuyLinks(book);
-            if (!isbn) return null;
-            return (
-              <div className="flex w-full flex-col items-start gap-1.5">
-                <div className="flex flex-wrap gap-2">
-                  {buyLinks.map((l) => (
-                    <a
-                      key={l.name}
-                      href={l.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-line bg-card px-3 py-1.5 text-[11px] font-semibold text-ink transition-colors hover:border-violet/50"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="9" cy="21" r="1" />
-                        <circle cx="20" cy="21" r="1" />
-                        <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
-                      </svg>
-                      Acheter
-                    </a>
-                  ))}
-                </div>
-                {/* Divulgation exigée par le programme Partenaires Amazon — texte minimal mais conservé pour rester conforme */}
-                <p className="text-[9px] leading-tight text-muted">
-                  Lien partenaire Amazon.
-                </p>
-              </div>
-            );
-          })()}
 
           {canEdit && (
             <button

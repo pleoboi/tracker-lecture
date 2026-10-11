@@ -58,7 +58,6 @@ export default function ConfidentialitePage() {
           <li>Vercel Inc. : hébergement de l&apos;application.</li>
           <li>Services de notification push d&apos;Apple et de Google : acheminement des notifications vers votre appareil, si vous les activez.</li>
           <li>Google Books, Open Library, Wikipédia, Apple Books : interrogés pour récupérer les métadonnées et couvertures des livres. Seuls le titre et l&apos;auteur recherchés leur sont transmis, jamais vos données personnelles.</li>
-          <li>Amazon : uniquement si vous cliquez sur un lien d&apos;achat, dans le cadre du programme d&apos;affiliation.</li>
         </ul>
         <p>
           Certains de ces prestataires sont établis hors de l&apos;Union européenne. Les

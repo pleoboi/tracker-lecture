@@ -49,19 +49,6 @@ export default function MentionsLegalesPage() {
         </p>
       </LegalSection>
 
-      <LegalSection title="Liens d&apos;affiliation">
-        <p>
-          Swena participe au programme Partenaires d&apos;Amazon. Certains liens présents sur
-          les fiches de livres sont des liens affiliés : si vous effectuez un achat après avoir
-          cliqué sur l&apos;un d&apos;eux, l&apos;éditeur peut percevoir une commission, sans
-          coût supplémentaire pour vous.
-        </p>
-        <p>
-          En tant que Partenaire Amazon, Swena réalise un bénéfice sur les achats remplissant
-          les conditions requises.
-        </p>
-      </LegalSection>
-
       <LegalSection title="Responsabilité">
         <p>
           L&apos;éditeur s&apos;efforce d&apos;assurer l&apos;exactitude des informations

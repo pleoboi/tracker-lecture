@@ -4,13 +4,65 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import type { Book } from "../lib/types";
-import { todayISO, pct } from "../lib/books";
+import { todayISO, pct, shiftDateISO } from "../lib/books";
 import { Modal, Button, FieldLabel, inputClass, Cover } from "./ui";
 import RichTextEditor from "./RichTextEditor";
 import { compressImage } from "../lib/image";
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+}
+
+function dateBarLabel(iso: string) {
+  const today = todayISO();
+  if (iso === today) return "Aujourd'hui";
+  if (iso === shiftDateISO(today, -1)) return "Hier";
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const sameYear = y === new Date().getFullYear();
+  return dt.toLocaleDateString("fr-FR", sameYear ? { day: "numeric", month: "long" } : { day: "numeric", month: "long", year: "numeric" });
+}
+
+// ── Barre de date avec navigation jour par jour ──────────────────────────────
+function DateNavBar({ value, onChange }: { value: string; onChange: (iso: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const isToday = value >= todayISO();
+
+  return (
+    <div className="flex items-center gap-1 rounded-xl border border-line bg-input px-1.5 py-1.5">
+      <button
+        type="button"
+        onClick={() => onChange(shiftDateISO(value, -1))}
+        aria-label="Jour précédent"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg text-muted transition-colors hover:bg-violet-soft hover:text-violet-deep"
+      >
+        ‹
+      </button>
+      <div className="relative min-w-0 flex-1">
+        <div className="pointer-events-none flex items-center justify-center py-1.5 text-sm font-semibold text-ink">
+          {dateBarLabel(value)}
+        </div>
+        <input
+          ref={inputRef}
+          type="date"
+          value={value}
+          max={todayISO()}
+          onChange={(e) => e.target.value && onChange(e.target.value)}
+          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+          aria-label="Choisir une date"
+        />
+      </div>
+      <button
+        type="button"
+        onClick={() => onChange(shiftDateISO(value, 1))}
+        disabled={isToday}
+        aria-label="Jour suivant"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-lg text-muted transition-colors hover:bg-violet-soft hover:text-violet-deep disabled:opacity-30 disabled:hover:bg-transparent"
+      >
+        ›
+      </button>
+    </div>
+  );
 }
 
 // Étoiles avec remplissage continu (overlay clip)
@@ -165,6 +217,25 @@ export default function LogReadingModal({
       setReviewRating(0);
     }
   }, [open, defaultBookId, books]);
+
+  // Sans livre explicitement imposé (defaultBookId), on présélectionne
+  // naturellement le dernier livre sur lequel une session a été loggée.
+  useEffect(() => {
+    if (!open || defaultBookId || !user || books.length <= 1) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("reading_logs")
+        .select("book_id, created_at")
+        .eq("user_id", user.id)
+        .in("book_id", books.map((b) => b.id))
+        .order("created_at", { ascending: false })
+        .limit(1);
+      const lastBookId = data?.[0]?.book_id;
+      if (!cancelled && lastBookId != null) setBookId(String(lastBookId));
+    })();
+    return () => { cancelled = true; };
+  }, [open, defaultBookId, books, user]);
 
   const book = books.find((b) => String(b.id) === bookId);
   // Saisie en pages (par défaut) ou en pourcentage selon la préférence du
@@ -492,12 +563,7 @@ export default function LogReadingModal({
 
           <div>
             <FieldLabel>Date</FieldLabel>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className={inputClass}
-            />
+            <DateNavBar value={date} onChange={setDate} />
           </div>
 
           <div>
@@ -535,7 +601,13 @@ export default function LogReadingModal({
               }`}
             >
               <span className={`text-xs font-medium ${diff > 0 ? "text-violet-deep" : "text-danger"}`}>
-                {diff > 0 ? "Lu aujourd'hui" : "Correction"}
+                {diff > 0
+                  ? date === todayISO()
+                    ? "Lu aujourd'hui"
+                    : date === shiftDateISO(todayISO(), -1)
+                      ? "Lu hier"
+                      : `Lu le ${dateBarLabel(date)}`
+                  : "Correction"}
               </span>
               <span className={`text-sm font-semibold ${diff > 0 ? "text-violet-deep" : "text-danger"}`}>
                 {diff > 0 ? `+ ${diff} pages` : `${diff} pages`}

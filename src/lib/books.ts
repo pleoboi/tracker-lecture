@@ -124,3 +124,16 @@ export function shiftISO(days: number, from: Date = new Date()): string {
   d.setDate(d.getDate() + days);
   return localISO(d);
 }
+
+/**
+ * Décale une date ISO (YYYY-MM-DD) de n jours, en restant en heure locale.
+ * On parse les composants à la main plutôt que `new Date(iso)` : ce dernier
+ * interprète la chaîne comme UTC minuit, ce qui peut faire sauter d'un jour
+ * selon le fuseau de l'utilisateur.
+ */
+export function shiftDateISO(iso: string, days: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  dt.setDate(dt.getDate() + days);
+  return localISO(dt);
+}

@@ -633,9 +633,7 @@ export default function LandingPage() {
           </div>
 
           <p className="max-w-2xl text-center text-[10.5px] leading-relaxed text-muted">
-            Swena · Le carnet de lecture de ton club. Certaines fiches de livres comportent des
-            liens partenaires. En tant que Partenaire Amazon, Swena réalise un bénéfice sur les
-            achats remplissant les conditions requises.
+            Swena · Le carnet de lecture de ton club.
           </p>
         </div>
       </footer>

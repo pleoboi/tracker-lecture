@@ -36,6 +36,27 @@ const GENRE_LIST = [
 
 type ClubSuggestion = BookSuggestion & { pages?: number; memberCount?: number };
 
+// Centre verticalement sur la zone RÉELLEMENT visible (hors clavier virtuel),
+// recalculé à chaque ouverture/fermeture du clavier — évite que la barre de
+// recherche se retrouve masquée sous le clavier sur mobile.
+function useViewportCenter(active: boolean) {
+  const [top, setTop] = useState<number | null>(null);
+  useEffect(() => {
+    if (!active) { setTop(null); return; }
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (!vv) return;
+    const update = () => setTop(vv.offsetTop + vv.height / 2);
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, [active]);
+  return top;
+}
+
 export default function AddBookModal({
   open,
   onClose,
@@ -82,6 +103,7 @@ export default function AddBookModal({
   const [scanning, setScanning] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
   const coverDebounce = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const searchBarTop = useViewportCenter(open && !selected && !manual);
 
   useEffect(() => {
     if (open) {
@@ -950,26 +972,33 @@ export default function AddBookModal({
   return (
     <Modal open={open} onClose={onClose} title="Ajouter un livre">
       <div className="flex flex-col gap-3">
-        <div className="flex gap-2">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Titre ou auteur…"
-            className={`${inputClass} flex-1`}
-            autoFocus
-          />
-          <button
-            type="button"
-            onClick={() => setShowScanner(true)}
-            aria-label="Scanner un code-barres"
-            title="Scanner un code-barres"
-            className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-line bg-card text-ink-2 transition-colors hover:border-violet/40 hover:text-violet-deep"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
-              <path d="M4 6v12M8 6v12M11 6v12M15 6v12M17.5 6v12M21 6v12" />
-              <path d="M2 4v2M2 18v2M22 4v2M22 18v2" />
-            </svg>
-          </button>
+        {/* Barre de recherche flottante, centrée sur la zone visible : reste
+            stable et au-dessus du clavier virtuel au lieu d'être masquée dessous. */}
+        <div
+          className="fixed inset-x-4 z-[70] mx-auto max-w-md"
+          style={{ top: searchBarTop ?? "33%", transform: "translateY(-50%)" }}
+        >
+          <div className="flex gap-2 rounded-2xl border border-line bg-card p-2 shadow-2xl">
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Titre ou auteur…"
+              className={`${inputClass} flex-1`}
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={() => setShowScanner(true)}
+              aria-label="Scanner un code-barres"
+              title="Scanner un code-barres"
+              className="flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-xl border border-line bg-card text-ink-2 transition-colors hover:border-violet/40 hover:text-violet-deep"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-[18px] w-[18px]">
+                <path d="M4 6v12M8 6v12M11 6v12M15 6v12M17.5 6v12M21 6v12" />
+                <path d="M2 4v2M2 18v2M22 4v2M22 18v2" />
+              </svg>
+            </button>
+          </div>
         </div>
         {scanning && <p className="text-xs font-medium text-muted">Recherche du livre scanné…</p>}
         {loading && <p className="text-xs font-medium text-muted">Recherche en cours…</p>}
