@@ -36,25 +36,29 @@ const GENRE_LIST = [
 
 type ClubSuggestion = BookSuggestion & { pages?: number; memberCount?: number };
 
-// Centre verticalement sur la zone RÉELLEMENT visible (hors clavier virtuel),
-// recalculé à chaque ouverture/fermeture du clavier — évite que la barre de
-// recherche se retrouve masquée sous le clavier sur mobile.
-function useViewportCenter(active: boolean) {
-  const [top, setTop] = useState<number | null>(null);
+// Hauteur du clavier virtuel (px) quand il est ouvert, sinon null. Sert à
+// plaquer la barre de recherche juste au-dessus du clavier, et à la remettre
+// dans le flux normal de la modale quand le clavier est fermé.
+function useKeyboardOffset(active: boolean) {
+  const [offset, setOffset] = useState<number | null>(null);
   useEffect(() => {
-    if (!active) { setTop(null); return; }
+    if (!active) return;
     const vv = typeof window !== "undefined" ? window.visualViewport : null;
     if (!vv) return;
-    const update = () => setTop(vv.offsetTop + vv.height / 2);
+    const update = () => {
+      const kb = window.innerHeight - vv.height - vv.offsetTop;
+      setOffset(kb > 80 ? kb : null);
+    };
     update();
     vv.addEventListener("resize", update);
     vv.addEventListener("scroll", update);
     return () => {
       vv.removeEventListener("resize", update);
       vv.removeEventListener("scroll", update);
+      setOffset(null);
     };
   }, [active]);
-  return top;
+  return offset;
 }
 
 export default function AddBookModal({
@@ -103,7 +107,7 @@ export default function AddBookModal({
   const [scanning, setScanning] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout>>(undefined);
   const coverDebounce = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const searchBarTop = useViewportCenter(open && !selected && !manual);
+  const keyboardOffset = useKeyboardOffset(open && !selected && !manual);
 
   useEffect(() => {
     if (open) {
@@ -972,13 +976,14 @@ export default function AddBookModal({
   return (
     <Modal open={open} onClose={onClose} title="Ajouter un livre">
       <div className="flex flex-col gap-3">
-        {/* Barre de recherche flottante, centrée sur la zone visible : reste
-            stable et au-dessus du clavier virtuel au lieu d'être masquée dessous. */}
+        {/* Clavier fermé : barre dans le flux. Clavier ouvert : plaquée juste
+            au-dessus du clavier (un espaceur garde la mise en page stable). */}
+        {keyboardOffset != null && <div className="h-[46px]" />}
         <div
-          className="fixed inset-x-4 z-[70] mx-auto max-w-md"
-          style={{ top: searchBarTop ?? "33%", transform: "translateY(-50%)" }}
+          className={keyboardOffset != null ? "fixed inset-x-4 z-[70] mx-auto max-w-md" : undefined}
+          style={keyboardOffset != null ? { bottom: keyboardOffset + 8 } : undefined}
         >
-          <div className="flex gap-2 rounded-2xl border border-line bg-card p-2 shadow-2xl">
+          <div className={`flex gap-2 ${keyboardOffset != null ? "rounded-2xl border border-line bg-card p-2 shadow-2xl" : ""}`}>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
