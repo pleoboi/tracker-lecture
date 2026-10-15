@@ -1449,10 +1449,18 @@ function ActivityCarouselItem({
             >
               {likeData && likeData.count > 0 ? (
                 <>
-                  <span className="text-[18px] leading-none" style={{ color: likeData.liked ? "#e05c7a" : "#c084a8" }}>
-                    {likeData.liked ? "♥" : "♥"}
+                  <span
+                    className={`text-[18px] leading-none ${likeData.liked ? "" : "text-muted"}`}
+                    style={likeData.liked ? { color: "#e05c7a" } : undefined}
+                  >
+                    {likeData.liked ? "♥" : "♡"}
                   </span>
-                  <span className="text-[11px] font-bold" style={{ color: "#e05c7a" }}>{likeData.count}</span>
+                  <span
+                    className={`text-[11px] ${likeData.liked ? "font-bold" : "font-medium text-muted"}`}
+                    style={likeData.liked ? { color: "#e05c7a" } : undefined}
+                  >
+                    {likeData.count}
+                  </span>
                 </>
               ) : (
                 <span className="text-[18px] leading-none text-line">♡</span>
