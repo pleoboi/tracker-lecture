@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import type { Book, ReadingLog } from "./types";
+import type { Manga, MangaLog } from "./manga";
 
 const MONTHS_FULL = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -27,7 +28,96 @@ export interface WrappedStats {
   activeReadersCount: number | null;
   topGenres: { genre: string; pages: number }[]; // top 3, pondéré par pages
   dailyPages: { date: string; pages: number }[]; // un point par jour du mois (0 si rien lu)
-  coverPool: { id: number; title: string; cover_url: string | null }[]; // livres touchés ce mois-ci, pour les visuels
+  coverPool: { id: number; title: string; cover_url: string | null }[]; // livres (et mangas) touchés ce mois-ci, pour les visuels
+  /** false = mois sans aucune lecture de livre : Wrapped 100 % manga. Absent sur les anciens caches = livres. */
+  hasBooks?: boolean;
+  /** Partie manga, null si aucune session manga ce mois-ci. */
+  manga?: MangaWrapped | null;
+}
+
+export interface MangaWrapped {
+  chapters: number;
+  volumes: number;
+  sessionsCount: number;
+  daysActive: number;
+  longestStreak: number;
+  prevChapters: number | null;
+  seriesCount: number;
+  seriesFinished: { id: number; title: string; cover_url: string | null; rating: number | null }[];
+  topSeries: { id: number; title: string; author: string | null; cover_url: string | null; chapters: number; volumes: number } | null;
+  bestDay: { date: string; chapters: number; volumes: number } | null;
+  /** Unités lues par jour (chapitres + tomes), pour la frise de régularité */
+  daily: { date: string; pages: number }[];
+  coverPool: { id: number; title: string; cover_url: string | null }[];
+}
+
+async function getMangaWrapped(
+  userId: string,
+  start: string,
+  end: string,
+  prevStart: string,
+  prevEnd: string,
+  dailyDates: string[]
+): Promise<MangaWrapped | null> {
+  const [{ data: logsData, error }, { data: prevData }, { data: mangasData }] = await Promise.all([
+    supabase.from("manga_logs").select("*").eq("user_id", userId).gte("date", start).lte("date", end),
+    supabase.from("manga_logs").select("unit, amount").eq("user_id", userId).gte("date", prevStart).lte("date", prevEnd),
+    supabase.from("mangas").select("*").eq("user_id", userId),
+  ]);
+  if (error) return null; // tables absentes / indisponibles : on ignore la partie manga
+  const logs = (logsData as MangaLog[]) || [];
+  const mangas = (mangasData as Manga[]) || [];
+  const byId = new Map(mangas.map((m) => [m.id, m]));
+
+  const seriesFinished = mangas
+    .filter((m) => m.status === "completed" && m.date_finished && m.date_finished >= start && m.date_finished <= end)
+    .map((m) => ({ id: m.id, title: m.title, cover_url: m.cover_url ?? null, rating: m.rating ?? null }));
+  if (!logs.length && !seriesFinished.length) return null;
+
+  const sum = (u: "chapter" | "volume") => logs.filter((l) => l.unit === u).reduce((s, l) => s + l.amount, 0);
+  const prev = ((prevData as Pick<MangaLog, "unit" | "amount">[]) || []).filter((l) => l.unit === "chapter").reduce((s, l) => s + l.amount, 0);
+
+  const perDay = new Map<string, { chapters: number; volumes: number }>();
+  const perSeries = new Map<number, { chapters: number; volumes: number }>();
+  for (const l of logs) {
+    const d = perDay.get(l.date) ?? { chapters: 0, volumes: 0 };
+    const s = perSeries.get(l.manga_id) ?? { chapters: 0, volumes: 0 };
+    if (l.unit === "chapter") { d.chapters += l.amount; s.chapters += l.amount; }
+    else { d.volumes += l.amount; s.volumes += l.amount; }
+    perDay.set(l.date, d);
+    perSeries.set(l.manga_id, s);
+  }
+  // Un tome pèse environ 10 chapitres pour départager jours et séries
+  const weight = (x: { chapters: number; volumes: number }) => x.chapters + x.volumes * 10;
+
+  let bestDay: MangaWrapped["bestDay"] = null;
+  for (const [date, v] of perDay) if (!bestDay || weight(v) > weight(bestDay)) bestDay = { date, ...v };
+
+  const ranked = [...perSeries.entries()].sort((a, b) => weight(b[1]) - weight(a[1]));
+  const top = ranked[0];
+  const topManga = top ? byId.get(top[0]) : undefined;
+
+  const poolIds = [...ranked.map(([id]) => id), ...seriesFinished.map((m) => m.id).filter((id) => !perSeries.has(id))];
+
+  return {
+    chapters: sum("chapter"),
+    volumes: sum("volume"),
+    sessionsCount: logs.length,
+    daysActive: perDay.size,
+    longestStreak: longestConsecutiveStreak([...perDay.keys()]),
+    prevChapters: prev > 0 ? prev : null,
+    seriesCount: perSeries.size,
+    seriesFinished,
+    topSeries: topManga
+      ? { id: topManga.id, title: topManga.title, author: topManga.author ?? null, cover_url: topManga.cover_url ?? null, ...top[1] }
+      : null,
+    bestDay,
+    daily: dailyDates.map((date) => ({ date, pages: (perDay.get(date)?.chapters ?? 0) + (perDay.get(date)?.volumes ?? 0) })),
+    coverPool: poolIds
+      .map((id) => byId.get(id))
+      .filter((m): m is Manga => !!m)
+      .map((m) => ({ id: m.id, title: m.title, cover_url: m.cover_url ?? null })),
+  };
 }
 
 function pad(n: number): string {
@@ -85,8 +175,13 @@ export async function getMonthlyWrapped(userId: string, year: number, month: num
 
   const totalPages = logs.reduce((s, l) => s + (l.pages_read || 0), 0);
   const sessionsCount = logs.length;
+  const hasBooks = totalPages > 0 || sessionsCount > 0;
 
-  if (totalPages === 0 && sessionsCount === 0) return null;
+  const monthDates = Array.from({ length: daysInMonth }, (_, i) => `${year}-${pad(month)}-${pad(i + 1)}`);
+  const manga = await getMangaWrapped(userId, start, end, prevStart, prevEnd, monthDates);
+
+  // Rien lu du tout ce mois-ci (ni livre ni manga) : pas de Wrapped
+  if (!hasBooks && !manga) return null;
 
   const prevMonthPages = ((prevLogsData as { pages_read: number }[]) || []).reduce((s, l) => s + (l.pages_read || 0), 0);
   const deltaPct = prevMonthPages > 0 ? Math.round(((totalPages - prevMonthPages) / prevMonthPages) * 100) : null;
@@ -197,6 +292,9 @@ export async function getMonthlyWrapped(userId: string, year: number, month: num
     activeReadersCount,
     topGenres,
     dailyPages,
-    coverPool,
+    // Visuels : livres d'abord, puis mangas (seuls les mangas pour un Wrapped 100 % manga)
+    coverPool: [...coverPool, ...(manga?.coverPool ?? []).map((m) => ({ ...m, id: -m.id }))],
+    hasBooks,
+    manga,
   };
 }

@@ -9,7 +9,8 @@ export type NotifType =
   | "messages"
   | "badges"
   | "reminders"
-  | "sprint";
+  | "sprint"
+  | "manga";
 
 export type NotifPrefs = Partial<Record<NotifType, boolean>>;
 
@@ -38,6 +39,7 @@ export const NOTIF_GROUPS: {
     title: "Ta progression",
     items: [
       { type: "badges", label: "Badges", desc: "Quand tu débloques un nouveau badge" },
+      { type: "manga", label: "Nouveaux chapitres", desc: "Quand un chapitre sort pour une série manga que tu suis" },
     ],
   },
   {

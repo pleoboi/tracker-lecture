@@ -934,8 +934,22 @@ export default function AccueilPage() {
               <div className="min-w-0 flex-1">
                 <p className="font-serif text-[15px] font-semibold text-white/90">Ton Wrapped de {wrapped.monthLabel.split(" ")[0]}</p>
                 <p className="text-xs text-white/55">
-                  {wrapped.totalPages.toLocaleString("fr-FR")} pages lues
-                  {wrapped.booksCompleted.length > 0 && `, ${wrapped.booksCompleted.length} livre${wrapped.booksCompleted.length > 1 ? "s" : ""} terminé${wrapped.booksCompleted.length > 1 ? "s" : ""}`}
+                  {wrapped.hasBooks !== false && (
+                    <>
+                      {wrapped.totalPages.toLocaleString("fr-FR")} pages lues
+                      {wrapped.booksCompleted.length > 0 && `, ${wrapped.booksCompleted.length} livre${wrapped.booksCompleted.length > 1 ? "s" : ""} terminé${wrapped.booksCompleted.length > 1 ? "s" : ""}`}
+                    </>
+                  )}
+                  {wrapped.manga && (
+                    <>
+                      {wrapped.hasBooks !== false ? " · " : ""}
+                      {[
+                        wrapped.manga.chapters ? `${wrapped.manga.chapters} ch.` : null,
+                        wrapped.manga.volumes ? `${wrapped.manga.volumes} tome${wrapped.manga.volumes > 1 ? "s" : ""}` : null,
+                      ].filter(Boolean).join(" + ")}{" "}
+                      de manga
+                    </>
+                  )}
                 </p>
               </div>
               <p className="shrink-0 text-[11px] font-medium text-white/60">Revoir →</p>

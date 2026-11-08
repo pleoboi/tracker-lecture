@@ -13,7 +13,10 @@ import ReferralPromptModal from "./ReferralPromptModal";
 import AddBookModal from "./AddBookModal";
 import LogReadingModal from "./LogReadingModal";
 import WrappedStory from "./WrappedStory";
+import AddMangaModal from "./manga/AddMangaModal";
+import LogMangaModal from "./manga/LogMangaModal";
 import { getMonthlyWrapped, type WrappedStats } from "../lib/wrapped";
+import { isMangaPath } from "../lib/manga";
 
 type NavItem = { name: string; href: string; icon: React.ReactNode; shortName?: string };
 
@@ -87,10 +90,30 @@ const desktopNavItems = allNavItems.slice(0, 6);
 const mobileNavLeft  = [allNavItems[0], allNavItems[2]];  // Accueil, Communauté
 const mobileNavRight = [allNavItems[3], allNavItems[5]];  // Statistiques, Compte (Profil)
 
+// ── Mode Manga : mêmes emplacements, mais bibliothèque et stats séparées ──
+const mangaHomeItem: NavItem = {
+  name: "Mangathèque",
+  shortName: "Manga",
+  href: "/manga",
+  icon: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-[22px] w-[22px]">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M4 5.5C6.5 4.5 9.5 4.5 12 6c2.5-1.5 5.5-1.5 8-.5V19c-2.5-1-5.5-1-8 .5-2.5-1.5-5.5-1.5-8-.5z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v13.5M15 9.5l2.5-.6M15 12.5l2.5-.6" />
+    </svg>
+  ),
+};
+const mangaStatsItem: NavItem = { ...allNavItems[3], name: "Stats manga", shortName: "Stats", href: "/manga/stats" };
+const mangaCommunityItem: NavItem = { ...allNavItems[2], href: "/manga/communaute" };
+
+const mangaDesktopNavItems = [mangaHomeItem, mangaCommunityItem, mangaStatsItem, allNavItems[4], allNavItems[5]];
+const mangaMobileNavLeft  = [mangaHomeItem, mangaCommunityItem];
+const mangaMobileNavRight = [mangaStatsItem, allNavItems[5]];
+
 const NO_SHELL_PATHS = ["/login", "/register", "/", "/email-sent"];
 
 function isActive(pathname: string, href: string) {
   if (href === "/accueil") return pathname === "/accueil";
+  if (href === "/manga") return isMangaPath(pathname) && !pathname.startsWith("/manga/stats") && !pathname.startsWith("/manga/communaute");
   if (href === "/membres") return pathname.startsWith("/membres") || pathname.startsWith("/membre/");
   return pathname.startsWith(href);
 }
@@ -116,7 +139,7 @@ function SwenaWordmark() {
       xmlns="http://www.w3.org/2000/svg"
       className="h-[32px] w-auto"
     >
-      <g transform="translate(0,6) scale(0.71)" className="fill-[#8b79be] dark:fill-[#9b89cf]">
+      <g transform="translate(0,6) scale(0.71)" className="fill-violet">
         <path d="M8,68 C2,68 0,64 0,60 C0,52 4,48 12,48 C10,38 16,32 26,32 C24,24 30,18 40,18 C50,18 56,24 58,32 C62,30 70,30 74,36 C82,32 92,38 90,48 C90,56 86,64 78,66 C78,68 76,68 70,68 Z" />
         <path d="M22,17 L22.6,19.4 L25,20 L22.6,20.6 L22,23 L21.4,20.6 L19,20 L21.4,19.4 Z" />
         <path d="M42,2 L42.8,5.2 L46,6 L42.8,6.8 L42,10 L41.2,6.8 L38,6 L41.2,5.2 Z" />
@@ -199,15 +222,46 @@ function AccountSettingsButton() {
   );
 }
 
+// ── Bascule Livres / Manga ─────────────────────────────────────────────────
+function ModeSwitch({ manga, compact = false }: { manga: boolean; compact?: boolean }) {
+  const options = [
+    { key: "books", label: "Livres", href: "/accueil", active: !manga },
+    { key: "manga", label: "Manga", href: "/manga", active: manga },
+  ];
+  return (
+    <div
+      role="tablist"
+      aria-label="Basculer entre livres et manga"
+      className={`flex items-center rounded-full border border-line bg-card p-0.5 ${manga ? "border-2 border-ink" : ""}`}
+    >
+      {options.map((o) => (
+        <Link
+          key={o.key}
+          href={o.href}
+          role="tab"
+          aria-selected={o.active}
+          className={`rounded-full font-semibold transition-colors ${compact ? "px-2.5 py-1 text-[11px]" : "px-3 py-1.5 text-[12px]"} ${
+            o.active ? (manga ? "bg-ink text-paper" : "bg-violet text-cream") : "text-muted hover:text-ink"
+          }`}
+        >
+          {o.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 // ── Header mobile ──────────────────────────────────────────────────────────
 function MobileTopBar({
   onGuide,
   newFollowersCount,
   onNotifClick,
+  manga,
 }: {
   onGuide: () => void;
   newFollowersCount: number;
   onNotifClick: () => void;
+  manga: boolean;
 }) {
   return (
     <header
@@ -222,14 +276,15 @@ function MobileTopBar({
         WebkitBackfaceVisibility: "hidden",
       }}
     >
-      <Link href="/accueil">
+      <Link href={manga ? "/manga" : "/accueil"} className="shrink-0 [&_svg]:h-[26px]">
         <SwenaWordmark />
       </Link>
       <div className="flex items-center gap-2">
+        <ModeSwitch manga={manga} compact />
         <button
           onClick={onGuide}
           aria-label="Guide d'utilisation"
-          className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-card text-xs font-bold text-muted"
+          className="hidden h-8 w-8 items-center justify-center rounded-full border border-line bg-card text-xs font-bold text-muted min-[400px]:flex"
         >
           ?
         </button>
@@ -260,12 +315,14 @@ function TopBar({
   onGuide,
   newFollowersCount,
   onNotifClick,
+  manga,
 }: {
   pathname: string;
   userId: string | undefined;
   onGuide: () => void;
   newFollowersCount: number;
   onNotifClick: () => void;
+  manga: boolean;
 }) {
   return (
     <header
@@ -278,12 +335,15 @@ function TopBar({
       }}
     >
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-10">
-        <Link href="/accueil">
-          <SwenaWordmark />
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link href={manga ? "/manga" : "/accueil"}>
+            <SwenaWordmark />
+          </Link>
+          <ModeSwitch manga={manga} />
+        </div>
 
         <nav className="flex items-center gap-0.5">
-          {desktopNavItems.map((item) => {
+          {(manga ? mangaDesktopNavItems : desktopNavItems).map((item) => {
             // "Profil" doit pointer vers la page profil publique (/membre/[id]),
             // pas vers les réglages du compte (/compte) — même résolution que la nav mobile.
             const resolved = item.href === "/compte" && userId ? { ...item, href: `/membre/${userId}` } : item;
@@ -368,7 +428,9 @@ function NavLink({ item, pathname }: { item: NavItem; pathname: string }) {
   );
 }
 
-function BottomNav({ pathname, onPlus, userId }: { pathname: string; onPlus: () => void; userId?: string }) {
+function BottomNav({ pathname, onPlus, userId, manga }: { pathname: string; onPlus: () => void; userId?: string; manga: boolean }) {
+  const navLeft = manga ? mangaMobileNavLeft : mobileNavLeft;
+  const navRight = manga ? mangaMobileNavRight : mobileNavRight;
   const [keyboardOpen, setKeyboardOpen] = useState(false);
   useEffect(() => {
     const vv = window.visualViewport;
@@ -399,7 +461,7 @@ function BottomNav({ pathname, onPlus, userId }: { pathname: string; onPlus: () 
           boxShadow: "0 8px 32px color-mix(in srgb, var(--color-ink) 10%, transparent), 0 1px 0 color-mix(in srgb, var(--color-violet) 8%, transparent) inset",
         }}
       >
-        {mobileNavLeft.map((item) => (
+        {navLeft.map((item) => (
           <NavLink key={item.href} item={item} pathname={pathname} />
         ))}
 
@@ -424,7 +486,7 @@ function BottomNav({ pathname, onPlus, userId }: { pathname: string; onPlus: () 
           </button>
         </div>
 
-        {mobileNavRight.map((item) => {
+        {navRight.map((item) => {
           // "Profil" doit pointer vers la page profil publique (/membre/[id]),
           // pas vers les réglages du compte (/compte).
           const resolved = item.href === "/compte" && userId
@@ -449,6 +511,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [showActionMenu, setShowActionMenu] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [showLog, setShowLog] = useState(false);
+  const [showAddManga, setShowAddManga] = useState(false);
+  const [showLogManga, setShowLogManga] = useState(false);
   const [readingBooks, setReadingBooks] = useState<Book[]>([]);
   const [shellToast, setShellToast] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -483,6 +547,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     from_user_id: string;
     from_name: string;
     message: string;
+    created_at: string;
+    isNew: boolean;
+  }[]>([]);
+  // Nouveaux chapitres sortis pour les mangas en cours de lecture
+  const [mangaNotifs, setMangaNotifs] = useState<{
+    id: string;
+    manga_id: number;
+    title: string;
+    chapter: number;
+    chapter_title: string | null;
     created_at: string;
     isNew: boolean;
   }[]>([]);
@@ -655,11 +729,38 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }
     setDmNotifs(enrichedDms);
 
+    // Nouveaux chapitres (14 derniers jours) des mangas en cours, pas encore lus
+    const since = new Date(Date.now() - 14 * 86_400_000).toISOString();
+    const { data: mangaRows } = await supabase
+      .from("mangas")
+      .select("id, title, current_chapter, latest_chapter, latest_chapter_title, latest_chapter_at")
+      .eq("user_id", uid)
+      .eq("status", "reading")
+      .eq("publication_status", "RELEASING")
+      .not("latest_chapter_at", "is", null)
+      .gte("latest_chapter_at", since);
+    const enrichedManga = ((mangaRows ?? []) as {
+      id: number; title: string; current_chapter: number; latest_chapter: number | null;
+      latest_chapter_title: string | null; latest_chapter_at: string;
+    }[])
+      .filter((m) => m.latest_chapter != null && Math.floor(Number(m.latest_chapter)) > m.current_chapter)
+      .map((m) => ({
+        id: `${m.id}-${m.latest_chapter}`,
+        manga_id: m.id,
+        title: m.title,
+        chapter: Math.floor(Number(m.latest_chapter)),
+        chapter_title: m.latest_chapter_title,
+        created_at: m.latest_chapter_at,
+        isNew: m.latest_chapter_at > lastSeen,
+      }));
+    setMangaNotifs(enrichedManga);
+
     setNewFollowersCount(
       enriched.filter((f) => f.isNew).length +
       enrichedLikes.filter((l) => l.isNew).length +
       enrichedInvites.filter((i) => i.isNew).length +
-      enrichedDms.filter((d) => d.isNew).length
+      enrichedDms.filter((d) => d.isNew).length +
+      enrichedManga.filter((m) => m.isNew).length
     );
   };
 
@@ -777,6 +878,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     }).catch(() => {});
   }, [user?.id]);
 
+  // Habillage manga (palette « Encre & trame ») sur toutes les pages /manga
+  const manga = isMangaPath(pathname);
+  useEffect(() => {
+    document.documentElement.classList.toggle("manga", manga);
+  }, [manga]);
+
+  // Mémorise l'univers en cours pour la prochaine ouverture de l'app : la page
+  // manga où l'on était, ou rien (= accueil livres). Lu par le proxy sur "/".
+  useEffect(() => {
+    if (NO_SHELL_PATHS.includes(pathname)) return;
+    document.cookie = manga
+      ? `swena_last_manga=${pathname}; path=/; max-age=31536000; samesite=lax`
+      : "swena_last_manga=; path=/; max-age=0; samesite=lax";
+  }, [manga, pathname]);
+
   // Restaure le thème persisté dès le montage
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem("theme") : null;
@@ -828,6 +944,24 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     router.refresh();
   };
 
+  const handleMangaDone = (msg: string) => {
+    setShowAddManga(false);
+    setShowLogManga(false);
+    showToast(msg);
+    window.dispatchEvent(new CustomEvent("mangas-updated"));
+  };
+
+  // Le bouton + agit sur l'univers affiché
+  const actionItems = manga
+    ? [
+        { onClick: () => { setShowActionMenu(false); setShowAddManga(true); }, title: "Ajouter un manga", sub: "Rechercher sur AniList ou saisir", icon: "M12 5v14M5 12h14" },
+        { onClick: () => { setShowActionMenu(false); setShowLogManga(true); }, title: "Noter ma lecture", sub: "Chapitres ou tomes", icon: "M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" },
+      ]
+    : [
+        { onClick: openAdd, title: "Ajouter un livre", sub: "Rechercher ou saisir manuellement", icon: "M12 5v14M5 12h14" },
+        { onClick: openLog, title: "Noter ma lecture", sub: "Enregistrer une session", icon: "M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" },
+      ];
+
   return (
     <div className="min-h-screen">
       <TopBar
@@ -836,18 +970,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         onGuide={() => setShowGuide(true)}
         newFollowersCount={newFollowersCount}
         onNotifClick={openNotif}
+        manga={manga}
       />
       <MobileTopBar
         onGuide={() => setShowGuide(true)}
         newFollowersCount={newFollowersCount}
         onNotifClick={openNotif}
+        manga={manga}
       />
 
       <main className="mx-auto w-full max-w-2xl px-5 pb-32 pt-3 md:max-w-6xl md:px-10 md:pb-12 md:pt-6">
         {children}
       </main>
 
-      <BottomNav pathname={pathname} onPlus={() => setShowActionMenu(true)} userId={user?.id} />
+      <BottomNav pathname={pathname} onPlus={() => setShowActionMenu(true)} userId={user?.id} manga={manga} />
 
       {/* Menu d'actions rapides */}
       {showActionMenu && (
@@ -860,34 +996,23 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             style={{ bottom: "calc(max(env(safe-area-inset-bottom), 1rem) + 5rem)" }}
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={openAdd}
-              className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors hover:bg-violet-soft active:bg-violet-soft"
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-soft">
-                <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-violet-deep)" strokeWidth="1.8" className="h-5 w-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 5v14M5 12h14" />
-                </svg>
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-ink">Ajouter un livre</p>
-                <p className="text-[11px] text-muted">Rechercher ou saisir manuellement</p>
-              </div>
-            </button>
-            <button
-              onClick={openLog}
-              className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors hover:bg-violet-soft active:bg-violet-soft"
-            >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-soft">
-                <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-violet-deep)" strokeWidth="1.8" className="h-5 w-5">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z" />
-                </svg>
-              </span>
-              <div>
-                <p className="text-sm font-semibold text-ink">Noter ma lecture</p>
-                <p className="text-[11px] text-muted">Enregistrer une session</p>
-              </div>
-            </button>
+            {actionItems.map((a) => (
+              <button
+                key={a.title}
+                onClick={a.onClick}
+                className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition-colors hover:bg-violet-soft active:bg-violet-soft"
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-soft">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="var(--color-violet-deep)" strokeWidth="1.8" className="h-5 w-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d={a.icon} />
+                  </svg>
+                </span>
+                <div>
+                  <p className="text-sm font-semibold text-ink">{a.title}</p>
+                  <p className="text-[11px] text-muted">{a.sub}</p>
+                </div>
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -907,7 +1032,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <button onClick={() => setShowNotif(false)} className="text-xs text-muted">✕</button>
             </div>
 
-            {notifFollowers.length === 0 && likeNotifs.length === 0 && challengeInvites.length === 0 ? (
+            {notifFollowers.length === 0 && likeNotifs.length === 0 && challengeInvites.length === 0 && mangaNotifs.length === 0 ? (
               <p className="px-4 py-8 text-center text-xs text-muted">
                 Aucune notification pour l&apos;instant.
               </p>
@@ -964,10 +1089,35 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   ...likeNotifs.map((n) => ({ ...n, _type: "like" as const })),
                   ...notifFollowers.map((f) => ({ ...f, _type: "follow" as const })),
                   ...dmNotifs.map((d) => ({ ...d, _type: "dm" as const })),
+                  ...mangaNotifs.map((m) => ({ ...m, _type: "manga" as const })),
                 ]
                   .sort((a, b) => b.created_at.localeCompare(a.created_at))
                   .map((item) =>
-                    item._type === "dm" ? (
+                    item._type === "manga" ? (
+                      <Link
+                        key={`manga-${item.id}`}
+                        href={`/manga/${(item as typeof mangaNotifs[0]).manga_id}`}
+                        onClick={() => setShowNotif(false)}
+                        className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-violet-soft"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-[#111] bg-[#e1252c] text-[10px] font-black text-white">
+                          NEW
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[12.5px] font-semibold text-ink">
+                            {(item as typeof mangaNotifs[0]).title}{" "}
+                            <span className="font-normal text-muted">· chapitre {(item as typeof mangaNotifs[0]).chapter} sorti</span>
+                          </p>
+                          <p className="truncate text-[11px] text-muted italic">
+                            {(item as typeof mangaNotifs[0]).chapter_title
+                              ? `« ${(item as typeof mangaNotifs[0]).chapter_title} » · `
+                              : ""}
+                            {relativeTime(item.created_at)}
+                          </p>
+                        </div>
+                        {item.isNew && <span className="h-2 w-2 shrink-0 rounded-full bg-danger" />}
+                      </Link>
+                    ) : item._type === "dm" ? (
                       <Link
                         key={`dm-${item.id}`}
                         href={`/membre/${(item as typeof dmNotifs[0] & { _type: "dm" }).from_user_id}`}
@@ -1194,6 +1344,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         onClose={() => setShowLog(false)}
         books={readingBooks}
         onSaved={handleSaved}
+      />
+      <AddMangaModal
+        open={showAddManga}
+        onClose={() => setShowAddManga(false)}
+        onAdded={handleMangaDone}
+      />
+      <LogMangaModal
+        open={showLogManga}
+        onClose={() => setShowLogManga(false)}
+        onSaved={handleMangaDone}
       />
     </div>
   );

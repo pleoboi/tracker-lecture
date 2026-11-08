@@ -24,7 +24,7 @@ function proxied(url: string | null | undefined): string | undefined {
 /* ────────────────────────────────────────────────────────────────────────
    Palette : une tonalité par slide (dégradé + halo + accent).
    ──────────────────────────────────────────────────────────────────────── */
-type ToneKey = "violet" | "teal" | "bronze" | "flame" | "plum" | "forest" | "indigo" | "gold" | "finale";
+type ToneKey = "violet" | "teal" | "bronze" | "flame" | "plum" | "forest" | "indigo" | "gold" | "finale" | "manga" | "ink";
 
 const TONES: Record<ToneKey, { c1: string; c2: string; c3: string; halo: string; accent: string }> = {
   violet: { c1: "#7d6bb8", c2: "#7c3aed", c3: "#372c7a", halo: "rgba(255,255,255,0.4)",   accent: "#e4d9ff" },
@@ -36,6 +36,9 @@ const TONES: Record<ToneKey, { c1: string; c2: string; c3: string; halo: string;
   indigo: { c1: "#6577b8", c2: "#465387", c3: "#1a2140", halo: "rgba(212,222,255,0.35)",  accent: "#c1cbff" },
   gold:   { c1: "#e2ba52", c2: "#c8961a", c3: "#5f470b", halo: "rgba(255,242,195,0.4)",   accent: "#ffe38a" },
   finale: { c1: "#7d6bb8", c2: "#4f46e5", c3: "#191552", halo: "rgba(255,255,255,0.35)",  accent: "#d5c9ff" },
+  // Slides manga : rouge et encre, comme la D.A. du mode Manga
+  manga:  { c1: "#e1353b", c2: "#a3141a", c3: "#2a0507", halo: "rgba(255,210,208,0.35)",  accent: "#ffd2d0" },
+  ink:    { c1: "#4a4a4a", c2: "#1c1c1c", c3: "#000000", halo: "rgba(255,255,255,0.25)",  accent: "#ff6b6f" },
 };
 
 function toneBackground(tone: ToneKey): string {
@@ -372,7 +375,7 @@ function ReadingHeatmap({ daily, accent }: { daily: { date: string; pages: numbe
   const max = Math.max(1, ...daily.map((d) => d.pages));
   const firstDow = (new Date(daily[0].date + "T12:00:00").getDay() + 6) % 7; // lundi = 0
   return (
-    <div className="grid w-full max-w-[196px] grid-cols-7 gap-[5px]">
+    <div className="grid w-[196px] max-w-full grid-cols-7 gap-[5px]">
       {Array.from({ length: firstDow }).map((_, i) => (
         <div key={`pad-${i}`} />
       ))}
@@ -483,215 +486,353 @@ export default function WrappedStory({
   const slides = useMemo<Slide[]>(() => {
     const list: Slide[] = [];
     const monthWord = stats.monthLabel.split(" ")[0];
+    const hasBooks = stats.hasBooks !== false;
+    const manga = stats.manga ?? null;
 
     // ── Couverture ────────────────────────────────────────────────────────
     list.push({
-      tone: "violet",
+      tone: hasBooks ? "violet" : "manga",
       collage: "feature",
       render: () => (
         <div className="flex flex-col items-center gap-5 text-center">
           <div className="relative">
             <ProfileAvatar profile={me} size={88} />
             <div className="animate-scaleIn absolute -right-2 -top-1" style={{ ["--delay" as string]: "0.2s" }}>
-              <div style={{ width: 22, height: 22 }}><IconGlyph variant="sparkle" accent={TONES.violet.accent} /></div>
+              <div style={{ width: 22, height: 22 }}><IconGlyph variant="sparkle" accent={hasBooks ? TONES.violet.accent : TONES.manga.accent} /></div>
             </div>
           </div>
           <div className="animate-fadeUp flex flex-col items-center gap-3" style={{ ["--delay" as string]: "0.08s" }}>
             <Eyebrow>Le Wrapped de {firstName}</Eyebrow>
             <h2 className="font-serif text-[40px] font-black leading-[0.95] text-white">{stats.monthLabel}</h2>
             <p className="max-w-[230px] text-[14.5px] leading-snug text-white/80">
-              Ton mois de lecture, mis en lumière. Prêt·e à voir ce que tu as accompli ?
+              {!hasBooks
+                ? "Ton mois manga, mis en lumière. Prêt·e à voir ce que tu as accompli ?"
+                : manga
+                  ? "Ton mois de lecture, livres et mangas, mis en lumière. Prêt·e ?"
+                  : "Ton mois de lecture, mis en lumière. Prêt·e à voir ce que tu as accompli ?"}
             </p>
           </div>
         </div>
       ),
     });
 
-    // ── Pages totales ─────────────────────────────────────────────────────
-    list.push({
-      tone: "teal",
-      ghostWord: { word: "PAGES", corner: "top" },
-      collage: "subtle",
-      render: () => (
-        <div className="flex flex-col items-center gap-4 text-center">
-          <IconBadge variant="book" tone="teal" />
-          <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.06s" }}><Eyebrow>Pages lues en {monthWord.toLowerCase()}</Eyebrow></div>
-          <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.14s" }}>
-            <HeroNumber><CountUp value={stats.totalPages} /></HeroNumber>
-          </div>
-          <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.22s" }}>
-            {stats.deltaPct !== null ? <Delta pct={stats.deltaPct} /> : (
-              <span className="text-xs text-white/55">Premier mois suivi, bien joué pour le lancement</span>
-            )}
-          </div>
-        </div>
-      ),
-    });
-
-    // ── Livres terminés ───────────────────────────────────────────────────
-    if (stats.booksCompleted.length > 0) {
-      const ROTATIONS = [-6, 5, -4];
+    if (hasBooks) {
+      // ── Pages totales ─────────────────────────────────────────────────────
       list.push({
-        tone: "bronze",
-        ghostWord: { word: "LIVRES", corner: "bottom" },
-        collage: "subtle",
-        render: () => (
-          <div className="flex flex-col items-center gap-5 text-center">
-            <div className="animate-fadeUp flex flex-col items-center gap-2" style={{ ["--delay" as string]: "0.04s" }}>
-              <Eyebrow>Livres terminés</Eyebrow>
-              <HeroNumber><CountUp value={stats.booksCompleted.length} /></HeroNumber>
-            </div>
-            <div className="mt-1 flex items-end justify-center">
-              {stats.booksCompleted.slice(0, 3).map((b, i) => (
-                <div
-                  key={b.id}
-                  className="animate-scaleIn"
-                  style={{
-                    transform: `rotate(${ROTATIONS[i % ROTATIONS.length]}deg)`,
-                    marginLeft: i === 0 ? 0 : -22,
-                    zIndex: 3 - i,
-                    ["--delay" as string]: `${0.16 + i * 0.09}s`,
-                  }}
-                >
-                  <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-40 w-28 shadow-2xl ring-1 ring-white/25" rounded="rounded-xl" />
-                </div>
-              ))}
-            </div>
-            {stats.booksCompleted.length > 3 && (
-              <p className="animate-fadeUp text-[13px] text-white/75" style={{ ["--delay" as string]: "0.4s" }}>
-                {stats.booksCompleted[3] && `« ${stats.booksCompleted[3].title} »`}
-                {stats.booksCompleted.length > 4 && ` et ${stats.booksCompleted.length - 4} autre${stats.booksCompleted.length - 4 > 1 ? "s" : ""}`}
-              </p>
-            )}
-          </div>
-        ),
-      });
-    }
-
-    // ── Régularité ────────────────────────────────────────────────────────
-    list.push({
-      tone: "flame",
-      ghostWord: { word: "SÉRIE", corner: "top" },
-      collage: "subtle",
-      render: () => (
-        <div className="flex flex-col items-center gap-4 text-center">
-          <IconBadge variant="flame" tone="flame" size={64} />
-          <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.06s" }}><Eyebrow>Régularité</Eyebrow></div>
-          <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.12s" }}>
-            <HeroNumber>
-              <CountUp value={stats.daysActive} />
-              <span className="ml-1.5 text-2xl font-bold text-white/65">/ {stats.daysInMonth} j.</span>
-            </HeroNumber>
-          </div>
-          <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.2s" }}>
-            <ReadingHeatmap daily={stats.dailyPages} accent={TONES.flame.accent} />
-          </div>
-          <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.28s" }}>
-            <p className="max-w-[220px] text-[13.5px] text-white/80">
-              {stats.longestStreak > 1
-                ? <>Ta plus longue série : <span className="font-bold text-white">{stats.longestStreak} jours</span> d&apos;affilée</>
-                : "Tu as lu ce mois-ci — continue comme ça"}
-            </p>
-          </div>
-        </div>
-      ),
-    });
-
-    // ── Coup de cœur ──────────────────────────────────────────────────────
-    if (stats.topBook) {
-      const b = stats.topBook;
-      const isCrush = stats.booksCompleted.some((c) => c.id === b.id);
-      list.push({
-        tone: "plum",
+        tone: "teal",
+        ghostWord: { word: "PAGES", corner: "top" },
         collage: "subtle",
         render: () => (
           <div className="flex flex-col items-center gap-4 text-center">
-            <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.04s" }}>
-              <Eyebrow>{isCrush ? "Ton coup de cœur du mois" : "Ta lecture du mois"}</Eyebrow>
-            </div>
-            <div className="relative animate-scaleIn" style={{ ["--delay" as string]: "0.12s" }}>
-              <div
-                className="pointer-events-none absolute inset-0 -z-10 rounded-[28px] opacity-70"
-                style={{ background: `radial-gradient(60% 60% at 50% 45%, ${TONES.plum.accent}66 0%, transparent 75%)`, transform: "scale(1.6)" }}
-              />
-              <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-48 w-32 shadow-2xl ring-1 ring-white/25" rounded="rounded-xl" />
-              <div className="animate-scaleIn absolute -right-3 -top-3" style={{ ["--delay" as string]: "0.4s" }}>
-                <div style={{ width: 26, height: 26 }}><IconGlyph variant="sparkle" accent={TONES.plum.accent} /></div>
-              </div>
-            </div>
-            <div className="animate-fadeUp flex flex-col items-center gap-2" style={{ ["--delay" as string]: "0.24s" }}>
-              <p className="max-w-[240px] font-serif text-[21px] font-bold leading-tight text-white">{b.title}</p>
-              <p className="text-[13px] text-white/70">{b.author}</p>
-              {!!b.rating && <Stars rating={b.rating} accent={TONES.plum.accent} />}
-            </div>
-          </div>
-        ),
-      });
-    }
-
-    // ── Genres du mois ────────────────────────────────────────────────────
-    if (stats.topGenres.length > 0) {
-      list.push({
-        tone: "forest",
-        ghostWord: { word: "GENRE", corner: "bottom" },
-        collage: "subtle",
-        render: () => (
-          <div className="flex flex-col items-center gap-5 text-center">
-            <IconBadge variant="compass" tone="forest" />
-            <div className="animate-fadeUp flex flex-col items-center gap-2" style={{ ["--delay" as string]: "0.06s" }}>
-              <Eyebrow>Genres du mois</Eyebrow>
-              <p className="font-serif text-[32px] font-black leading-[1.02] text-white">{stats.topGenres[0].genre}</p>
-            </div>
-            <div className="animate-fadeUp flex w-full max-w-[230px] flex-col gap-2.5" style={{ ["--delay" as string]: "0.2s" }}>
-              {stats.topGenres.map((g, i) => {
-                const pct = stats.totalPages > 0 ? Math.round((g.pages / stats.totalPages) * 100) : 0;
-                return (
-                  <div key={g.genre} className="flex flex-col gap-1">
-                    <div className="flex items-center justify-between text-[11.5px] text-white/80">
-                      <span className="font-semibold">{g.genre}</span>
-                      <span>{pct}%</span>
-                    </div>
-                    <div className="h-[6px] w-full overflow-hidden rounded-full bg-white/15">
-                      <div
-                        className="h-full rounded-full"
-                        style={{ width: `${pct}%`, background: i === 0 ? TONES.forest.accent : "rgba(255,255,255,0.55)" }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        ),
-      });
-    }
-
-    // ── Record du jour ────────────────────────────────────────────────────
-    if (stats.bestDay) {
-      list.push({
-        tone: "indigo",
-        ghostWord: { word: "RECORD", corner: "top" },
-        collage: "subtle",
-        render: () => (
-          <div className="flex flex-col items-center gap-4 text-center">
-            <IconBadge variant="bolt" tone="indigo" />
-            <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.06s" }}><Eyebrow>Ton record du mois</Eyebrow></div>
+            <IconBadge variant="book" tone="teal" />
+            <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.06s" }}><Eyebrow>Pages lues en {monthWord.toLowerCase()}</Eyebrow></div>
             <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.14s" }}>
-              <HeroNumber>
-                <CountUp value={stats.bestDay!.pages} />
-                <span className="ml-1.5 text-2xl font-bold text-white/65">pages</span>
-              </HeroNumber>
+              <HeroNumber><CountUp value={stats.totalPages} /></HeroNumber>
             </div>
             <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.22s" }}>
-              <p className="text-[14px] capitalize text-white/75">le {formatDate(stats.bestDay!.date)}</p>
+              {stats.deltaPct !== null ? <Delta pct={stats.deltaPct} /> : (
+                <span className="text-xs text-white/55">Premier mois suivi, bien joué pour le lancement</span>
+              )}
             </div>
           </div>
         ),
       });
+
+      // ── Livres terminés ───────────────────────────────────────────────────
+      if (stats.booksCompleted.length > 0) {
+        const ROTATIONS = [-6, 5, -4];
+        list.push({
+          tone: "bronze",
+          ghostWord: { word: "LIVRES", corner: "bottom" },
+          collage: "subtle",
+          render: () => (
+            <div className="flex flex-col items-center gap-5 text-center">
+              <div className="animate-fadeUp flex flex-col items-center gap-2" style={{ ["--delay" as string]: "0.04s" }}>
+                <Eyebrow>Livres terminés</Eyebrow>
+                <HeroNumber><CountUp value={stats.booksCompleted.length} /></HeroNumber>
+              </div>
+              <div className="mt-1 flex items-end justify-center">
+                {stats.booksCompleted.slice(0, 3).map((b, i) => (
+                  <div
+                    key={b.id}
+                    className="animate-scaleIn"
+                    style={{
+                      transform: `rotate(${ROTATIONS[i % ROTATIONS.length]}deg)`,
+                      marginLeft: i === 0 ? 0 : -22,
+                      zIndex: 3 - i,
+                      ["--delay" as string]: `${0.16 + i * 0.09}s`,
+                    }}
+                  >
+                    <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-40 w-28 shadow-2xl ring-1 ring-white/25" rounded="rounded-xl" />
+                  </div>
+                ))}
+              </div>
+              {stats.booksCompleted.length > 3 && (
+                <p className="animate-fadeUp text-[13px] text-white/75" style={{ ["--delay" as string]: "0.4s" }}>
+                  {stats.booksCompleted[3] && `« ${stats.booksCompleted[3].title} »`}
+                  {stats.booksCompleted.length > 4 && ` et ${stats.booksCompleted.length - 4} autre${stats.booksCompleted.length - 4 > 1 ? "s" : ""}`}
+                </p>
+              )}
+            </div>
+          ),
+        });
+      }
+
+      // ── Régularité ────────────────────────────────────────────────────────
+      list.push({
+        tone: "flame",
+        ghostWord: { word: "SÉRIE", corner: "top" },
+        collage: "subtle",
+        render: () => (
+          <div className="flex flex-col items-center gap-4 text-center">
+            <IconBadge variant="flame" tone="flame" size={64} />
+            <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.06s" }}><Eyebrow>Régularité</Eyebrow></div>
+            <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.12s" }}>
+              <HeroNumber>
+                <CountUp value={stats.daysActive} />
+                <span className="ml-1.5 text-2xl font-bold text-white/65">/ {stats.daysInMonth} j.</span>
+              </HeroNumber>
+            </div>
+            <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.2s" }}>
+              <ReadingHeatmap daily={stats.dailyPages} accent={TONES.flame.accent} />
+            </div>
+            <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.28s" }}>
+              <p className="max-w-[220px] text-[13.5px] text-white/80">
+                {stats.longestStreak > 1
+                  ? <>Ta plus longue série : <span className="font-bold text-white">{stats.longestStreak} jours</span> d&apos;affilée</>
+                  : "Tu as lu ce mois-ci — continue comme ça"}
+              </p>
+            </div>
+          </div>
+        ),
+      });
+
+      // ── Coup de cœur ──────────────────────────────────────────────────────
+      if (stats.topBook) {
+        const b = stats.topBook;
+        const isCrush = stats.booksCompleted.some((c) => c.id === b.id);
+        list.push({
+          tone: "plum",
+          collage: "subtle",
+          render: () => (
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.04s" }}>
+                <Eyebrow>{isCrush ? "Ton coup de cœur du mois" : "Ta lecture du mois"}</Eyebrow>
+              </div>
+              <div className="relative animate-scaleIn" style={{ ["--delay" as string]: "0.12s" }}>
+                <div
+                  className="pointer-events-none absolute inset-0 -z-10 rounded-[28px] opacity-70"
+                  style={{ background: `radial-gradient(60% 60% at 50% 45%, ${TONES.plum.accent}66 0%, transparent 75%)`, transform: "scale(1.6)" }}
+                />
+                <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-48 w-32 shadow-2xl ring-1 ring-white/25" rounded="rounded-xl" />
+                <div className="animate-scaleIn absolute -right-3 -top-3" style={{ ["--delay" as string]: "0.4s" }}>
+                  <div style={{ width: 26, height: 26 }}><IconGlyph variant="sparkle" accent={TONES.plum.accent} /></div>
+                </div>
+              </div>
+              <div className="animate-fadeUp flex flex-col items-center gap-2" style={{ ["--delay" as string]: "0.24s" }}>
+                <p className="max-w-[240px] font-serif text-[21px] font-bold leading-tight text-white">{b.title}</p>
+                <p className="text-[13px] text-white/70">{b.author}</p>
+                {!!b.rating && <Stars rating={b.rating} accent={TONES.plum.accent} />}
+              </div>
+            </div>
+          ),
+        });
+      }
+
+      // ── Genres du mois ────────────────────────────────────────────────────
+      if (stats.topGenres.length > 0) {
+        list.push({
+          tone: "forest",
+          ghostWord: { word: "GENRE", corner: "bottom" },
+          collage: "subtle",
+          render: () => (
+            <div className="flex flex-col items-center gap-5 text-center">
+              <IconBadge variant="compass" tone="forest" />
+              <div className="animate-fadeUp flex flex-col items-center gap-2" style={{ ["--delay" as string]: "0.06s" }}>
+                <Eyebrow>Genres du mois</Eyebrow>
+                <p className="font-serif text-[32px] font-black leading-[1.02] text-white">{stats.topGenres[0].genre}</p>
+              </div>
+              <div className="animate-fadeUp flex w-full max-w-[230px] flex-col gap-2.5" style={{ ["--delay" as string]: "0.2s" }}>
+                {stats.topGenres.map((g, i) => {
+                  const pct = stats.totalPages > 0 ? Math.round((g.pages / stats.totalPages) * 100) : 0;
+                  return (
+                    <div key={g.genre} className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between text-[11.5px] text-white/80">
+                        <span className="font-semibold">{g.genre}</span>
+                        <span>{pct}%</span>
+                      </div>
+                      <div className="h-[6px] w-full overflow-hidden rounded-full bg-white/15">
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${pct}%`, background: i === 0 ? TONES.forest.accent : "rgba(255,255,255,0.55)" }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ),
+        });
+      }
+
+      // ── Record du jour ────────────────────────────────────────────────────
+      if (stats.bestDay) {
+        list.push({
+          tone: "indigo",
+          ghostWord: { word: "RECORD", corner: "top" },
+          collage: "subtle",
+          render: () => (
+            <div className="flex flex-col items-center gap-4 text-center">
+              <IconBadge variant="bolt" tone="indigo" />
+              <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.06s" }}><Eyebrow>Ton record du mois</Eyebrow></div>
+              <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.14s" }}>
+                <HeroNumber>
+                  <CountUp value={stats.bestDay!.pages} />
+                  <span className="ml-1.5 text-2xl font-bold text-white/65">pages</span>
+                </HeroNumber>
+              </div>
+              <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.22s" }}>
+                <p className="text-[14px] capitalize text-white/75">le {formatDate(stats.bestDay!.date)}</p>
+              </div>
+            </div>
+          ),
+        });
+      }
+
+    }
+
+    // ── Manga ─────────────────────────────────────────────────────────────
+    if (manga) {
+      const unitsHero = manga.chapters > 0 ? manga.chapters : manga.volumes;
+      const heroLabel = manga.chapters > 0 ? `Chapitres lus en ${monthWord.toLowerCase()}` : `Tomes lus en ${monthWord.toLowerCase()}`;
+      const mangaDelta = manga.prevChapters && manga.chapters > 0
+        ? Math.round(((manga.chapters - manga.prevChapters) / manga.prevChapters) * 100)
+        : null;
+      list.push({
+        tone: "manga",
+        ghostWord: { word: "MANGA", corner: "top" },
+        collage: "subtle",
+        render: () => (
+          <div className="flex flex-col items-center gap-4 text-center">
+            <IconBadge variant="bolt" tone="manga" />
+            <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.06s" }}>
+              <Eyebrow>{hasBooks ? "Côté manga" : heroLabel}</Eyebrow>
+            </div>
+            <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.14s" }}>
+              <HeroNumber>
+                <CountUp value={unitsHero} />
+                <span className="ml-1.5 text-2xl font-bold text-white/65">{manga.chapters > 0 ? "ch." : "tomes"}</span>
+              </HeroNumber>
+            </div>
+            <div className="animate-fadeUp flex flex-col items-center gap-1.5" style={{ ["--delay" as string]: "0.22s" }}>
+              {manga.chapters > 0 && manga.volumes > 0 && (
+                <p className="text-[15px] font-bold text-white">+ {manga.volumes} tome{manga.volumes > 1 ? "s" : ""}</p>
+              )}
+              <p className="text-[13px] text-white/75">
+                sur {manga.seriesCount} série{manga.seriesCount > 1 ? "s" : ""}
+              </p>
+              {mangaDelta !== null && <Delta pct={mangaDelta} />}
+            </div>
+          </div>
+        ),
+      });
+
+      if (manga.topSeries) {
+        const t = manga.topSeries;
+        list.push({
+          tone: "ink",
+          collage: "subtle",
+          render: () => (
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.04s" }}>
+                <Eyebrow>Ta série du mois</Eyebrow>
+              </div>
+              <div className="relative animate-scaleIn" style={{ ["--delay" as string]: "0.12s" }}>
+                <div
+                  className="pointer-events-none absolute inset-0 -z-10 rounded-[28px] opacity-70"
+                  style={{ background: `radial-gradient(60% 60% at 50% 45%, ${TONES.ink.accent}55 0%, transparent 75%)`, transform: "scale(1.6)" }}
+                />
+                <Cover id={-t.id} title={t.title} coverUrl={proxied(t.cover_url) ?? null} className="h-48 w-32 shadow-2xl ring-2 ring-white/40" rounded="rounded-md" />
+              </div>
+              <div className="animate-fadeUp flex flex-col items-center gap-1.5" style={{ ["--delay" as string]: "0.24s" }}>
+                <p className="max-w-[240px] font-serif text-[21px] font-bold leading-tight text-white">{t.title}</p>
+                {t.author && <p className="text-[13px] text-white/70">{t.author}</p>}
+                <p className="text-[13px] font-bold" style={{ color: TONES.ink.accent }}>
+                  {[t.chapters ? `${t.chapters} chapitre${t.chapters > 1 ? "s" : ""}` : null, t.volumes ? `${t.volumes} tome${t.volumes > 1 ? "s" : ""}` : null].filter(Boolean).join(" · ")}
+                </p>
+              </div>
+            </div>
+          ),
+        });
+      }
+
+      if (manga.seriesFinished.length > 0) {
+        const ROTATIONS = [-6, 5, -4];
+        list.push({
+          tone: "manga",
+          ghostWord: { word: "FIN", corner: "bottom" },
+          collage: "subtle",
+          render: () => (
+            <div className="flex flex-col items-center gap-5 text-center">
+              <div className="animate-fadeUp flex flex-col items-center gap-2" style={{ ["--delay" as string]: "0.04s" }}>
+                <Eyebrow>Séries terminées</Eyebrow>
+                <HeroNumber><CountUp value={manga.seriesFinished.length} /></HeroNumber>
+              </div>
+              <div className="mt-1 flex items-end justify-center">
+                {manga.seriesFinished.slice(0, 3).map((m, i) => (
+                  <div
+                    key={m.id}
+                    className="animate-scaleIn"
+                    style={{ transform: `rotate(${ROTATIONS[i % ROTATIONS.length]}deg)`, marginLeft: i === 0 ? 0 : -22, zIndex: 3 - i, ["--delay" as string]: `${0.16 + i * 0.09}s` }}
+                  >
+                    <Cover id={-m.id} title={m.title} coverUrl={proxied(m.cover_url) ?? null} className="h-40 w-28 shadow-2xl ring-2 ring-white/40" rounded="rounded-md" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ),
+        });
+      }
+
+      // Wrapped 100 % manga : régularité et record, calculés sur les sessions manga
+      if (!hasBooks && manga.daysActive > 0) {
+        list.push({
+          tone: "ink",
+          ghostWord: { word: "SÉRIE", corner: "top" },
+          collage: "subtle",
+          render: () => (
+            <div className="flex flex-col items-center gap-4 text-center">
+              <IconBadge variant="flame" tone="ink" size={64} />
+              <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.06s" }}><Eyebrow>Régularité</Eyebrow></div>
+              <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.12s" }}>
+                <HeroNumber>
+                  <CountUp value={manga.daysActive} />
+                  <span className="ml-1.5 text-2xl font-bold text-white/65">/ {stats.daysInMonth} j.</span>
+                </HeroNumber>
+              </div>
+              <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.2s" }}>
+                <ReadingHeatmap daily={manga.daily} accent={TONES.ink.accent} />
+              </div>
+              {manga.bestDay && (
+                <div className="animate-fadeUp" style={{ ["--delay" as string]: "0.28s" }}>
+                  <p className="max-w-[230px] text-[13.5px] text-white/80">
+                    Ton record :{" "}
+                    <span className="font-bold text-white">
+                      {[manga.bestDay.chapters ? `${manga.bestDay.chapters} ch.` : null, manga.bestDay.volumes ? `${manga.bestDay.volumes} t.` : null].filter(Boolean).join(" + ")}
+                    </span>{" "}
+                    le {formatDate(manga.bestDay.date)}
+                  </p>
+                </div>
+              )}
+            </div>
+          ),
+        });
+      }
     }
 
     // ── Classement ────────────────────────────────────────────────────────
-    if (stats.rankPercentile !== null && stats.activeReadersCount) {
+    if (hasBooks && stats.rankPercentile !== null && stats.activeReadersCount) {
       const rankPercentile = stats.rankPercentile;
       const activeReadersCount = stats.activeReadersCount;
       list.push({
@@ -722,12 +863,17 @@ export default function WrappedStory({
     // structurée à deux colonnes (stats / livres), un gros chiffre en pied
     // de page et la marque — inspiré du format "trading card" de Spotify.
     list.push({
-      tone: "finale",
+      tone: hasBooks ? "finale" : "ink",
       collage: "feature",
       fullBleed: true,
       render: () => {
-        const heroBook = stats.topBook ?? stats.booksCompleted[0] ?? null;
+        const heroBook = hasBooks ? stats.topBook ?? stats.booksCompleted[0] ?? null : null;
+        const heroManga = !heroBook && manga?.topSeries ? manga.topSeries : null;
         const listBooks = stats.booksCompleted.slice(0, 4);
+        // Wrapped 100 % manga : séries terminées, sinon séries les plus lues
+        const listManga = manga
+          ? (manga.seriesFinished.length ? manga.seriesFinished : manga.coverPool).slice(0, 4)
+          : [];
         return (
           // Flux naturel en interne (l'image suit l'en-tête, la carte suit l'image) —
           // c'est le wrapper parent qui centre ce bloc entier au milieu de l'espace
@@ -749,6 +895,8 @@ export default function WrappedStory({
                   />
                   <Cover id={heroBook.id} title={heroBook.title} coverUrl={heroBook.cover_url} className="h-60 w-[168px] shadow-2xl ring-1 ring-white/25" rounded="rounded-xl" />
                 </div>
+              ) : heroManga ? (
+                <Cover id={-heroManga.id} title={heroManga.title} coverUrl={proxied(heroManga.cover_url) ?? null} className="h-60 w-[168px] shadow-2xl ring-2 ring-white/40" rounded="rounded-md" />
               ) : (
                 <ProfileAvatar profile={me} size={96} />
               )}
@@ -759,11 +907,18 @@ export default function WrappedStory({
               <div className="grid grid-cols-2 gap-3 text-left">
                 <div className="flex flex-col gap-1.5">
                   <p className="text-[9px] font-bold uppercase tracking-wider text-white/45">Ce mois-ci</p>
-                  {[
-                    { label: "Livres", value: stats.booksCompleted.length },
-                    { label: "Sessions", value: stats.sessionsCount },
-                    { label: "Jours actifs", value: stats.daysActive },
-                  ].map((s) => (
+                  {(hasBooks
+                    ? [
+                        { label: "Livres", value: stats.booksCompleted.length },
+                        { label: "Sessions", value: stats.sessionsCount },
+                        { label: "Jours actifs", value: stats.daysActive },
+                      ]
+                    : [
+                        { label: "Tomes", value: manga?.volumes ?? 0 },
+                        { label: "Séries", value: manga?.seriesCount ?? 0 },
+                        { label: "Jours actifs", value: manga?.daysActive ?? 0 },
+                      ]
+                  ).map((s) => (
                     <div key={s.label} className="flex items-baseline justify-between gap-2">
                       <span className="text-[11px] text-white/70">{s.label}</span>
                       <span className="font-serif text-[15px] font-bold text-white">{s.value}</span>
@@ -771,9 +926,9 @@ export default function WrappedStory({
                   ))}
                 </div>
                 <div className="flex min-w-0 flex-col gap-1.5">
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-white/45">Tes livres</p>
-                  {listBooks.length > 0 ? (
-                    listBooks.map((b, i) => (
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-white/45">{hasBooks ? "Tes livres" : "Tes mangas"}</p>
+                  {(hasBooks ? listBooks : listManga).length > 0 ? (
+                    (hasBooks ? listBooks : listManga).map((b, i) => (
                       <p key={b.id} className="truncate text-[11px] text-white/85">
                         <span className="text-white/40">{i + 1}</span> {b.title}
                       </p>
@@ -786,10 +941,19 @@ export default function WrappedStory({
 
               <div className="flex items-end justify-between border-t border-white/10 pt-3">
                 <div>
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-white/45">Pages lues</p>
-                  <p className="font-serif text-[28px] font-black leading-none text-white">{stats.totalPages.toLocaleString("fr-FR")}</p>
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-white/45">{hasBooks ? "Pages lues" : "Chapitres lus"}</p>
+                  <p className="font-serif text-[28px] font-black leading-none text-white">
+                    {(hasBooks ? stats.totalPages : manga?.chapters ?? 0).toLocaleString("fr-FR")}
+                  </p>
                 </div>
-                {stats.topGenre && (
+                {hasBooks && manga ? (
+                  <div className="text-right">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-white/45">Manga</p>
+                    <p className="text-[13px] font-bold text-white">
+                      {[manga.chapters ? `${manga.chapters} ch.` : null, manga.volumes ? `${manga.volumes} t.` : null].filter(Boolean).join(" · ") || "—"}
+                    </p>
+                  </div>
+                ) : hasBooks && stats.topGenre && (
                   <div className="text-right">
                     <p className="text-[9px] font-bold uppercase tracking-wider text-white/45">Genre</p>
                     <p className="text-[13px] font-bold text-white">{stats.topGenre}</p>

@@ -565,6 +565,13 @@ export default function CommunautePage() {
         <div>
           <h1 className="font-serif text-3xl font-black text-ink">Communauté</h1>
           <p className="mt-0.5 text-[12.5px] text-muted">Book clubs et lectures partagées</p>
+          {/* Raccourci vers la Communauté manga (habillage manga fixe, hors thème) */}
+          <Link
+            href="/manga/communaute"
+            className="mt-2 inline-flex items-center gap-2 rounded-xl border-2 border-[#111] bg-[#e1252c] px-3 py-1.5 text-[12px] font-bold text-white shadow-[3px_3px_0_#111]"
+          >
+            Côté manga : nouveaux chapitres et activité →
+          </Link>
         </div>
         {!search.trim() && (
           <Link

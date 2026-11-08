@@ -303,6 +303,107 @@ html.dark body {
   color-scheme: dark;
 }
 
+/* ============================================================
+   Mode Manga — Direction « Encre & trame »
+   Même structure de pages que Swena, mais habillage page de manga :
+   noir/blanc papier journal, trame de points, accent rouge, titres
+   en gothique japonaise. Les composants utilisent tous les variables
+   --color-*, donc il suffit de les redéfinir sous html.manga.
+   Placé APRÈS html.dark : à spécificité égale, le dernier gagne.
+   ============================================================ */
+html.manga {
+  --color-paper: #f3f2ee;
+  --color-card: #ffffff;
+  --color-cream: #ffffff;
+  --color-ink: #111111;
+  --color-ink-2: #3b3b3b;
+  --color-muted: #7d7d7d;
+  --color-line: #d6d4cd;
+  --color-input: #ffffff;
+
+  --color-violet: #e1252c;
+  --color-violet-soft: #fde4e2;
+  --color-violet-deep: #b3141b;
+  --color-violet-light: #f4bfbb;
+
+  --color-gold: #111111;
+  --color-rose: #e1252c;
+
+  --color-spine-1: #111111;
+  --color-spine-2: #3b3b3b;
+  --color-spine-3: #e1252c;
+  --color-spine-4: #5c5c5c;
+  --color-spine-5: #262626;
+  --color-spine-6: #8a1218;
+
+  --font-serif: var(--font-dela), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --manga-tone: color-mix(in srgb, var(--color-ink) 9%, transparent);
+}
+
+html.manga.dark {
+  --color-paper: #0d0d0d;
+  --color-card: #171717;
+  --color-cream: #f5f5f5;
+  --color-ink: #f2f2f2;
+  --color-ink-2: #c4c4c4;
+  --color-muted: #8a8a8a;
+  --color-line: #2c2c2c;
+  --color-input: #202020;
+
+  --color-violet: #ff3b41;
+  --color-violet-soft: #3a1214;
+  --color-violet-deep: #ff7d80;
+  --color-violet-light: #5a1c1f;
+
+  --color-gold: #f2f2f2;
+  --manga-tone: color-mix(in srgb, var(--color-ink) 7%, transparent);
+}
+
+/* La gothique (Dela Gothic One) n'existe qu'en un poids : on évite le faux gras. */
+html.manga h1,
+html.manga h2,
+html.manga h3,
+html.manga .font-serif {
+  font-synthesis: none;
+  letter-spacing: 0.01em;
+}
+
+/* Trame de points (screentone) en fond de page */
+html.manga body {
+  background-image: radial-gradient(var(--manga-tone) 1px, transparent 1.3px);
+  background-size: 7px 7px;
+  background-attachment: fixed;
+}
+
+/* En sombre, fond noir uni : la trame brouille plus qu'elle n'habille */
+html.manga.dark body {
+  background-image: none;
+}
+
+/* Case de manga : bord encré épais + ombre portée franche */
+.manga-panel {
+  border: 2px solid var(--color-ink);
+  background: var(--color-card);
+  border-radius: 0.5rem;
+  box-shadow: 4px 4px 0 var(--color-ink);
+}
+
+/* Bandeau trame (aplat rouge + points noirs) */
+.manga-tone-band {
+  background-color: var(--color-violet);
+  background-image: radial-gradient(color-mix(in srgb, #000 35%, transparent) 1.1px, transparent 1.4px);
+  background-size: 6px 6px;
+}
+
+/* Lignes de vitesse en filigrane */
+.manga-speedlines {
+  background-image: repeating-linear-gradient(
+    100deg,
+    transparent 0 14px,
+    color-mix(in srgb, var(--color-ink) 7%, transparent) 14px 15px
+  );
+}
+
 /* ── Tiptap editor ───────────────────────────────────────────────────────── */
 .tiptap-editor p { margin-bottom: 0.35em; }
 .tiptap-editor p:last-child { margin-bottom: 0; }

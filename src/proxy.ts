@@ -4,6 +4,11 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function proxy(request: NextRequest) {
   const reqPath = request.nextUrl.pathname;
 
+  // Aperçus de développement (ex. /dev/wrapped) : uniquement en local, jamais en prod
+  if (process.env.NODE_ENV === "development" && (reqPath.startsWith("/dev/") || reqPath.startsWith("/manga/apercu-") || reqPath === "/api/image-proxy")) {
+    return NextResponse.next();
+  }
+
   // PWA / Safari — ces routes doivent être accessibles sans session
   if (
     reqPath === "/icon" ||
@@ -34,6 +39,12 @@ export async function proxy(request: NextRequest) {
   // Bingo Perso) avec STATS_API_SECRET, pas de cookie de session. Même
   // raisonnement que /api/cron/.
   if (reqPath.startsWith("/api/stats")) {
+    return NextResponse.next();
+  }
+
+  // Export de mes données pour mon assistant Jarvis, appelé avec
+  // JARVIS_API_SECRET, pas de cookie de session. Même raisonnement que /api/stats.
+  if (reqPath === "/api/jarvis") {
     return NextResponse.next();
   }
 
@@ -88,7 +99,10 @@ export async function proxy(request: NextRequest) {
   if (isLanding) {
     if (user) {
       const url = request.nextUrl.clone();
-      url.pathname = "/accueil";
+      // Ouverture de l'app : retour côté manga si c'est là qu'on était la
+      // dernière fois (cookie posé par AppShell), sinon l'accueil livres.
+      const last = request.cookies.get("swena_last_manga")?.value;
+      url.pathname = last && /^\/manga(\/[\w-]+)*$/.test(last) ? last : "/accueil";
       return NextResponse.redirect(url);
     }
     return supabaseResponse;

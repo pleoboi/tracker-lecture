@@ -32,7 +32,8 @@ function LoginForm() {
       setLoading(false);
       return;
     }
-    router.push("/accueil");
+    // "/" laisse le proxy choisir : dernière page manga si c'est là qu'on était, sinon l'accueil
+    router.push("/");
     router.refresh();
   };
 
