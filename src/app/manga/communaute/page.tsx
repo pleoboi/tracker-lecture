@@ -5,7 +5,7 @@ import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth-context";
 import { todayISO, shiftDateISO } from "../../../lib/books";
-import { getAniListById, enrichMangaSummary, type Manga } from "../../../lib/manga";
+import { getAniListById, enrichMangaSummary, mangaProfileHref, type Manga } from "../../../lib/manga";
 import { AvatarImg } from "../../../components/ui";
 import { MangaCover } from "../../../components/manga/MangaUI";
 import FriendsMangaActivity from "../../../components/manga/FriendsMangaActivity";
@@ -135,6 +135,7 @@ export default function MangaCommunityPage() {
         total_volumes: info?.total_volumes ?? null,
         genres: info?.genres?.length ? info.genres : null,
         published_year: info?.published_year ?? null,
+        ...(info?.demographic ? { demographic: info.demographic } : {}),
         status: "reading",
       })
       .select("id, title, anilist_id, current_chapter")
@@ -151,11 +152,11 @@ export default function MangaCommunityPage() {
   };
 
   return (
-    <div className="animate-fadeIn flex flex-col gap-6 pt-4">
-      <header className="flex items-end justify-between gap-3">
+    <div className="animate-fadeIn flex min-w-0 flex-col gap-6 pt-4">
+      <header className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-violet-deep">仲間</p>
-          <h1 className="font-serif text-4xl text-ink">Communauté manga</h1>
+          <h1 className="font-serif text-3xl text-ink sm:text-4xl">Communauté manga</h1>
         </div>
         <Link href="/communaute" className="text-[12px] font-semibold text-muted hover:text-ink">Côté livres →</Link>
       </header>
@@ -175,7 +176,7 @@ export default function MangaCommunityPage() {
           <h2 className="font-serif text-xl text-ink">Top lecteurs du mois</h2>
           <div className="manga-panel divide-y divide-line p-0">
             {leaders.map((l, i) => (
-              <Link key={l.userId} href={`/membre/${l.userId}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-violet-soft">
+              <Link key={l.userId} href={mangaProfileHref(l.userId)} className="flex items-center gap-3 px-4 py-2.5 hover:bg-violet-soft">
                 <span className="w-5 font-serif text-lg text-violet-deep">{i + 1}</span>
                 <AvatarImg url={l.avatar} name={l.name} className="h-7 w-7 text-[11px]" />
                 <span className="min-w-0 flex-1 truncate text-[13px] font-bold text-ink">{l.name}</span>
@@ -224,12 +225,12 @@ export default function MangaCommunityPage() {
           groups.map((g) => (
             <div key={g.day} className="flex flex-col gap-2">
               <p className="text-[10.5px] font-bold uppercase tracking-widest text-muted first-letter:uppercase">{dayLabel(g.day)}</p>
-              <div className="grid gap-2.5 md:grid-cols-2">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 md:grid-cols-2">
                 {g.items.map((r) => {
                   const own = r.anilist_id ? mineByAnilist.get(r.anilist_id) : undefined;
                   const chapter = Math.floor(Number(r.chapter));
                   return (
-                    <div key={r.id} className={`manga-panel flex items-center gap-3 p-2.5 ${own ? "ring-2 ring-violet ring-offset-2 ring-offset-paper" : ""}`}>
+                    <div key={r.id} className={`manga-panel flex min-w-0 items-center gap-2.5 p-2.5 ${own ? "ring-2 ring-violet ring-offset-2 ring-offset-paper" : ""}`}>
                       {own ? (
                         <Link href={`/manga/${own.id}`}>
                           <MangaCover id={r.id} title={r.series_title} coverUrl={r.cover_url} className="h-[72px] w-12" />
@@ -238,9 +239,9 @@ export default function MangaCommunityPage() {
                         <MangaCover id={r.id} title={r.series_title} coverUrl={r.cover_url} className="h-[72px] w-12" />
                       )}
                       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                        <p className="truncate text-[13.5px] font-bold text-ink">{r.series_title}</p>
+                        <p className="line-clamp-2 break-words text-[13.5px] font-bold leading-tight text-ink">{r.series_title}</p>
                         <p className="text-[12.5px] font-bold text-violet-deep">Chapitre {chapter}</p>
-                        {r.chapter_title && <p className="truncate text-[11.5px] italic text-ink-2">« {r.chapter_title} »</p>}
+                        {r.chapter_title && <p className="line-clamp-2 break-words text-[11.5px] italic leading-snug text-ink-2">« {r.chapter_title} »</p>}
                         {own && own.current_chapter > 0 && (
                           <p className="text-[10.5px] text-muted">
                             {own.current_chapter >= chapter ? "Déjà lu" : `Tu es au ch. ${own.current_chapter}`}
@@ -249,14 +250,14 @@ export default function MangaCommunityPage() {
                       </div>
                       <div className="flex shrink-0 flex-col gap-1.5">
                         {/* Le lien mène exactement au chapitre annoncé (même entrée MANGA Plus) */}
-                        <a href={r.url} target="_blank" rel="noopener noreferrer" className="btn-press rounded-lg border-2 border-ink bg-violet px-2.5 py-1.5 text-center text-[11.5px] font-bold text-cream">
+                        <a href={r.url} target="_blank" rel="noopener noreferrer" className="btn-press whitespace-nowrap rounded-lg border-2 border-ink bg-violet px-2 py-1.5 text-center text-[11.5px] font-bold text-cream">
                           Lire le ch. {chapter}
                         </a>
                         {!own && r.anilist_id && (
                           <button
                             onClick={() => follow(r)}
                             disabled={adding === r.id}
-                            className="btn-press rounded-lg border-2 border-ink bg-card px-2.5 py-1.5 text-[11.5px] font-bold text-ink disabled:opacity-50"
+                            className="btn-press whitespace-nowrap rounded-lg border-2 border-ink bg-card px-2 py-1.5 text-[11.5px] font-bold text-ink disabled:opacity-50"
                           >
                             {adding === r.id ? "Ajout…" : "+ Suivre"}
                           </button>

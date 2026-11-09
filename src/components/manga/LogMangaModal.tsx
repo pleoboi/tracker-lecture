@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import { todayISO } from "../../lib/books";
-import { unitLabel, isOngoing, releaseState, type Manga, type MangaUnit } from "../../lib/manga";
+import { unitLabel, isOngoing, releaseState, checkMangaBadges, type Manga, type MangaUnit } from "../../lib/manga";
 import { Modal, Button, FieldLabel, inputClass } from "../ui";
 import { MangaCover, UnitSwitch, DateNavBar, Stepper, StarPicker } from "./MangaUI";
 
@@ -29,6 +29,8 @@ export default function LogMangaModal({
   const [notes, setNotes] = useState("");
   const [finished, setFinished] = useState(false);
   const [rating, setRating] = useState(0);
+  // Note des chapitres / tomes lus pendant cette session (≠ note de la série)
+  const [chapterRating, setChapterRating] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Dernière unité utilisée par série (pré-sélection intelligente)
@@ -64,6 +66,7 @@ export default function LogMangaModal({
     setNotes("");
     setFinished(false);
     setRating(0);
+    setChapterRating(0);
     setError(null);
     setLoading(true);
     (async () => {
@@ -126,6 +129,7 @@ export default function LogMangaModal({
       amount,
       end_value: endValue,
       notes: notes.trim() || null,
+      ...(chapterRating > 0 ? { rating: chapterRating } : {}),
     }).select("id").single();
     if (logError) {
       setSaving(false);
@@ -156,6 +160,8 @@ export default function LogMangaModal({
     }
 
     setSaving(false);
+    // Badges (séries de jours, chapitres lus, série terminée...) : vérifiés en arrière-plan
+    checkMangaBadges();
     onSaved(
       finished
         ? `« ${selected.title} » terminé 🎉`
@@ -225,6 +231,17 @@ export default function LogMangaModal({
               </div>
 
               <div>
+                <FieldLabel>{unit === "chapter" ? "Note des chapitres lus (facultatif)" : "Note des tomes lus (facultatif)"}</FieldLabel>
+                <div className="rounded-xl border-2 border-line bg-card py-2.5">
+                  <StarPicker
+                    value={chapterRating}
+                    onChange={setChapterRating}
+                    emptyLabel={unit === "chapter" ? "Comment étaient ces chapitres ?" : "Comment étaient ces tomes ?"}
+                  />
+                </div>
+              </div>
+
+              <div>
                 <FieldLabel>Note de session (facultatif)</FieldLabel>
                 <textarea
                   value={notes}
@@ -258,7 +275,12 @@ export default function LogMangaModal({
               </label>
               )}
 
-              {finished && <StarPicker value={rating} onChange={setRating} />}
+              {finished && (
+                <div>
+                  <FieldLabel>Note de la série</FieldLabel>
+                  <StarPicker value={rating} onChange={setRating} />
+                </div>
+              )}
 
               {error && <p className="text-xs font-medium text-danger">{error}</p>}
             </>

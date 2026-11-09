@@ -105,7 +105,7 @@ export default function MangaPage() {
   });
 
   return (
-    <div className="animate-fadeIn flex flex-col gap-6 pt-4">
+    <div className="animate-fadeIn flex min-w-0 flex-col gap-6 pt-4">
       {/* En-tête */}
       <header className="flex items-end justify-between gap-3">
         <div>
@@ -167,12 +167,12 @@ export default function MangaPage() {
                 Nouveaux chapitres
                 <span className="manga-tone-band rounded-[3px] border-2 border-ink px-1.5 text-[11px] font-bold text-cream">NEW</span>
               </h2>
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2">
                 {newChapters.map((m) => {
                   const rs = releaseState(m)!;
                   const target = readTarget(m);
                   return (
-                    <div key={m.id} className="manga-panel flex items-center gap-3 p-3">
+                    <div key={m.id} className="manga-panel flex min-w-0 items-center gap-3 p-3">
                       <MangaCover id={m.id} title={m.title} coverUrl={m.cover_url} className="h-20 w-14" />
                       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <p className="truncate text-[14px] font-bold text-ink">{m.title}</p>
@@ -205,11 +205,11 @@ export default function MangaPage() {
           {reading.length > 0 && (
             <section className="flex flex-col gap-3">
               <h2 className="font-serif text-xl text-ink">En cours</h2>
-              <div className="grid gap-2.5 md:grid-cols-2 lg:grid-cols-3">
+              <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 md:grid-cols-2 lg:grid-cols-3">
                 {reading.map((m) => {
                   const p = mangaProgress(m);
                   return (
-                    <div key={m.id} className="manga-panel flex gap-2.5 p-2.5">
+                    <div key={m.id} className="manga-panel flex min-w-0 gap-2.5 p-2.5">
                       <Link href={`/manga/${m.id}`}>
                         <MangaCover id={m.id} title={m.title} coverUrl={m.cover_url} className="h-[84px] w-14" />
                       </Link>

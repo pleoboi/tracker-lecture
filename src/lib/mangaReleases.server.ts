@@ -168,11 +168,15 @@ async function volumeOfChapter(mangadexId: string, chapter: number): Promise<num
 }
 
 /**
- * Couverture du tome lu (ou du tome qui contient le chapitre lu). Édition
- * française en priorité, sinon japonaise. Si le tome n'a pas encore de
- * couverture (chapitres pas encore reliés), on prend le dernier tome connu.
+ * Couverture du tome lu (ou du tome qui contient le chapitre lu), et numéro de
+ * ce tome. Édition française en priorité, sinon japonaise. Si le tome n'a pas
+ * encore de couverture (chapitres pas encore reliés), on prend le dernier tome connu.
  */
-export async function findLogCover(mangadexId: string, unit: "chapter" | "volume", value: number): Promise<string | null> {
+export async function findLogCover(
+  mangadexId: string,
+  unit: "chapter" | "volume",
+  value: number
+): Promise<{ cover: string | null; volume: number | null }> {
   const vol = unit === "volume" ? value : await volumeOfChapter(mangadexId, value);
   const covers: MdCover[] = [];
   for (let offset = 0; offset < 300; offset += 100) {
@@ -183,12 +187,12 @@ export async function findLogCover(mangadexId: string, unit: "chapter" | "volume
     if (!json || covers.length >= json.total) break;
   }
   const numbered = covers.filter((c) => c.attributes.volume && !isNaN(Number(c.attributes.volume)));
-  if (!numbered.length) return null;
+  if (!numbered.length) return { cover: null, volume: vol };
   const rank = (c: MdCover) => (c.attributes.locale === "fr" ? 0 : c.attributes.locale === "ja" ? 1 : 2);
   const vols = [...new Set(numbered.map((c) => Number(c.attributes.volume)))].sort((a, b) => a - b);
   const target = vol != null ? [...vols].reverse().find((v) => v <= vol) ?? vols[0] : vols[vols.length - 1];
   const best = numbered.filter((c) => Number(c.attributes.volume) === target).sort((a, b) => rank(a) - rank(b))[0];
-  return `https://uploads.mangadex.org/covers/${mangadexId}/${best.attributes.fileName}.256.jpg`;
+  return { cover: `https://uploads.mangadex.org/covers/${mangadexId}/${best.attributes.fileName}.256.jpg`, volume: vol };
 }
 
 /* ---------------- Flux MANGA Plus (toutes séries, VF) ---------------- */

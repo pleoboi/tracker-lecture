@@ -2,8 +2,8 @@
 
 import { useRef, useState } from "react";
 import { spineColor, initials, todayISO, shiftDateISO } from "../../lib/books";
-import type { MangaStatus, MangaUnit } from "../../lib/manga";
-import { MANGA_STATUS_LABELS } from "../../lib/manga";
+import type { MangaDemographic, MangaStatus, MangaUnit } from "../../lib/manga";
+import { MANGA_STATUS_LABELS, MANGA_DEMOGRAPHICS } from "../../lib/manga";
 
 /* ---------------- Couverture ---------------- */
 
@@ -121,15 +121,55 @@ export function StatusPicker({
   );
 }
 
+/* ---------------- Catégorie (shonen, seinen...) ---------------- */
+
+export function DemographicPicker({
+  value,
+  onChange,
+}: {
+  value?: MangaDemographic | null;
+  onChange: (d: MangaDemographic) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {MANGA_DEMOGRAPHICS.map((d) => {
+        const active = value === d.key;
+        return (
+          <button
+            key={d.key}
+            type="button"
+            title={d.hint}
+            onClick={() => onChange(d.key)}
+            className={`flex items-center gap-1.5 rounded-full border-2 px-3 py-1.5 text-[12px] font-bold transition-colors ${
+              active ? "border-ink bg-ink text-paper" : "border-line bg-card text-ink-2 hover:border-ink"
+            }`}
+          >
+            <span className="h-2.5 w-2.5 rounded-full border border-ink" style={{ background: d.color }} />
+            {d.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /* ---------------- Notation (demi-étoiles) ---------------- */
 
-export function StarPicker({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+export function StarPicker({
+  value,
+  onChange,
+  emptyLabel = "Pas de note",
+}: {
+  value: number;
+  onChange: (v: number) => void;
+  emptyLabel?: string;
+}) {
   const [hover, setHover] = useState(0);
   const display = hover || value;
   return (
     <div className="flex flex-col items-center gap-1.5">
       <p className="text-[13px] font-semibold text-muted">
-        {display > 0 ? `${display.toFixed(1).replace(".", ",")} / 5` : "Pas de note"}
+        {display > 0 ? `${display.toFixed(1).replace(".", ",")} / 5` : emptyLabel}
       </p>
       <div className="flex" onMouseLeave={() => setHover(0)}>
         {[1, 2, 3, 4, 5].map((s) => (
@@ -160,6 +200,15 @@ export function StarPicker({ value, onChange }: { value: number; onChange: (v: n
         ))}
       </div>
     </div>
+  );
+}
+
+/** Note affichée en lecture seule : « ★ 4,5 ». */
+export function RatingTag({ value, className = "" }: { value: number; className?: string }) {
+  return (
+    <span className={`nums inline-flex items-center gap-0.5 font-bold text-violet-deep ${className}`}>
+      ★ {value.toFixed(1).replace(".", ",")}
+    </span>
   );
 }
 

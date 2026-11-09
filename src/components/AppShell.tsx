@@ -16,7 +16,7 @@ import WrappedStory from "./WrappedStory";
 import AddMangaModal from "./manga/AddMangaModal";
 import LogMangaModal from "./manga/LogMangaModal";
 import { getMonthlyWrapped, type WrappedStats } from "../lib/wrapped";
-import { isMangaPath } from "../lib/manga";
+import { isMangaPath, mangaProfileHref } from "../lib/manga";
 
 type NavItem = { name: string; href: string; icon: React.ReactNode; shortName?: string };
 
@@ -113,7 +113,12 @@ const NO_SHELL_PATHS = ["/login", "/register", "/", "/email-sent"];
 
 function isActive(pathname: string, href: string) {
   if (href === "/accueil") return pathname === "/accueil";
-  if (href === "/manga") return isMangaPath(pathname) && !pathname.startsWith("/manga/stats") && !pathname.startsWith("/manga/communaute");
+  if (href === "/manga") {
+    return isMangaPath(pathname)
+      && !pathname.startsWith("/manga/stats")
+      && !pathname.startsWith("/manga/communaute")
+      && !pathname.startsWith("/manga/membre");
+  }
   if (href === "/membres") return pathname.startsWith("/membres") || pathname.startsWith("/membre/");
   return pathname.startsWith(href);
 }
@@ -346,7 +351,10 @@ function TopBar({
           {(manga ? mangaDesktopNavItems : desktopNavItems).map((item) => {
             // "Profil" doit pointer vers la page profil publique (/membre/[id]),
             // pas vers les réglages du compte (/compte) — même résolution que la nav mobile.
-            const resolved = item.href === "/compte" && userId ? { ...item, href: `/membre/${userId}` } : item;
+            // En mode manga : le profil manga (/manga/membre/[id]), pas celui des livres.
+            const resolved = item.href === "/compte" && userId
+              ? { ...item, href: manga ? mangaProfileHref(userId) : `/membre/${userId}` }
+              : item;
             const active = isActive(pathname, resolved.href);
             return (
               <Link
@@ -488,9 +496,9 @@ function BottomNav({ pathname, onPlus, userId, manga }: { pathname: string; onPl
 
         {navRight.map((item) => {
           // "Profil" doit pointer vers la page profil publique (/membre/[id]),
-          // pas vers les réglages du compte (/compte).
+          // pas vers les réglages du compte (/compte). En mode manga : le profil manga.
           const resolved = item.href === "/compte" && userId
-            ? { ...item, href: `/membre/${userId}` }
+            ? { ...item, href: manga ? mangaProfileHref(userId) : `/membre/${userId}` }
             : item;
           return <NavLink key={item.href} item={resolved} pathname={pathname} />;
         })}
@@ -892,6 +900,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       ? `swena_last_manga=${pathname}; path=/; max-age=31536000; samesite=lax`
       : "swena_last_manga=; path=/; max-age=0; samesite=lax";
   }, [manga, pathname]);
+
+  // Nouveau badge manga (après une session, une série terminée...) : annonce en toast
+  useEffect(() => {
+    const onAwarded = (e: Event) => {
+      const list = (e as CustomEvent<{ id: string; name: string }[]>).detail ?? [];
+      if (!list.length) return;
+      setShellToast(list.length === 1 ? `Badge manga débloqué : ${list[0].name}` : `${list.length} nouveaux badges manga débloqués`);
+      setTimeout(() => setShellToast(null), 4500);
+    };
+    window.addEventListener("swena:manga-badges-awarded", onAwarded);
+    return () => window.removeEventListener("swena:manga-badges-awarded", onAwarded);
+  }, []);
 
   // Restaure le thème persisté dès le montage
   useEffect(() => {

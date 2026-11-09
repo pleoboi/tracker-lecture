@@ -9,8 +9,10 @@ import { todayISO } from "../../../lib/books";
 import {
   formatLabel,
   publicationLabel,
+  demographicLabel,
   recomputeMangaProgress,
   enrichMangaSummary,
+  checkMangaBadges,
   releaseState,
   readTarget,
   unitLabel,
@@ -18,7 +20,7 @@ import {
   type MangaLog,
   type MangaStatus,
 } from "../../../lib/manga";
-import { MangaCover, InkProgress, StatusPicker, StarPicker } from "../../../components/manga/MangaUI";
+import { MangaCover, InkProgress, StatusPicker, StarPicker, DemographicPicker, RatingTag } from "../../../components/manga/MangaUI";
 import LogMangaModal from "../../../components/manga/LogMangaModal";
 import { inputClass } from "../../../components/ui";
 
@@ -122,7 +124,7 @@ export default function MangaDetailPage() {
     if (s === "completed" && !manga?.date_finished) p.date_finished = todayISO();
     if (s === "reading" && !manga?.date_started) p.date_started = todayISO();
     if (s !== "completed") p.date_finished = null;
-    patch(p);
+    patch(p).then(() => { if (s === "completed") checkMangaBadges(); });
   };
 
   const deleteLog = async (logId: number) => {
@@ -161,6 +163,7 @@ export default function MangaDetailPage() {
   const chapterTotal = logs.filter((l) => l.unit === "chapter").reduce((s, l) => s + l.amount, 0);
   const volumeTotal = logs.filter((l) => l.unit === "volume").reduce((s, l) => s + l.amount, 0);
   const meta = [
+    manga.demographic && manga.demographic !== "autre" ? demographicLabel(manga.demographic) : null,
     formatLabel(manga.format),
     manga.published_year,
     publicationLabel(manga.publication_status),
@@ -345,6 +348,10 @@ export default function MangaDetailPage() {
               })}
               <span className="w-full text-[11px] text-muted">« En cours » active le suivi des nouveaux chapitres.</span>
             </div>
+            <div className="flex flex-col gap-2 border-t border-line pt-3">
+              <span className="text-[10.5px] font-bold uppercase tracking-wide text-muted">Catégorie</span>
+              <DemographicPicker value={manga.demographic} onChange={(d) => patch({ demographic: d })} />
+            </div>
             <div className="border-t border-line pt-3">
               <StarPicker value={Number(manga.rating ?? 0)} onChange={(v) => patch({ rating: v > 0 ? v : null })} />
             </div>
@@ -429,6 +436,8 @@ export default function MangaDetailPage() {
                   <p className="text-[13px] font-semibold text-ink">
                     <span className="text-violet-deep">+{l.amount} {unitLabel(l.unit, l.amount)}</span>
                     <span className="font-medium text-muted"> · jusqu&apos;au {l.unit === "chapter" ? "ch." : "tome"} {l.end_value}</span>
+                    {l.unit === "chapter" && l.volume ? <span className="font-medium text-muted"> · tome {l.volume}</span> : null}
+                    {l.rating ? <RatingTag value={Number(l.rating)} className="ml-2 text-[12px]" /> : null}
                   </p>
                   <p className="text-[11px] text-muted">{fmtDate(l.date)}</p>
                   {l.notes && <p className="mt-1 text-[12.5px] italic text-ink-2">« {l.notes} »</p>}

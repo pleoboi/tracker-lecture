@@ -5,7 +5,7 @@ import { findLogCover, resolveMangadexId } from "../../../../lib/mangaReleases.s
 
 // Appelée juste après l'enregistrement d'une session manga : retrouve la
 // couverture du tome lu (ou du tome qui contient le chapitre) et la pose sur
-// le log, pour l'activité des amis.
+// le log, pour l'activité des amis, avec le numéro du tome.
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -35,7 +35,10 @@ export async function POST(req: NextRequest) {
   }
   if (!mdId) return NextResponse.json({ cover: null });
 
-  const cover = await findLogCover(mdId, log.unit, log.end_value);
+  const { cover, volume } = await findLogCover(mdId, log.unit, log.end_value);
   if (cover) await adminSupabase.from("manga_logs").update({ cover_url: cover }).eq("id", log.id);
-  return NextResponse.json({ cover });
+  // Tome des chapitres lus : sert à fusionner les sessions du même tome dans l'activité du club.
+  // Mise à jour séparée pour que la couverture reste posée même si la colonne n'existe pas encore (v39).
+  if (volume != null) await adminSupabase.from("manga_logs").update({ volume }).eq("id", log.id);
+  return NextResponse.json({ cover, volume });
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "../../lib/supabase";
 import { todayISO, shiftDateISO } from "../../lib/books";
 import { AvatarImg } from "../ui";
+import { mangaProfileHref } from "../../lib/manga";
 
 export type Champion = { userId: string; name: string; avatar: string | null; chapters: number };
 
@@ -66,9 +67,9 @@ type Props = { today: Champion | null; yesterday: Champion | null };
 
 function Name({ c, className, ring }: { c: Champion; className: string; ring: string }) {
   return (
-    <Link href={`/membre/${c.userId}`} className="flex min-w-0 items-center gap-2.5">
+    <Link href={mangaProfileHref(c.userId)} className="flex min-w-0 items-center gap-2.5">
       <AvatarImg url={c.avatar} name={c.name} className={`h-10 w-10 text-sm ring-2 ${ring}`} />
-      <span className={`truncate font-serif text-[22px] leading-tight ${className}`}>{c.name}</span>
+      <span className={`truncate font-serif text-[20px] leading-tight sm:text-[22px] ${className}`}>{c.name}</span>
     </Link>
   );
 }
@@ -104,7 +105,7 @@ function SceneLayout({
   return (
     <div className="relative overflow-hidden rounded-lg border-2 border-[#111]" style={{ boxShadow: "4px 4px 0 #111", ...bg }}>
       <div className="pointer-events-none absolute bottom-0 right-2 h-[150px] w-[190px]">{scene}</div>
-      <div className="relative flex min-h-[150px] flex-col justify-between gap-2 p-4 pr-[170px] sm:pr-[200px]">
+      <div className="relative flex min-h-[150px] flex-col justify-between gap-2 p-4 pr-[130px] sm:pr-[200px]">
         <div>
           <p className={`text-[10px] font-bold uppercase tracking-[0.25em] ${eyebrow}`}>Champion du jour · 今日の王者</p>
           <div className="mt-2">{today ? <Name c={today} className={name} ring={ring} /> : <Empty className={muted} />}</div>

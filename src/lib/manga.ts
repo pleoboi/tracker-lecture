@@ -2,6 +2,8 @@ import { supabase } from "./supabase";
 
 export type MangaStatus = "reading" | "completed" | "to-read" | "paused" | "abandoned";
 export type MangaUnit = "chapter" | "volume";
+/** Catégorie éditoriale (public visé). "autre" = vérifiée mais sans catégorie connue. */
+export type MangaDemographic = "shonen" | "seinen" | "shojo" | "josei" | "kodomo" | "autre";
 
 export interface Manga {
   id: number;
@@ -37,6 +39,7 @@ export interface Manga {
   summary?: string | null;
   summary_source?: string | null;
   summary_url?: string | null;
+  demographic?: MangaDemographic | null;
 }
 
 export interface MangaLog {
@@ -50,6 +53,10 @@ export interface MangaLog {
   end_value: number;
   notes?: string | null;
   cover_url?: string | null;
+  /** Tome qui contient les chapitres lus (rempli côté serveur après la session). */
+  volume?: number | null;
+  /** Note (0,5 à 5) des chapitres lus pendant la session. */
+  rating?: number | null;
 }
 
 export const MANGA_STATUS_LABELS: Record<MangaStatus, string> = {
@@ -61,6 +68,28 @@ export const MANGA_STATUS_LABELS: Record<MangaStatus, string> = {
 };
 
 export const MANGA_STATUS_ORDER: MangaStatus[] = ["reading", "to-read", "paused", "completed", "abandoned"];
+
+export const MANGA_DEMOGRAPHICS: { key: MangaDemographic; label: string; hint: string; color: string }[] = [
+  { key: "shonen", label: "Shonen", hint: "Ados garçons : action, aventure", color: "#e1252c" },
+  { key: "seinen", label: "Seinen", hint: "Jeunes adultes : plus mature", color: "var(--color-ink)" },
+  { key: "shojo", label: "Shojo", hint: "Ados filles : romance, émotions", color: "#f08ab0" },
+  { key: "josei", label: "Josei", hint: "Jeunes femmes : vie réaliste", color: "#8a5cc2" },
+  { key: "kodomo", label: "Kodomo", hint: "Enfants", color: "#f2b134" },
+  { key: "autre", label: "Autre", hint: "Sans catégorie précise", color: "#9a9a9a" },
+];
+
+export function demographicLabel(d?: MangaDemographic | null): string {
+  return MANGA_DEMOGRAPHICS.find((x) => x.key === d)?.label ?? "Non classé";
+}
+
+/** Tag « Demographic » d'AniList (Shounen, Seinen, Shoujo, Josei, Kids) → catégorie interne. */
+function pickDemographic(tags: { name: string; category: string; rank: number | null }[] | null | undefined): MangaDemographic | null {
+  const map: Record<string, MangaDemographic> = { shounen: "shonen", seinen: "seinen", shoujo: "shojo", josei: "josei", kids: "kodomo" };
+  const best = (tags ?? [])
+    .filter((t) => t.category === "Demographic" && map[t.name.toLowerCase()])
+    .sort((a, b) => (b.rank ?? 0) - (a.rank ?? 0))[0];
+  return best ? map[best.name.toLowerCase()] : null;
+}
 
 const PUBLICATION_LABELS: Record<string, string> = {
   FINISHED: "Série terminée",
@@ -190,6 +219,7 @@ export interface AniListResult {
   total_volumes: number | null;
   genres: string[];
   published_year: number | null;
+  demographic: MangaDemographic | null;
 }
 
 const ANILIST_QUERY = `
@@ -205,6 +235,7 @@ query ($search: String) {
       chapters
       volumes
       genres
+      tags { name category rank }
       startDate { year }
       staff(perPage: 4, sort: RELEVANCE) {
         edges { role node { name { full } } }
@@ -223,6 +254,7 @@ type AniListMedia = {
   chapters: number | null;
   volumes: number | null;
   genres: string[] | null;
+  tags: { name: string; category: string; rank: number | null }[] | null;
   startDate: { year: number | null } | null;
   staff: { edges: { role: string; node: { name: { full: string } } }[] } | null;
 };
@@ -264,6 +296,7 @@ export async function searchAniList(query: string, signal?: AbortSignal): Promis
     total_volumes: m.volumes,
     genres: m.genres ?? [],
     published_year: m.startDate?.year ?? null,
+    demographic: pickDemographic(m.tags),
   }));
 }
 
@@ -359,5 +392,128 @@ export async function getAniListById(id: number): Promise<AniListResult | null> 
     total_volumes: m.volumes,
     genres: m.genres ?? [],
     published_year: m.startDate?.year ?? null,
+    demographic: pickDemographic(m.tags),
   };
+}
+
+/* ---------------- Catégories (démographie) ---------------- */
+
+/**
+ * Renseigne la catégorie (shonen, seinen...) des séries qui n'en ont pas encore,
+ * à partir d'AniList, et l'enregistre. Une série AniList sans tag de catégorie
+ * est marquée "autre" pour ne pas être redemandée à chaque visite. À n'appeler
+ * que pour ses propres séries (la sécurité de la base interdit d'écrire chez les autres).
+ */
+export async function backfillDemographics(mangas: Manga[]): Promise<Manga[]> {
+  const todo = mangas.filter((m) => m.demographic == null && m.anilist_id);
+  if (!todo.length) return mangas;
+  const ids = [...new Set(todo.map((m) => m.anilist_id!))];
+  const found = new Map<number, MangaDemographic>();
+  const checked = new Set<number>();
+  for (let i = 0; i < ids.length; i += 50) {
+    const slice = ids.slice(i, i + 50);
+    const res = await fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({
+        query: `query ($ids: [Int]) { Page(perPage: 50) { media(id_in: $ids, type: MANGA) { id tags { name category rank } } } }`,
+        variables: { ids: slice },
+      }),
+    }).catch(() => null);
+    if (!res?.ok) continue;
+    const media: { id: number; tags: { name: string; category: string; rank: number | null }[] | null }[] =
+      (await res.json())?.data?.Page?.media ?? [];
+    slice.forEach((id) => checked.add(id));
+    for (const m of media) {
+      const d = pickDemographic(m.tags);
+      if (d) found.set(m.id, d);
+    }
+  }
+  const patched = new Map<number, MangaDemographic>();
+  for (const m of todo) {
+    if (!checked.has(m.anilist_id!)) continue;
+    patched.set(m.id, found.get(m.anilist_id!) ?? "autre");
+  }
+  await Promise.all(
+    [...patched.entries()].map(([id, demographic]) => supabase.from("mangas").update({ demographic }).eq("id", id))
+  );
+  return mangas.map((m) => (patched.has(m.id) ? { ...m, demographic: patched.get(m.id)! } : m));
+}
+
+/* ---------------- Fusion des sessions d'un même jour ---------------- */
+
+export interface MergeableMangaLog {
+  id: number;
+  user_id: string;
+  manga_id: number;
+  date: string;
+  unit: MangaUnit;
+  amount: number;
+  end_value: number;
+  notes?: string | null;
+  cover_url?: string | null;
+  volume?: number | null;
+  rating?: number | null;
+}
+
+export type MergedMangaLog<T extends MergeableMangaLog> = T & {
+  /** Nombre de sessions regroupées dans cette ligne. */
+  sessions: number;
+  /** Moyenne des notes de chapitres des sessions regroupées (null si aucune). */
+  avgRating: number | null;
+};
+
+/**
+ * Regroupe les sessions d'un même membre, le même jour, sur le même tome :
+ * 2 chapitres puis 2 autres du tome 3 → une seule ligne « +4 ch. ». Un nouveau
+ * tome reste une ligne à part. Les sessions en tomes ne se regroupent que si
+ * elles atteignent le même tome. Entrée attendue : plus récent d'abord.
+ */
+export function mergeMangaLogs<T extends MergeableMangaLog>(logs: T[]): MergedMangaLog<T>[] {
+  const out: (MergedMangaLog<T> & { _ratings: number[]; _notes: string[] })[] = [];
+  const byKey = new Map<string, (typeof out)[number]>();
+  for (const l of logs) {
+    const tome = l.unit === "volume" ? `v${l.end_value}` : `c${l.volume ?? l.cover_url ?? ""}`;
+    const key = [l.user_id, l.manga_id, l.date, l.unit, tome].join("|");
+    const note = l.notes?.trim();
+    const hit = byKey.get(key);
+    if (!hit) {
+      const row = { ...l, sessions: 1, avgRating: null, _ratings: l.rating ? [Number(l.rating)] : [], _notes: note ? [note] : [] };
+      byKey.set(key, row);
+      out.push(row);
+      continue;
+    }
+    hit.amount += l.amount;
+    hit.end_value = Math.max(hit.end_value, l.end_value);
+    hit.sessions += 1;
+    hit.cover_url = hit.cover_url ?? l.cover_url ?? null;
+    if (l.rating) hit._ratings.push(Number(l.rating));
+    // Les plus anciennes d'abord : on parcourt du plus récent au plus ancien
+    if (note && !hit._notes.includes(note)) hit._notes.unshift(note);
+  }
+  return out.map(({ _ratings, _notes, ...row }) => ({
+    ...(row as unknown as MergedMangaLog<T>),
+    notes: _notes.length ? _notes.join(" · ") : null,
+    avgRating: _ratings.length ? _ratings.reduce((a, b) => a + b, 0) / _ratings.length : null,
+  }));
+}
+
+/**
+ * Demande au serveur d'attribuer les badges manga mérités. Les nouveaux sont
+ * annoncés par un évènement (affiché en toast par la coquille de l'app).
+ */
+export async function checkMangaBadges(): Promise<{ id: string; name: string; tier: number }[]> {
+  const res = await fetch("/api/manga/badges/check", { method: "POST" }).catch(() => null);
+  if (!res?.ok) return [];
+  const json = await res.json().catch(() => null);
+  const awarded = (json?.awarded ?? []) as { id: string; name: string; tier: number }[];
+  if (awarded.length && typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("swena:manga-badges-awarded", { detail: awarded }));
+  }
+  return awarded;
+}
+
+/** Profil manga d'un membre (le profil Swena « livres » reste sur /membre/[id]). */
+export function mangaProfileHref(userId: string): string {
+  return `/manga/membre/${userId}`;
 }

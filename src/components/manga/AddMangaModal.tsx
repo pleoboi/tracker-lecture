@@ -10,10 +10,11 @@ import {
   formatLabel,
   publicationLabel,
   type AniListResult,
+  type MangaDemographic,
   type MangaStatus,
 } from "../../lib/manga";
 import { Modal, Button, FieldLabel, inputClass } from "../ui";
-import { MangaCover, StatusPicker } from "./MangaUI";
+import { MangaCover, StatusPicker, DemographicPicker } from "./MangaUI";
 
 type Draft = {
   anilist_id: number | null;
@@ -27,6 +28,7 @@ type Draft = {
   total_volumes: string;
   genres: string[];
   published_year: number | null;
+  demographic: MangaDemographic | null;
 };
 
 const EMPTY_DRAFT: Draft = {
@@ -41,6 +43,7 @@ const EMPTY_DRAFT: Draft = {
   total_volumes: "",
   genres: [],
   published_year: null,
+  demographic: null,
 };
 
 function fromResult(r: AniListResult): Draft {
@@ -56,6 +59,7 @@ function fromResult(r: AniListResult): Draft {
     total_volumes: r.total_volumes ? String(r.total_volumes) : "",
     genres: r.genres,
     published_year: r.published_year,
+    demographic: r.demographic,
   };
 }
 
@@ -161,6 +165,7 @@ export default function AddMangaModal({
       total_volumes: toInt(draft.total_volumes),
       genres: draft.genres.length ? draft.genres : null,
       published_year: draft.published_year,
+      ...(draft.demographic ? { demographic: draft.demographic } : {}),
       status,
       // Point de départ (déjà lu avant Swena) : ne crée pas de session, donc
       // n'entre pas dans les stats — comme la progression initiale d'un livre.
@@ -278,6 +283,11 @@ export default function AddMangaModal({
                 className={inputClass}
               />
             </div>
+          </div>
+
+          <div>
+            <FieldLabel>Catégorie</FieldLabel>
+            <DemographicPicker value={draft.demographic} onChange={(d) => setDraft({ ...draft, demographic: d })} />
           </div>
 
           <div>
