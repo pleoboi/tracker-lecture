@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendPushToUser, adminSupabase } from "../../../../lib/push.server";
+import { usersWithUniverse } from "../../../../lib/universes.server";
 
 const GOAL_REACHED_MESSAGES = (pagesRead: number): string[] => [
   `Objectif du jour bouclé avec ${pagesRead} pages. Et si tu allais encore plus loin ce soir ?`,
@@ -66,7 +67,8 @@ export async function GET(req: NextRequest) {
 
   if (!subs?.length) return NextResponse.json({ sent: 0 });
 
-  const userIds = [...new Set((subs as { user_id: string }[]).map((s) => s.user_id))];
+  // Rappels de lecture de livres : pas pour les comptes manga uniquement
+  const userIds = await usersWithUniverse([...new Set((subs as { user_id: string }[]).map((s) => s.user_id))], "books");
 
   const { data: goals } = await adminSupabase
     .from("user_goals")

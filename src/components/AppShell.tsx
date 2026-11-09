@@ -17,6 +17,7 @@ import AddMangaModal from "./manga/AddMangaModal";
 import LogMangaModal from "./manga/LogMangaModal";
 import { getMonthlyWrapped, type WrappedStats } from "../lib/wrapped";
 import { isMangaPath, mangaProfileHref } from "../lib/manga";
+import { userUniverses, universeRedirect } from "../lib/universes";
 
 type NavItem = { name: string; href: string; icon: React.ReactNode; shortName?: string };
 
@@ -105,7 +106,9 @@ const mangaHomeItem: NavItem = {
 const mangaStatsItem: NavItem = { ...allNavItems[3], name: "Stats manga", shortName: "Stats", href: "/manga/stats" };
 const mangaCommunityItem: NavItem = { ...allNavItems[2], href: "/manga/communaute" };
 
-const mangaDesktopNavItems = [mangaHomeItem, mangaCommunityItem, mangaStatsItem, allNavItems[4], allNavItems[5]];
+const mangaMembersItem: NavItem = { ...allNavItems[4], href: "/manga/membres" };
+
+const mangaDesktopNavItems = [mangaHomeItem, mangaCommunityItem, mangaStatsItem, mangaMembersItem, allNavItems[5]];
 const mangaMobileNavLeft  = [mangaHomeItem, mangaCommunityItem];
 const mangaMobileNavRight = [mangaStatsItem, allNavItems[5]];
 
@@ -117,8 +120,11 @@ function isActive(pathname: string, href: string) {
     return isMangaPath(pathname)
       && !pathname.startsWith("/manga/stats")
       && !pathname.startsWith("/manga/communaute")
-      && !pathname.startsWith("/manga/membre");
+      && !pathname.startsWith("/manga/membre")
+      && !pathname.startsWith("/manga/compte");
   }
+  // Paramètres manga : l'onglet « Profil » reste allumé
+  if (href.startsWith("/manga/membre/") && pathname.startsWith("/manga/compte")) return true;
   if (href === "/membres") return pathname.startsWith("/membres") || pathname.startsWith("/membre/");
   return pathname.startsWith(href);
 }
@@ -212,10 +218,10 @@ function AvatarRound({
 // ── Paramètres (remplace l'avatar en haut à droite : le profil reste
 //    accessible depuis la nav). Mode sombre et déconnexion restent
 //    uniquement sur /compte — pas de doublon ici, juste le lien. ──────────
-function AccountSettingsButton() {
+function AccountSettingsButton({ manga }: { manga: boolean }) {
   return (
     <Link
-      href="/compte"
+      href={manga ? "/manga/compte" : "/compte"}
       aria-label="Paramètres"
       className="flex h-8 w-8 items-center justify-center rounded-full border border-line bg-card text-muted transition-colors hover:border-violet hover:text-violet-deep"
     >
@@ -229,6 +235,9 @@ function AccountSettingsButton() {
 
 // ── Bascule Livres / Manga ─────────────────────────────────────────────────
 function ModeSwitch({ manga, compact = false }: { manga: boolean; compact?: boolean }) {
+  const { user } = useAuth();
+  // Un seul univers activé sur le compte : rien à basculer
+  if (userUniverses(user).length < 2) return null;
   const options = [
     { key: "books", label: "Livres", href: "/accueil", active: !manga },
     { key: "manga", label: "Manga", href: "/manga", active: manga },
@@ -307,7 +316,7 @@ function MobileTopBar({
             </span>
           )}
         </div>
-        <AccountSettingsButton />
+        <AccountSettingsButton manga={manga} />
       </div>
     </header>
   );
@@ -400,7 +409,7 @@ function TopBar({
               </span>
             )}
           </div>
-          <AccountSettingsButton />
+          <AccountSettingsButton manga={manga} />
         </div>
       </div>
     </header>
@@ -512,6 +521,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { user } = useAuth();
+
+  // Univers non activé sur le compte (lien partagé, notification...) : on renvoie
+  // vers l'univers disponible, ou vers la version adaptée de la page.
+  useEffect(() => {
+    if (!user) return;
+    const target = universeRedirect(pathname, userUniverses(user));
+    if (target && target !== pathname) router.replace(target);
+  }, [user, pathname, router]);
   const [showGuide, setShowGuide] = useState(false);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
@@ -809,6 +826,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!user?.id || typeof window === "undefined") return;
+    if (!userUniverses(user).includes("books")) return; // récap de lecture de livres
     const today = new Date();
     if (today.getDay() !== 1) return; // seulement le lundi
     const localDate = (d: Date) =>

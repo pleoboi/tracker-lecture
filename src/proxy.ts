@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { userUniverses, homeFor } from "./lib/universes";
 
 export async function proxy(request: NextRequest) {
   const reqPath = request.nextUrl.pathname;
@@ -101,8 +102,10 @@ export async function proxy(request: NextRequest) {
       const url = request.nextUrl.clone();
       // Ouverture de l'app : retour côté manga si c'est là qu'on était la
       // dernière fois (cookie posé par AppShell), sinon l'accueil livres.
+      const universes = userUniverses(user);
       const last = request.cookies.get("swena_last_manga")?.value;
-      url.pathname = last && /^\/manga(\/[\w-]+)*$/.test(last) ? last : "/accueil";
+      url.pathname =
+        universes.includes("manga") && last && /^\/manga(\/[\w-]+)*$/.test(last) ? last : homeFor(universes);
       return NextResponse.redirect(url);
     }
     return supabaseResponse;
@@ -112,7 +115,7 @@ export async function proxy(request: NextRequest) {
   if (isAuthPage) {
     if (user) {
       const url = request.nextUrl.clone();
-      url.pathname = "/accueil";
+      url.pathname = homeFor(userUniverses(user));
       return NextResponse.redirect(url);
     }
     return supabaseResponse;

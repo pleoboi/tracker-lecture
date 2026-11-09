@@ -6,6 +6,7 @@ import Link from "next/link";
 import { supabase } from "../../../../lib/supabase";
 import { useAuth } from "../../../../lib/auth-context";
 import { notifyUser } from "../../../../lib/push.client";
+import { userUniverses } from "../../../../lib/universes";
 import {
   fetchMyMangas,
   fetchMyMangaLogs,
@@ -254,7 +255,8 @@ export default function MangaMemberPage() {
     { label: "Mangathèque", href: isOwn ? "/manga" : `/manga/membre/${memberId}/bibliotheque`, count: mangas.length },
     { label: "Statistiques", href: isOwn ? "/manga/stats" : `/manga/membre/${memberId}/stats`, count: null },
     { label: "Badges", href: `/manga/membre/${memberId}/badges`, count: badgeRows.length },
-    { label: "Profil livres", href: `/membre/${memberId}`, count: null },
+    ...(isOwn ? [{ label: "Paramètres", href: "/manga/compte", count: null }] : []),
+    ...(userUniverses(user).includes("books") ? [{ label: "Profil livres", href: `/membre/${memberId}`, count: null }] : []),
   ];
 
   return (
@@ -280,7 +282,7 @@ export default function MangaMemberPage() {
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pr-9">
             <h1 className="min-w-0 break-words font-serif text-2xl leading-tight text-ink">{profile.display_name}</h1>
             {isOwn && (
-              <Link href="/compte" className="shrink-0 rounded-lg border-2 border-ink bg-card px-2 py-0.5 text-[11px] font-bold text-ink">
+              <Link href="/manga/compte" className="shrink-0 rounded-lg border-2 border-ink bg-card px-2 py-0.5 text-[11px] font-bold text-ink">
                 Modifier
               </Link>
             )}

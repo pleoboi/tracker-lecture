@@ -5,6 +5,12 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { Button } from "../../components/ui";
+import { ALL_UNIVERSES, homeFor, type Universe } from "../../lib/universes";
+
+const UNIVERSE_OPTIONS: { key: Universe; label: string; desc: string }[] = [
+  { key: "books", label: "Livres", desc: "Tes lectures, objectifs et ton club" },
+  { key: "manga", label: "Manga", desc: "Ta mangathèque, tes chapitres, les sorties" },
+];
 
 const REFERRAL_STORAGE_KEY = "swena_ref";
 
@@ -32,6 +38,14 @@ function RegisterForm() {
     }
   }, [searchParams]);
 
+  // ?univers=manga ou ?univers=livres (lien partagé) présélectionne un seul univers
+  const [universes, setUniverses] = useState<Universe[]>(() => {
+    const wanted = searchParams.get("univers");
+    return wanted === "manga" ? ["manga"] : wanted === "livres" || wanted === "books" ? ["books"] : ALL_UNIVERSES;
+  });
+  const toggleUniverse = (u: Universe) =>
+    setUniverses((cur) => (cur.includes(u) ? (cur.length > 1 ? cur.filter((x) => x !== u) : cur) : ALL_UNIVERSES.filter((x) => x === u || cur.includes(x))));
+
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -50,8 +64,8 @@ function RegisterForm() {
       email,
       password,
       options: {
-        data: { display_name: displayName.trim() },
-        emailRedirectTo: `${window.location.origin}/api/auth/callback?next=/accueil`,
+        data: { display_name: displayName.trim(), universes },
+        emailRedirectTo: `${window.location.origin}/api/auth/callback?next=${homeFor(universes)}`,
       },
     });
 
@@ -66,7 +80,7 @@ function RegisterForm() {
 
     // Si "Confirm email" est désactivé dans Supabase, la session est disponible immédiatement
     if (data.session) {
-      router.push("/accueil");
+      router.push(homeFor(universes));
       router.refresh();
       return;
     }
@@ -88,6 +102,42 @@ function RegisterForm() {
           className="flex flex-col gap-4 rounded-2xl border border-line bg-card p-6 shadow-sm"
         >
           <h2 className="font-serif text-xl font-bold text-ink">Créer un compte</h2>
+
+          <div className="flex flex-col gap-2">
+            <label className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+              Tu veux suivre…
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {UNIVERSE_OPTIONS.map((o) => {
+                const on = universes.includes(o.key);
+                return (
+                  <button
+                    key={o.key}
+                    type="button"
+                    role="checkbox"
+                    aria-checked={on}
+                    onClick={() => toggleUniverse(o.key)}
+                    className={`flex min-w-0 flex-col items-start gap-1 rounded-xl border-2 p-3 text-left transition-colors ${
+                      on ? "border-violet bg-violet-soft" : "border-line bg-paper hover:border-violet/40"
+                    }`}
+                  >
+                    <span className="flex w-full items-center justify-between gap-2">
+                      <span className="font-serif text-base font-bold text-ink">{o.label}</span>
+                      <span
+                        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 text-[11px] font-bold ${
+                          on ? "border-violet bg-violet text-cream" : "border-line text-transparent"
+                        }`}
+                      >
+                        ✓
+                      </span>
+                    </span>
+                    <span className="text-[11px] leading-snug text-muted">{o.desc}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-muted">Tu pourras ajouter ou retirer un univers dans les paramètres.</p>
+          </div>
 
           <div className="flex flex-col gap-1.5">
             <label className="text-[11px] font-semibold uppercase tracking-wide text-muted">

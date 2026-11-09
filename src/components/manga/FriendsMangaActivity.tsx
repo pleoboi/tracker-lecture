@@ -69,7 +69,7 @@ export default function FriendsMangaActivity({ userId }: { userId: string }) {
   if (loading) return <p className="py-6 text-center text-xs text-muted">Chargement…</p>;
 
   const followPrompt = !hasFollows && (
-      <Link href="/membres" className="manga-panel flex items-center gap-3 px-4 py-3">
+      <Link href="/manga/membres" className="manga-panel flex items-center gap-3 px-4 py-3">
         <span className="text-lg">👥</span>
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-bold text-ink">Suis des membres pour voir leurs lectures manga</p>

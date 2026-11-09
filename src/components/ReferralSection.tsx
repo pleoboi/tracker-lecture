@@ -3,13 +3,14 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 
-export default function ReferralSection({ userId }: { userId?: string }) {
+// universe : présélectionne l'univers sur la page d'inscription (lien d'invitation manga)
+export default function ReferralSection({ userId, universe }: { userId?: string; universe?: "manga" | "books" }) {
   const [count, setCount] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   // Calculable directement au rendu (pas besoin d'un effet) : window est
   // disponible dès le premier rendu client de ce composant "use client".
   const link = userId && typeof window !== "undefined"
-    ? `${window.location.origin}/register?ref=${userId}`
+    ? `${window.location.origin}/register?ref=${userId}${universe ? `&univers=${universe === "manga" ? "manga" : "livres"}` : ""}`
     : "";
 
   useEffect(() => {

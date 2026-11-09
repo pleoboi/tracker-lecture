@@ -446,3 +446,15 @@ html.manga.dark body {
     font-size: 16px !important;
   }
 }
+
+/* Paramètres manga : les cartes douces de l'écran « compte » prennent le trait
+   encré et l'ombre franche des cases de manga. */
+html.manga .manga-account .rounded-2xl.border.bg-card {
+  border: 2px solid var(--color-ink);
+  border-radius: 0.5rem;
+  box-shadow: 4px 4px 0 var(--color-ink);
+}
+html.manga .manga-account .rounded-xl.border {
+  border: 2px solid var(--color-ink);
+  border-radius: 0.375rem;
+}

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { sendPushToUser, adminSupabase } from "../../../../lib/push.server";
+import { usersWithUniverse } from "../../../../lib/universes.server";
 
 const MORNING_MESSAGES = [
   "C'est le moment de rentrer tes pages d'hier !",
@@ -25,7 +26,8 @@ export async function GET(req: NextRequest) {
 
   if (!subs?.length) return NextResponse.json({ sent: 0 });
 
-  const userIds = [...new Set((subs as { user_id: string }[]).map((s) => s.user_id))];
+  // Rappels de lecture de livres : pas pour les comptes manga uniquement
+  const userIds = await usersWithUniverse([...new Set((subs as { user_id: string }[]).map((s) => s.user_id))], "books");
 
   await Promise.all(userIds.map((uid) => {
     const body = MORNING_MESSAGES[Math.floor(Math.random() * MORNING_MESSAGES.length)];

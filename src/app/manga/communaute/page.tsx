@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
 import { useAuth } from "../../../lib/auth-context";
+import { userUniverses } from "../../../lib/universes";
 import { todayISO, shiftDateISO } from "../../../lib/books";
 import { getAniListById, enrichMangaSummary, mangaProfileHref, type Manga } from "../../../lib/manga";
 import { AvatarImg } from "../../../components/ui";
@@ -158,7 +159,9 @@ export default function MangaCommunityPage() {
           <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-violet-deep">仲間</p>
           <h1 className="font-serif text-3xl text-ink sm:text-4xl">Communauté manga</h1>
         </div>
-        <Link href="/communaute" className="text-[12px] font-semibold text-muted hover:text-ink">Côté livres →</Link>
+        {user && userUniverses(user).includes("books") && (
+          <Link href="/communaute" className="text-[12px] font-semibold text-muted hover:text-ink">Côté livres →</Link>
+        )}
       </header>
 
       {/* Activité du club */}
