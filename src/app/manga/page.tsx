@@ -1,21 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "../../lib/auth-context";
 import {
   fetchMyMangas,
-  fetchMyMangaLogs,
   mangaProgress,
   progressSummary,
   releaseState,
   readTarget,
-  unitLabel,
-  MANGA_STATUS_LABELS,
-  MANGA_STATUS_ORDER,
   type Manga,
-  type MangaLog,
-  type MangaStatus,
 } from "../../lib/manga";
 import { MangaCover, InkProgress } from "../../components/manga/MangaUI";
 import AddMangaModal from "../../components/manga/AddMangaModal";
@@ -31,28 +25,17 @@ function relativeDay(iso: string) {
   return new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
 }
 
-function fmtShortDate(iso: string) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
-}
-
 export default function MangaPage() {
   const { user } = useAuth();
   const [mangas, setMangas] = useState<Manga[]>([]);
-  const [logs, setLogs] = useState<MangaLog[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<MangaStatus | "all">("all");
-  const [search, setSearch] = useState("");
   const [showAdd, setShowAdd] = useState(false);
   const [logFor, setLogFor] = useState<number | null | undefined>(undefined);
   const [toast, setToast] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!user) return;
-    const year = new Date().getFullYear();
-    const [ms, ls] = await Promise.all([fetchMyMangas(user.id), fetchMyMangaLogs(user.id, `${year}-01-01`)]);
-    setMangas(ms);
-    setLogs(ls);
+    setMangas(await fetchMyMangas(user.id));
     setLoading(false);
   }, [user]);
 
@@ -83,26 +66,6 @@ export default function MangaPage() {
   const newChapters = reading
     .filter((m) => { const rs = releaseState(m); return rs && rs.behind > 0 && m.current_chapter > 0; })
     .sort((a, b) => (b.latest_chapter_at ?? "").localeCompare(a.latest_chapter_at ?? ""));
-  const byId = useMemo(() => new Map(mangas.map((m) => [m.id, m])), [mangas]);
-
-  const yearChapters = logs.filter((l) => l.unit === "chapter").reduce((s, l) => s + l.amount, 0);
-  const yearVolumes = logs.filter((l) => l.unit === "volume").reduce((s, l) => s + l.amount, 0);
-  const yearCompleted = mangas.filter(
-    (m) => m.status === "completed" && m.date_finished?.startsWith(String(new Date().getFullYear()))
-  ).length;
-
-  const counts = useMemo(() => {
-    const c: Record<string, number> = { all: mangas.length };
-    for (const m of mangas) c[m.status] = (c[m.status] ?? 0) + 1;
-    return c;
-  }, [mangas]);
-
-  const shown = mangas.filter((m) => {
-    if (filter !== "all" && m.status !== filter) return false;
-    const q = search.trim().toLowerCase();
-    if (!q) return true;
-    return m.title.toLowerCase().includes(q) || (m.author ?? "").toLowerCase().includes(q);
-  });
 
   return (
     <div className="animate-fadeIn flex min-w-0 flex-col gap-6 pt-4">
@@ -121,20 +84,6 @@ export default function MangaPage() {
           </button>
         </div>
       </header>
-
-      {/* Bandeau stats de l'année */}
-      <section className="manga-panel grid grid-cols-3 divide-x-2 divide-ink overflow-hidden p-0">
-        {[
-          { value: yearChapters, label: `chapitres en ${new Date().getFullYear()}` },
-          { value: yearVolumes, label: `tomes en ${new Date().getFullYear()}` },
-          { value: yearCompleted, label: yearCompleted > 1 ? "séries finies" : "série finie" },
-        ].map((s) => (
-          <div key={s.label} className="flex flex-col items-center gap-0.5 px-2 py-4">
-            <span className="nums font-serif text-3xl text-ink">{s.value.toLocaleString("fr-FR")}</span>
-            <span className="text-center text-[10.5px] font-medium text-muted">{s.label}</span>
-          </div>
-        ))}
-      </section>
 
       {loading ? (
         <p className="py-16 text-center text-xs font-medium uppercase tracking-wider text-muted">Chargement…</p>
@@ -256,82 +205,6 @@ export default function MangaPage() {
             </section>
           )}
 
-          {/* Toutes les séries */}
-          <section className="flex flex-col gap-3">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-serif text-xl text-ink">Toutes mes séries</h2>
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Rechercher…"
-                className="w-full rounded-xl border-2 border-line bg-input px-3 py-2 text-sm text-ink outline-none focus:border-ink md:w-56"
-              />
-            </div>
-            <div className="-mx-5 flex gap-1.5 overflow-x-auto px-5 md:mx-0 md:px-0">
-              {(["all", ...MANGA_STATUS_ORDER] as const).map((s) => {
-                const active = filter === s;
-                const n = counts[s] ?? 0;
-                if (s !== "all" && n === 0) return null;
-                return (
-                  <button
-                    key={s}
-                    onClick={() => setFilter(s)}
-                    className={`shrink-0 rounded-full border-2 px-3 py-1.5 text-[12px] font-bold transition-colors ${
-                      active ? "border-ink bg-ink text-paper" : "border-line bg-card text-ink-2 hover:border-ink"
-                    }`}
-                  >
-                    {s === "all" ? "Toutes" : MANGA_STATUS_LABELS[s]} <span className="opacity-60">{n}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-4 md:grid-cols-6">
-              {shown.map((m) => (
-                <Link key={m.id} href={`/manga/${m.id}`} className="group flex flex-col gap-1.5">
-                  <div className="relative">
-                    <MangaCover
-                      id={m.id}
-                      title={m.title}
-                      coverUrl={m.cover_url}
-                      className="aspect-[2/3] h-auto w-full transition-transform group-hover:-translate-y-1"
-                    />
-                    {m.rating ? (
-                      <span className="absolute right-1 top-1 rounded-[3px] border-2 border-ink bg-card px-1 text-[10px] font-bold text-ink">
-                        ★ {String(m.rating).replace(".", ",")}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p className="line-clamp-2 text-[12px] font-bold leading-tight text-ink">{m.title}</p>
-                  <p className="-mt-1 text-[10.5px] text-muted">
-                    {m.status === "reading" ? progressSummary(m) : MANGA_STATUS_LABELS[m.status]}
-                  </p>
-                </Link>
-              ))}
-            </div>
-            {shown.length === 0 && <p className="py-6 text-center text-sm text-muted">Aucune série ne correspond.</p>}
-          </section>
-
-          {/* Dernières sessions */}
-          {logs.length > 0 && (
-            <section className="flex flex-col gap-3">
-              <h2 className="font-serif text-xl text-ink">Dernières sessions</h2>
-              <div className="manga-panel divide-y divide-line p-0">
-                {logs.slice(0, 8).map((l) => {
-                  const m = byId.get(l.manga_id);
-                  return (
-                    <Link key={l.id} href={`/manga/${l.manga_id}`} className="flex items-center gap-3 px-4 py-2.5 hover:bg-violet-soft">
-                      <span className="nums w-14 shrink-0 text-[11px] font-semibold text-muted">{fmtShortDate(l.date)}</span>
-                      <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{m?.title ?? "Série supprimée"}</span>
-                      <span className="nums shrink-0 text-[12px] font-bold text-violet-deep">
-                        +{l.amount} {unitLabel(l.unit, l.amount, true)}{" "}
-                        <span className="font-medium text-muted">→ {l.end_value}</span>
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </section>
-          )}
         </>
       )}
 

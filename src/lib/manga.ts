@@ -459,6 +459,8 @@ export interface MergeableMangaLog {
 export type MergedMangaLog<T extends MergeableMangaLog> = T & {
   /** Nombre de sessions regroupées dans cette ligne. */
   sessions: number;
+  /** Identifiants de toutes les sessions regroupées (la plus récente d'abord). */
+  ids: number[];
   /** Moyenne des notes de chapitres des sessions regroupées (null si aucune). */
   avgRating: number | null;
 };
@@ -478,7 +480,7 @@ export function mergeMangaLogs<T extends MergeableMangaLog>(logs: T[]): MergedMa
     const note = l.notes?.trim();
     const hit = byKey.get(key);
     if (!hit) {
-      const row = { ...l, sessions: 1, avgRating: null, _ratings: l.rating ? [Number(l.rating)] : [], _notes: note ? [note] : [] };
+      const row = { ...l, sessions: 1, ids: [l.id], avgRating: null, _ratings: l.rating ? [Number(l.rating)] : [], _notes: note ? [note] : [] };
       byKey.set(key, row);
       out.push(row);
       continue;
@@ -486,6 +488,7 @@ export function mergeMangaLogs<T extends MergeableMangaLog>(logs: T[]): MergedMa
     hit.amount += l.amount;
     hit.end_value = Math.max(hit.end_value, l.end_value);
     hit.sessions += 1;
+    hit.ids.push(l.id);
     hit.cover_url = hit.cover_url ?? l.cover_url ?? null;
     if (l.rating) hit._ratings.push(Number(l.rating));
     // Les plus anciennes d'abord : on parcourt du plus récent au plus ancien

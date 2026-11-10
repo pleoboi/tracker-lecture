@@ -11,15 +11,13 @@ import {
   fetchMyMangas,
   fetchMyMangaLogs,
   backfillDemographics,
-  mergeMangaLogs,
   progressSummary,
-  unitLabel,
   MANGA_DEMOGRAPHICS,
   type Manga,
   type MangaLog,
 } from "../../../../lib/manga";
 import { AvatarImg, Modal, Button, inputClass } from "../../../../components/ui";
-import { MangaCover, RatingTag } from "../../../../components/manga/MangaUI";
+import { MangaCover } from "../../../../components/manga/MangaUI";
 import { MangaBadgeMedal } from "../../../../components/manga/MangaBadgeIcon";
 import { MANGA_BADGE_DEFS } from "../../../../lib/mangaBadges";
 
@@ -35,11 +33,6 @@ interface Profile {
 type PersonRow = { id: string; display_name: string; avatar_url: string | null };
 
 const MAX_FAVORITES = 4;
-
-function fmtShortDate(iso: string) {
-  const [y, m, d] = iso.split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
-}
 
 function StatChip({ value, label }: { value: string; label: string }) {
   return (
@@ -181,8 +174,6 @@ export default function MangaMemberPage() {
       .sort((a, b) => b.value - a.value);
   }, [mangas]);
 
-  const recentSessions = useMemo(() => mergeMangaLogs(logs.slice(0, 60)).slice(0, 6), [logs]);
-
   const handleFollow = async () => {
     if (!user?.id) return;
     setLoadingFollow(true);
@@ -252,7 +243,8 @@ export default function MangaMemberPage() {
     .filter((m) => !pickerSearch.trim() || m.title.toLowerCase().includes(pickerSearch.trim().toLowerCase()));
 
   const SECTIONS: { label: string; href: string; count: number | null }[] = [
-    { label: "Mangathèque", href: isOwn ? "/manga" : `/manga/membre/${memberId}/bibliotheque`, count: mangas.length },
+    { label: isOwn ? "Toutes mes séries" : "Mangathèque", href: `/manga/membre/${memberId}/bibliotheque`, count: mangas.length },
+    { label: "Dernières sessions", href: `/manga/membre/${memberId}/sessions`, count: null },
     { label: "Statistiques", href: isOwn ? "/manga/stats" : `/manga/membre/${memberId}/stats`, count: null },
     { label: "Badges", href: `/manga/membre/${memberId}/badges`, count: badgeRows.length },
     ...(isOwn ? [{ label: "Paramètres", href: "/manga/compte", count: null }] : []),
@@ -450,25 +442,6 @@ export default function MangaMemberPage() {
           <p className="text-[10.5px] text-muted">
             <span className="font-bold text-ink-2">En cours</span> · <span className="font-bold text-ink-2">3 derniers terminés</span>
           </p>
-        </section>
-      )}
-
-      {/* Dernières sessions */}
-      {recentSessions.length > 0 && (
-        <section className="flex min-w-0 flex-col gap-2">
-          <h2 className="font-serif text-[17px] text-ink">Dernières sessions</h2>
-          <div className="manga-panel divide-y divide-line p-0">
-            {recentSessions.map((l) => (
-              <Link key={l.id} href={`/manga/${l.manga_id}`} className="flex min-w-0 items-center gap-3 px-3.5 py-2.5 hover:bg-violet-soft">
-                <span className="nums w-12 shrink-0 text-[11px] font-semibold text-muted">{fmtShortDate(l.date)}</span>
-                <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{byId.get(l.manga_id)?.title ?? "Série supprimée"}</span>
-                {l.avgRating != null && <RatingTag value={l.avgRating} className="shrink-0 text-[11.5px]" />}
-                <span className="nums shrink-0 text-[12px] font-bold text-violet-deep">
-                  +{l.amount} {unitLabel(l.unit, l.amount, true)}
-                </span>
-              </Link>
-            ))}
-          </div>
         </section>
       )}
 

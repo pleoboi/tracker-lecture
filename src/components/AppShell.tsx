@@ -556,6 +556,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     from_name: string;
     book_id: number;
     book_title: string;
+    manga?: boolean;
     created_at: string;
     isNew: boolean;
   }[]>([]);
@@ -657,9 +658,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     const [{ data: likeRows }, { data: inviteRows }, { data: dmRows }] = await Promise.all([
       supabase
         .from("notifications")
-        .select("id, from_user_id, book_id, book_title, created_at")
+        .select("id, type, from_user_id, book_id, book_title, created_at")
         .eq("user_id", uid)
-        .eq("type", "review_like")
+        .in("type", ["review_like", "manga_like"])
         .order("created_at", { ascending: false })
         .limit(20),
       supabase
@@ -700,9 +701,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     setNotifFollowers(enriched);
 
     // Likes
-    let enrichedLikes: { id: string; from_user_id: string; from_name: string; book_id: number; book_title: string; created_at: string; isNew: boolean }[] = [];
+    let enrichedLikes: { id: string; from_user_id: string; from_name: string; book_id: number; book_title: string; manga?: boolean; created_at: string; isNew: boolean }[] = [];
     if (likeRows && likeRows.length > 0) {
-      type LikeRow = { id: string; from_user_id: string; book_id: number; book_title: string; created_at: string };
+      type LikeRow = { id: string; type: string; from_user_id: string; book_id: number; book_title: string; created_at: string };
       const senderIds = [...new Set((likeRows as LikeRow[]).map((r) => r.from_user_id))];
       const { data: senderProfiles } = await supabase.from("user_profiles").select("id, display_name").in("id", senderIds);
       const senderMap = new Map(((senderProfiles || []) as { id: string; display_name: string }[]).map((p) => [p.id, p.display_name]));
@@ -711,7 +712,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         from_user_id: r.from_user_id,
         from_name: senderMap.get(r.from_user_id) ?? "Membre",
         book_id: r.book_id,
-        book_title: r.book_title ?? "un livre",
+        book_title: r.book_title ?? (r.type === "manga_like" ? "un manga" : "un livre"),
+        manga: r.type === "manga_like",
         created_at: r.created_at,
         isNew: r.created_at > lastSeen,
       }));
@@ -1177,7 +1179,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                     ) : item._type === "like" ? (
                       <Link
                         key={`like-${item.id}`}
-                        href={`/livre/${(item as typeof likeNotifs[0] & { _type: "like" }).book_id}`}
+                        href={(item as typeof likeNotifs[0] & { _type: "like" }).manga ? "/manga" : `/livre/${(item as typeof likeNotifs[0] & { _type: "like" }).book_id}`}
                         onClick={() => setShowNotif(false)}
                         className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-violet-soft"
                       >

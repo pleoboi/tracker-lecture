@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useAuth } from "../../../../../lib/auth-context";
 import { supabase } from "../../../../../lib/supabase";
 import {
   fetchMyMangas,
@@ -15,10 +16,12 @@ import {
 } from "../../../../../lib/manga";
 import { MangaCover } from "../../../../../components/manga/MangaUI";
 
-/** Mangathèque d'un membre en lecture seule (la sienne s'ouvre sur /manga). */
+/** Mangathèque d'un membre en lecture seule (la tienne : toutes tes séries, depuis ton profil). */
 export default function MangaMemberLibraryPage() {
   const params = useParams();
   const memberId = params.id as string;
+  const { user } = useAuth();
+  const isOwn = user?.id === memberId;
   const [mangas, setMangas] = useState<Manga[]>([]);
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -58,7 +61,7 @@ export default function MangaMemberLibraryPage() {
       <Link href={mangaProfileHref(memberId)} className="text-[12px] font-semibold text-muted hover:text-ink">← Profil manga</Link>
       <header>
         <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-violet-deep">マンガ</p>
-        <h1 className="font-serif text-3xl leading-tight text-ink sm:text-4xl">Mangathèque{name ? ` de ${name}` : ""}</h1>
+        <h1 className="font-serif text-3xl leading-tight text-ink sm:text-4xl">{isOwn ? "Toutes mes séries" : `Mangathèque${name ? ` de ${name}` : ""}`}</h1>
       </header>
 
       {loading ? (
