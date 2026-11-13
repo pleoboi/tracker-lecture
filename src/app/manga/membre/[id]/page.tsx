@@ -11,6 +11,8 @@ import {
   fetchMyMangas,
   fetchMyMangaLogs,
   backfillDemographics,
+  volumeEvents,
+  sumVolumeEvents,
   progressSummary,
   MANGA_DEMOGRAPHICS,
   type Manga,
@@ -142,7 +144,7 @@ export default function MangaMemberPage() {
     return {
       completed,
       chapters: logs.filter((l) => l.unit === "chapter").reduce((s, l) => s + l.amount, 0),
-      volumes: logs.filter((l) => l.unit === "volume").reduce((s, l) => s + l.amount, 0),
+      volumes: sumVolumeEvents(volumeEvents(mangas, logs)),
       avgRating: rated.length ? rated.reduce((s, m) => s + Number(m.rating), 0) / rated.length : null,
     };
   }, [mangas, logs]);

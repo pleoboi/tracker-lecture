@@ -8,6 +8,8 @@ import {
   fetchMyMangas,
   fetchMyMangaLogs,
   backfillDemographics,
+  volumeEvents,
+  sumVolumeEvents,
   mangaProfileHref,
   unitLabel,
   MANGA_DEMOGRAPHICS,
@@ -48,7 +50,6 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear());
-  const [unit, setUnit] = useState<MangaUnit>("chapter");
   const [demoScope, setDemoScope] = useState<"library" | "year">("library");
 
   useEffect(() => {
@@ -85,34 +86,46 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
 
   const sum = (u: MangaUnit) => yearLogs.filter((l) => l.unit === u).reduce((s, l) => s + l.amount, 0);
   const chapters = sum("chapter");
-  const volumes = sum("volume");
+  const volEvents = useMemo(() => volumeEvents(mangas, logs), [mangas, logs]);
+  const volumes = sumVolumeEvents(volEvents, String(year));
   const activeDays = new Set(yearLogs.map((l) => l.date)).size;
   const finished = mangas.filter((m) => m.status === "completed" && m.date_finished?.startsWith(String(year)));
   const rated = finished.filter((m) => m.rating);
   const avgRating = rated.length ? rated.reduce((s, m) => s + Number(m.rating), 0) / rated.length : null;
   const seriesRead = new Set(yearLogs.map((l) => l.manga_id)).size;
 
-  const monthly = useMemo(() => {
+  const monthlyChapters = useMemo(() => {
     const arr = MONTHS.map((n) => ({ name: n, value: 0 }));
-    yearLogs.filter((l) => l.unit === unit).forEach((l) => {
+    yearLogs.filter((l) => l.unit === "chapter").forEach((l) => {
       arr[Number(l.date.slice(5, 7)) - 1].value += l.amount;
     });
     return arr;
-  }, [yearLogs, unit]);
+  }, [yearLogs]);
+  const monthlyVolumes = useMemo(() => {
+    const arr = MONTHS.map((n) => ({ name: n, value: 0 }));
+    volEvents.filter((e) => e.date.startsWith(String(year))).forEach((e) => {
+      arr[Number(e.date.slice(5, 7)) - 1].value += e.delta;
+    });
+    return arr;
+  }, [volEvents, year]);
 
   const topSeries = useMemo(() => {
     const totals = new Map<number, { chapter: number; volume: number }>();
     yearLogs.forEach((l) => {
       const t = totals.get(l.manga_id) ?? { chapter: 0, volume: 0 };
-      t[l.unit] += l.amount;
+      if (l.unit === "chapter") t.chapter += l.amount;
       totals.set(l.manga_id, t);
+    });
+    volEvents.filter((e) => e.date.startsWith(String(year))).forEach((e) => {
+      const t = totals.get(e.manga_id);
+      if (t) t.volume += e.delta;
     });
     return [...totals.entries()]
       .map(([id, t]) => ({ manga: byId.get(id), ...t }))
       .filter((x) => x.manga)
       .sort((a, b) => b.chapter + b.volume * 10 - (a.chapter + a.volume * 10))
       .slice(0, 5);
-  }, [yearLogs, byId]);
+  }, [yearLogs, byId, volEvents, year]);
 
   const genres = useMemo(() => {
     const ids = new Set(yearLogs.map((l) => l.manga_id));
@@ -240,32 +253,44 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
           </section>
 
           <section className="manga-panel flex min-w-0 flex-col gap-3 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-serif text-lg text-ink">Mois par mois</h2>
-              <div className="flex gap-1 rounded-lg border-2 border-ink p-0.5">
-                {(["chapter", "volume"] as MangaUnit[]).map((u) => (
-                  <button
-                    key={u}
-                    onClick={() => setUnit(u)}
-                    className={`rounded-md px-2.5 py-1 text-[11.5px] font-bold ${unit === u ? "bg-ink text-paper" : "text-ink-2"}`}
-                  >
-                    {u === "chapter" ? "Chapitres" : "Tomes"}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <h2 className="font-serif text-lg text-ink">Chapitres, mois par mois</h2>
             <ResponsiveContainer width="100%" height={180}>
-              <BarChart data={monthly} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
+              <BarChart data={monthlyChapters} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--color-muted)" }} axisLine={false} tickLine={false} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "var(--color-muted)" }} axisLine={false} tickLine={false} />
                 <Tooltip
                   cursor={{ fill: "var(--color-violet-soft)" }}
                   contentStyle={{ background: "var(--color-card)", border: "2px solid var(--color-ink)", borderRadius: 6, fontSize: 12 }}
-                  formatter={(v) => [`${v} ${unitLabel(unit, Number(v))}`, ""]}
+                  labelStyle={{ color: "var(--color-ink)", fontWeight: 700 }}
+                  itemStyle={{ color: "var(--color-ink)" }}
+                  formatter={(v) => [`${v} ${unitLabel("chapter", Number(v))}`, ""]}
                   separator=""
                 />
                 <Bar dataKey="value" radius={[2, 2, 0, 0]} stroke="var(--color-ink)" strokeWidth={1.5}>
-                  {monthly.map((_, i) => (
+                  {monthlyChapters.map((_, i) => (
+                    <Cell key={i} fill={i === currentMonth ? "var(--color-violet)" : "var(--color-ink)"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </section>
+
+          <section className="manga-panel flex min-w-0 flex-col gap-3 p-4">
+            <h2 className="font-serif text-lg text-ink">Tomes, mois par mois</h2>
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={monthlyVolumes} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--color-muted)" }} axisLine={false} tickLine={false} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 10, fill: "var(--color-muted)" }} axisLine={false} tickLine={false} />
+                <Tooltip
+                  cursor={{ fill: "var(--color-violet-soft)" }}
+                  contentStyle={{ background: "var(--color-card)", border: "2px solid var(--color-ink)", borderRadius: 6, fontSize: 12 }}
+                  labelStyle={{ color: "var(--color-ink)", fontWeight: 700 }}
+                  itemStyle={{ color: "var(--color-ink)" }}
+                  formatter={(v) => [`${v} ${unitLabel("volume", Number(v))}`, ""]}
+                  separator=""
+                />
+                <Bar dataKey="value" radius={[2, 2, 0, 0]} stroke="var(--color-ink)" strokeWidth={1.5}>
+                  {monthlyVolumes.map((_, i) => (
                     <Cell key={i} fill={i === currentMonth ? "var(--color-violet)" : "var(--color-ink)"} />
                   ))}
                 </Bar>

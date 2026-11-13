@@ -40,5 +40,10 @@ export async function POST(req: NextRequest) {
   // Tome des chapitres lus : sert à fusionner les sessions du même tome dans l'activité du club.
   // Mise à jour séparée pour que la couverture reste posée même si la colonne n'existe pas encore (v39).
   if (volume != null) await adminSupabase.from("manga_logs").update({ volume }).eq("id", log.id);
+  // La progression suit les chapitres : le tome en cours est celui qui contient le chapitre atteint
+  // (chapitres pas encore reliés en tome : on ne touche à rien).
+  if (volume != null && log.unit === "chapter") {
+    await adminSupabase.from("mangas").update({ current_volume: volume }).eq("id", log.manga_id).eq("current_chapter", log.end_value);
+  }
   return NextResponse.json({ cover, volume });
 }

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from "../../lib/auth-context";
 import {
   fetchMyMangas,
+  syncVolumesFromLogs,
   mangaProgress,
   progressSummary,
   releaseState,
@@ -35,7 +36,11 @@ export default function MangaPage() {
 
   const load = useCallback(async () => {
     if (!user) return;
-    setMangas(await fetchMyMangas(user.id));
+    const ms = await fetchMyMangas(user.id);
+    setMangas(ms);
+    // Tome en cours aligné sur la dernière session en chapitres (corrige les anciennes séries)
+    const synced = await syncVolumesFromLogs(ms).catch(() => ms);
+    if (synced !== ms) setMangas(synced);
     setLoading(false);
   }, [user]);
 

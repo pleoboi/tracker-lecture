@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
 import type { Book, ReadingLog } from "../lib/types";
-import { mangaProfileHref } from "../lib/manga";
+import { mangaProfileHref, volumeEvents, sumVolumeEvents } from "../lib/manga";
 import { AvatarImg } from "./ui";
 
 interface Profile {
@@ -24,18 +24,20 @@ interface MemberStats {
   avgRating: number | null;
 }
 
+type MemberLog = { id: number; user_id: string; manga_id: number; date: string; unit: "chapter" | "volume"; amount: number; end_value: number; volume: number | null };
+
 /** Tous les logs manga (Supabase plafonne à 1000 lignes par requête). */
 async function fetchAllMangaLogs() {
-  const out: { user_id: string; unit: string; amount: number }[] = [];
+  const out: MemberLog[] = [];
   const PAGE = 1000;
   for (let offset = 0; ; offset += PAGE) {
     const { data, error } = await supabase
       .from("manga_logs")
-      .select("user_id, unit, amount")
+      .select("id, user_id, manga_id, date, unit, amount, end_value, volume")
       .order("id", { ascending: true })
       .range(offset, offset + PAGE - 1);
     if (error || !data) break;
-    out.push(...(data as { user_id: string; unit: string; amount: number }[]));
+    out.push(...(data as MemberLog[]));
     if (data.length < PAGE) break;
   }
   return out;
@@ -55,11 +57,11 @@ export default function MembersView({ manga = false }: { manga?: boolean }) {
       if (manga) {
         const [{ data: profs }, { data: mangas }, logs] = await Promise.all([
           supabase.from("user_profiles").select("*").order("created_at", { ascending: true }),
-          supabase.from("mangas").select("id, user_id, status, rating"),
+          supabase.from("mangas").select("id, user_id, status, rating, current_volume"),
           fetchAllMangaLogs(),
         ]);
         ps = (profs as Profile[]) || [];
-        const ms = (mangas as { id: number; user_id: string; status: string; rating: number | null }[]) || [];
+        const ms = (mangas as { id: number; user_id: string; status: string; rating: number | null; current_volume: number }[]) || [];
         ps.forEach((p) => {
           const mine = ms.filter((m) => m.user_id === p.id);
           const rated = mine.filter((m) => Number(m.rating) > 0);
@@ -68,7 +70,7 @@ export default function MembersView({ manga = false }: { manga?: boolean }) {
             completed: mine.filter((m) => m.status === "completed").length,
             reading: mine.filter((m) => m.status === "reading").length,
             total: myLogs.filter((l) => l.unit === "chapter").reduce((s, l) => s + l.amount, 0),
-            volumes: myLogs.filter((l) => l.unit === "volume").reduce((s, l) => s + l.amount, 0),
+            volumes: sumVolumeEvents(volumeEvents(mine, myLogs)),
             avgRating: rated.length ? rated.reduce((s, m) => s + Number(m.rating), 0) / rated.length : null,
           };
         });

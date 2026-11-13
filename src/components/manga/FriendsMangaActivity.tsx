@@ -93,7 +93,7 @@ export default function FriendsMangaActivity({ userId }: { userId: string }) {
   const myName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "";
 
   useEffect(() => {
-    (async () => {
+    const load = async () => {
       const { data: follows } = await supabase.from("user_follows").select("following_id").eq("follower_id", userId);
       const followingIds = ((follows ?? []) as { following_id: string }[]).map((f) => f.following_id);
       setHasFollows(followingIds.length > 0);
@@ -119,7 +119,10 @@ export default function FriendsMangaActivity({ userId }: { userId: string }) {
       }
       setProfiles(new Map(((profs ?? []) as Profile[]).map((p) => [p.id, p])));
       setLoading(false);
-    })();
+    };
+    load();
+    window.addEventListener("mangas-updated", load);
+    return () => window.removeEventListener("mangas-updated", load);
   }, [userId]);
 
   const toggleLike = async (it: (typeof items)[number]) => {

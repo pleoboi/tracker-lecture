@@ -520,3 +520,85 @@ export async function checkMangaBadges(): Promise<{ id: string; name: string; ti
 export function mangaProfileHref(userId: string): string {
   return `/manga/membre/${userId}`;
 }
+
+/* ---------------- Tomes lus ---------------- */
+
+export interface VolumeEvent {
+  date: string;
+  manga_id: number;
+  /** Tomes gagnés à cette date. */
+  delta: number;
+}
+
+/**
+ * Tomes lus, y compris quand on ne note que des chapitres : le tome atteint se
+ * déduit du chapitre (tome qui le contient). Pour chaque série, chaque nouveau tome
+ * atteint compte à la date de la session qui l'a fait atteindre. Si tu notes en
+ * tomes, ce sont les tomes notés qui comptent ; on garde la méthode qui en donne le plus.
+ */
+export function volumeEvents(
+  mangas: Pick<Manga, "id" | "current_volume">[],
+  logs: Pick<MangaLog, "id" | "manga_id" | "date" | "unit" | "amount" | "end_value" | "volume">[]
+): VolumeEvent[] {
+  const out: VolumeEvent[] = [];
+  const byManga = new Map<number, typeof logs>();
+  for (const l of logs) byManga.set(l.manga_id, [...(byManga.get(l.manga_id) ?? []), l]);
+  const current = new Map(mangas.map((m) => [m.id, m.current_volume ?? 0]));
+
+  for (const [mangaId, ls] of byManga) {
+    const sorted = [...ls].sort((a, b) => a.date.localeCompare(b.date) || a.id - b.id);
+    // Méthode 1 : tomes notés tels quels
+    const fromVolumes: VolumeEvent[] = sorted
+      .filter((l) => l.unit === "volume")
+      .map((l) => ({ date: l.date, manga_id: mangaId, delta: l.amount }));
+    // Méthode 2 : tome atteint déduit des chapitres lus
+    const fromChapters: VolumeEvent[] = [];
+    let reached = 0;
+    let lastChapterDate: string | null = null;
+    for (const l of sorted) {
+      if (l.unit !== "chapter") continue;
+      lastChapterDate = l.date;
+      if (l.volume != null && l.volume > reached) {
+        fromChapters.push({ date: l.date, manga_id: mangaId, delta: l.volume - reached });
+        reached = l.volume;
+      }
+    }
+    // Sessions anciennes sans tome mémorisé : la progression actuelle de la série complète
+    const cur = current.get(mangaId) ?? 0;
+    if (lastChapterDate && cur > reached) fromChapters.push({ date: lastChapterDate, manga_id: mangaId, delta: cur - reached });
+
+    const total = (evs: VolumeEvent[]) => evs.reduce((s, e) => s + e.delta, 0);
+    out.push(...(total(fromChapters) >= total(fromVolumes) ? fromChapters : fromVolumes));
+  }
+  return out;
+}
+
+export const sumVolumeEvents = (events: VolumeEvent[], datePrefix = "") =>
+  events.filter((e) => e.date.startsWith(datePrefix)).reduce((s, e) => s + e.delta, 0);
+
+/**
+ * Remet le tome en cours des séries en lecture d'équerre avec la dernière session en chapitres
+ * (le tome qui contient le chapitre atteint). Corrige les séries dont le tome n'avait pas suivi.
+ * Renvoie les séries à jour.
+ */
+export async function syncVolumesFromLogs(mangas: Manga[]): Promise<Manga[]> {
+  const reading = mangas.filter((m) => m.status === "reading" && m.current_chapter > 0);
+  if (!reading.length) return mangas;
+  const { data } = await supabase
+    .from("manga_logs")
+    .select("manga_id, end_value, volume")
+    .in("manga_id", reading.map((m) => m.id))
+    .eq("unit", "chapter")
+    .not("volume", "is", null)
+    .order("date", { ascending: false })
+    .order("id", { ascending: false });
+  const rows = (data ?? []) as { manga_id: number; end_value: number; volume: number }[];
+  const fixes = new Map<number, number>();
+  for (const m of reading) {
+    const hit = rows.find((r) => r.manga_id === m.id && r.end_value === m.current_chapter);
+    if (hit && hit.volume !== m.current_volume) fixes.set(m.id, hit.volume);
+  }
+  if (!fixes.size) return mangas;
+  await Promise.all([...fixes].map(([id, current_volume]) => supabase.from("mangas").update({ current_volume }).eq("id", id)));
+  return mangas.map((m) => (fixes.has(m.id) ? { ...m, current_volume: fixes.get(m.id)! } : m));
+}

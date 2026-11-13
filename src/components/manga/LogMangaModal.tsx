@@ -156,7 +156,9 @@ export default function LogMangaModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ logId: inserted.id }),
-      }).catch(() => {});
+      })
+        .then(() => window.dispatchEvent(new CustomEvent("mangas-updated")))
+        .catch(() => {});
     }
 
     setSaving(false);
@@ -164,7 +166,7 @@ export default function LogMangaModal({
     checkMangaBadges();
     onSaved(
       finished
-        ? `« ${selected.title} » terminé 🎉`
+        ? `« ${selected.title} » terminé`
         : `+${amount} ${unitLabel(unit, amount)} sur « ${selected.title} »`
     );
   };

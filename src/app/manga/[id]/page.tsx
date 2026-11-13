@@ -21,6 +21,7 @@ import {
   type MangaStatus,
 } from "../../../lib/manga";
 import { MangaCover, InkProgress, StatusPicker, StarPicker, DemographicPicker, RatingTag } from "../../../components/manga/MangaUI";
+import MangaRatingChart from "../../../components/manga/MangaRatingChart";
 import LogMangaModal from "../../../components/manga/LogMangaModal";
 import { inputClass } from "../../../components/ui";
 
@@ -170,7 +171,7 @@ export default function MangaDetailPage() {
   ].filter(Boolean);
 
   return (
-    <div className="animate-fadeIn flex flex-col gap-6 pt-4">
+    <div className="animate-fadeIn flex min-w-0 flex-col gap-6 pt-4">
       <Link href="/manga" className="text-[12px] font-semibold text-muted hover:text-ink">← Mangathèque</Link>
 
       {/* Fiche */}
@@ -194,7 +195,7 @@ export default function MangaDetailPage() {
           )}
 
           {/* Avancement sur les deux unités */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
             {[
               { label: "Chapitre", current: manga.current_chapter, total: isOngoingSeries ? releaseState(manga)?.latest ?? null : manga.total_chapters },
               { label: "Tome", current: manga.current_volume, total: manga.total_volumes },
@@ -325,8 +326,8 @@ export default function MangaDetailPage() {
       )}
 
       {isOwn && (
-        <section className="grid gap-4 md:grid-cols-2">
-          <div className="manga-panel flex flex-col gap-3 p-4">
+        <section className="grid grid-cols-[minmax(0,1fr)] gap-4 md:grid-cols-2">
+          <div className="manga-panel flex min-w-0 flex-col gap-3 p-4">
             <h2 className="font-serif text-lg text-ink">Statut</h2>
             <StatusPicker value={manga.status} onChange={changeStatus} />
             <div className="flex flex-wrap items-center gap-2 border-t border-line pt-3">
@@ -356,7 +357,7 @@ export default function MangaDetailPage() {
               <StarPicker value={Number(manga.rating ?? 0)} onChange={(v) => patch({ rating: v > 0 ? v : null })} />
             </div>
           </div>
-          <div className="manga-panel flex flex-col gap-3 p-4">
+          <div className="manga-panel flex min-w-0 flex-col gap-3 p-4">
             <h2 className="font-serif text-lg text-ink">Mon avis</h2>
             <textarea
               value={notes}
@@ -415,6 +416,8 @@ export default function MangaDetailPage() {
           </div>
         </section>
       )}
+
+      <MangaRatingChart logs={logs} />
 
       {/* Sessions */}
       <section className="flex flex-col gap-3">
