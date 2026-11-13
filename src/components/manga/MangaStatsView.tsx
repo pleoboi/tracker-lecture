@@ -50,6 +50,7 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
   const [year, setYear] = useState(new Date().getFullYear());
+  const [period, setPeriod] = useState<"year" | "month" | "prev">("year");
   const [demoScope, setDemoScope] = useState<"library" | "year">("library");
 
   useEffect(() => {
@@ -81,33 +82,48 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
     return [...ys].sort((a, b) => b - a);
   }, [logs]);
 
-  const yearLogs = useMemo(() => logs.filter((l) => l.date.startsWith(String(year))), [logs, year]);
+  // Période affichée : l'année choisie, le mois en cours ou le mois précédent (préfixe de date AAAA ou AAAA-MM)
+  const { prefix, periodLabel, daily } = useMemo(() => {
+    const now = new Date();
+    if (period === "year") return { prefix: String(year), periodLabel: String(year), daily: false };
+    const d = new Date(now.getFullYear(), now.getMonth() - (period === "prev" ? 1 : 0), 1);
+    const label = d.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    return { prefix: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, periodLabel: label, daily: true };
+  }, [period, year]);
+
+  const yearLogs = useMemo(() => logs.filter((l) => l.date.startsWith(prefix)), [logs, prefix]);
   const byId = useMemo(() => new Map(mangas.map((m) => [m.id, m])), [mangas]);
 
   const sum = (u: MangaUnit) => yearLogs.filter((l) => l.unit === u).reduce((s, l) => s + l.amount, 0);
   const chapters = sum("chapter");
   const volEvents = useMemo(() => volumeEvents(mangas, logs), [mangas, logs]);
-  const volumes = sumVolumeEvents(volEvents, String(year));
+  const volumes = sumVolumeEvents(volEvents, prefix);
   const activeDays = new Set(yearLogs.map((l) => l.date)).size;
-  const finished = mangas.filter((m) => m.status === "completed" && m.date_finished?.startsWith(String(year)));
+  const finished = mangas.filter((m) => m.status === "completed" && m.date_finished?.startsWith(prefix));
   const rated = finished.filter((m) => m.rating);
   const avgRating = rated.length ? rated.reduce((s, m) => s + Number(m.rating), 0) / rated.length : null;
   const seriesRead = new Set(yearLogs.map((l) => l.manga_id)).size;
 
-  const monthlyChapters = useMemo(() => {
-    const arr = MONTHS.map((n) => ({ name: n, value: 0 }));
-    yearLogs.filter((l) => l.unit === "chapter").forEach((l) => {
-      arr[Number(l.date.slice(5, 7)) - 1].value += l.amount;
+  // Série par mois (année) ou par jour (mois)
+  const bucketed = (items: { date: string; n: number }[]) => {
+    const size = daily ? new Date(Number(prefix.slice(0, 4)), Number(prefix.slice(5, 7)), 0).getDate() : 12;
+    const arr = Array.from({ length: size }, (_, i) => ({ name: daily ? String(i + 1) : MONTHS[i], value: 0 }));
+    items.forEach((it) => {
+      const idx = daily ? Number(it.date.slice(8, 10)) - 1 : Number(it.date.slice(5, 7)) - 1;
+      if (arr[idx]) arr[idx].value += it.n;
     });
     return arr;
-  }, [yearLogs]);
-  const monthlyVolumes = useMemo(() => {
-    const arr = MONTHS.map((n) => ({ name: n, value: 0 }));
-    volEvents.filter((e) => e.date.startsWith(String(year))).forEach((e) => {
-      arr[Number(e.date.slice(5, 7)) - 1].value += e.delta;
-    });
-    return arr;
-  }, [volEvents, year]);
+  };
+  const monthlyChapters = useMemo(
+    () => bucketed(yearLogs.filter((l) => l.unit === "chapter").map((l) => ({ date: l.date, n: l.amount }))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [yearLogs, daily, prefix]
+  );
+  const monthlyVolumes = useMemo(
+    () => bucketed(volEvents.filter((e) => e.date.startsWith(prefix)).map((e) => ({ date: e.date, n: e.delta }))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [volEvents, daily, prefix]
+  );
 
   const topSeries = useMemo(() => {
     const totals = new Map<number, { chapter: number; volume: number }>();
@@ -116,7 +132,7 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
       if (l.unit === "chapter") t.chapter += l.amount;
       totals.set(l.manga_id, t);
     });
-    volEvents.filter((e) => e.date.startsWith(String(year))).forEach((e) => {
+    volEvents.filter((e) => e.date.startsWith(prefix)).forEach((e) => {
       const t = totals.get(e.manga_id);
       if (t) t.volume += e.delta;
     });
@@ -125,7 +141,7 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
       .filter((x) => x.manga)
       .sort((a, b) => b.chapter + b.volume * 10 - (a.chapter + a.volume * 10))
       .slice(0, 5);
-  }, [yearLogs, byId, volEvents, year]);
+  }, [yearLogs, byId, volEvents, prefix]);
 
   const genres = useMemo(() => {
     const ids = new Set(yearLogs.map((l) => l.manga_id));
@@ -168,7 +184,11 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
     });
   }, [logs]);
 
-  const currentMonth = year === new Date().getFullYear() ? new Date().getMonth() : -1;
+  // Barre mise en avant : mois courant (année) ou jour du jour (mois en cours)
+  const now = new Date();
+  const currentMonth = daily
+    ? period === "month" ? now.getDate() - 1 : -1
+    : year === now.getFullYear() ? now.getMonth() : -1;
   const seriesHref = (id: number) => `/manga/${id}`;
 
   return (
@@ -183,16 +203,39 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
           <p className="text-[11px] font-bold uppercase tracking-[0.25em] text-violet-deep">統計</p>
           <h1 className="font-serif text-3xl text-ink sm:text-4xl">{isOwn ? "Stats manga" : `Stats de ${name || "…"}`}</h1>
         </div>
-        <select
-          value={year}
-          onChange={(e) => setYear(Number(e.target.value))}
-          className="shrink-0 rounded-xl border-2 border-ink bg-card px-3 py-2 text-sm font-bold text-ink outline-none"
-        >
-          {years.map((y) => (
-            <option key={y} value={y}>{y}</option>
-          ))}
-        </select>
       </header>
+
+      {/* Période : année (au choix), mois en cours ou mois précédent */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex gap-1 rounded-lg border-2 border-ink p-0.5">
+          {([
+            { v: "year", label: "Année" },
+            { v: "month", label: "Ce mois" },
+            { v: "prev", label: "Mois précédent" },
+          ] as const).map((o) => (
+            <button
+              key={o.v}
+              onClick={() => setPeriod(o.v)}
+              className={`rounded-md px-2.5 py-1 text-[12px] font-bold ${period === o.v ? "bg-ink text-paper" : "text-ink-2"}`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        {period === "year" ? (
+          <select
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value))}
+            className="shrink-0 rounded-xl border-2 border-ink bg-card px-3 py-1.5 text-sm font-bold text-ink outline-none"
+          >
+            {years.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </select>
+        ) : (
+          <span className="text-[13px] font-bold capitalize text-ink-2">{periodLabel}</span>
+        )}
+      </div>
 
       {loading ? (
         <p className="py-16 text-center text-xs font-medium uppercase tracking-wider text-muted">Chargement…</p>
@@ -253,7 +296,7 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
           </section>
 
           <section className="manga-panel flex min-w-0 flex-col gap-3 p-4">
-            <h2 className="font-serif text-lg text-ink">Chapitres, mois par mois</h2>
+            <h2 className="font-serif text-lg text-ink">Chapitres, {daily ? "jour par jour" : "mois par mois"}</h2>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={monthlyChapters} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--color-muted)" }} axisLine={false} tickLine={false} />
@@ -276,7 +319,7 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
           </section>
 
           <section className="manga-panel flex min-w-0 flex-col gap-3 p-4">
-            <h2 className="font-serif text-lg text-ink">Tomes, mois par mois</h2>
+            <h2 className="font-serif text-lg text-ink">Tomes, {daily ? "jour par jour" : "mois par mois"}</h2>
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={monthlyVolumes} margin={{ top: 8, right: 4, left: -24, bottom: 0 }}>
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--color-muted)" }} axisLine={false} tickLine={false} />
@@ -305,7 +348,7 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
               <div className="flex gap-1 rounded-lg border-2 border-ink p-0.5">
                 {([
                   { v: "library", label: "Mangathèque" },
-                  { v: "year", label: `Lus en ${year}` },
+                  { v: "year", label: `Lus : ${periodLabel}` },
                 ] as const).map((o) => (
                   <button
                     key={o.v}
@@ -319,7 +362,7 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
             </div>
             {demographics.total === 0 ? (
               <p className="py-4 text-center text-sm text-muted">
-                {demoScope === "year" ? `Pas encore de série lue en ${year}.` : "Aucune série dans la mangathèque."}
+                {demoScope === "year" ? `Pas encore de série lue sur cette période.` : "Aucune série dans la mangathèque."}
               </p>
             ) : (
               <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] items-center gap-4 sm:grid-cols-[200px_minmax(0,1fr)]">
@@ -367,7 +410,7 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
             <section className="manga-panel flex min-w-0 flex-col gap-3 p-4">
               <h2 className="font-serif text-lg text-ink">Séries les plus lues</h2>
               {topSeries.length === 0 ? (
-                <p className="py-4 text-center text-sm text-muted">Pas encore de session en {year}.</p>
+                <p className="py-4 text-center text-sm text-muted">Pas encore de session sur cette période.</p>
               ) : (
                 topSeries.map((s, i) => (
                   <Link key={s.manga!.id} href={seriesHref(s.manga!.id)} className="flex min-w-0 items-center gap-3">
@@ -383,7 +426,7 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
             </section>
 
             <section className="manga-panel flex min-w-0 flex-col gap-3 p-4">
-              <h2 className="font-serif text-lg text-ink">En {year}</h2>
+              <h2 className="font-serif text-lg capitalize text-ink">{daily ? periodLabel : `En ${year}`}</h2>
               <div className="grid grid-cols-2 gap-3 text-[13px]">
                 <div>
                   <p className="text-[10.5px] font-bold uppercase tracking-wide text-muted">Séries lues</p>
@@ -418,7 +461,7 @@ export default function MangaStatsView({ userId, isOwn }: { userId: string; isOw
               <p className="py-2 text-center text-sm text-muted">
                 {isOwn
                   ? "Note tes chapitres quand tu les logues : tes meilleurs passages apparaîtront ici."
-                  : `Aucun chapitre noté en ${year}.`}
+                  : `Aucun chapitre noté sur cette période.`}
               </p>
             ) : (
               bestSessions.map((l) => {

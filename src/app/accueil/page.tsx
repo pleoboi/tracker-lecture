@@ -10,6 +10,7 @@ import { Cover, ProgressBar, Button, AvatarImg } from "../../components/ui";
 import AddBookModal from "../../components/AddBookModal";
 import LogReadingModal from "../../components/LogReadingModal";
 import PodiumModal from "../../components/PodiumModal";
+import { ChampionFrost } from "../../components/ChampionWinterVariants";
 import ChallengeModal, { type ChallengeSummary } from "../../components/ChallengeModal";
 import Lightbox from "../../components/Lightbox";
 import WrappedStory, { IconGlyph } from "../../components/WrappedStory";
@@ -848,14 +849,25 @@ export default function AccueilPage() {
       <section className="reveal flex flex-col gap-3" style={{ "--delay": "0.16s" } as React.CSSProperties}>
         <h2 className="font-serif text-lg font-semibold text-ink">Activité du club</h2>
 
-        {/* Champion du jour */}
-        {todayChampion && (
-          <button
-            onClick={() => setShowPodium(true)}
-            className="w-full text-left"
-          >
-            <ChampionBanner champion={todayChampion} yesterdayChampion={yesterdayChampion} />
-          </button>
+        {/* Champion du jour — le matin, tant que personne n'a lu, on met en avant le champion d'hier */}
+        {(todayChampion || yesterdayChampion) && (
+          <div className="w-full">
+            {todayChampion ? (
+              <ChampionFrost
+                champion={todayChampion}
+                yesterday={yesterdayChampion}
+                onOpen={() => setShowPodium(true)}
+              />
+            ) : (
+              <ChampionFrost
+                champion={yesterdayChampion!}
+                yesterday={null}
+                label="Champion d'hier"
+                note="Personne n'a encore lu aujourd'hui : la place est à prendre."
+                onOpen={() => setShowPodium(true)}
+              />
+            )}
+          </div>
         )}
 
         {!hasFollows && !activityLoading && (
@@ -1052,7 +1064,7 @@ export default function AccueilPage() {
         books={books.filter((b) => b.status === "reading")}
         onSaved={(m) => { setShowLog(false); showToast(m); load(); loadClub(); }}
       />
-      {showPodium && <PodiumModal onClose={() => setShowPodium(false)} />}
+      {showPodium && <PodiumModal initialDate={todayChampion ? undefined : shiftISO(-1)} onClose={() => setShowPodium(false)} />}
 
       {showWrapped && wrapped && (
         <WrappedStory
@@ -1247,61 +1259,6 @@ function BookCard({ book }: { book: Book }) {
         </div>
       </div>
     </Link>
-  );
-}
-
-function ChampionBanner({ champion, yesterdayChampion }: {
-  champion: Champion;
-  yesterdayChampion: Champion | null;
-}) {
-  return (
-    <div
-      className="relative overflow-hidden rounded-2xl shadow-md"
-      style={{ background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 55%, #4f46e5 100%)" }}
-    >
-      {/* Cercles décoratifs */}
-      <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10" />
-      <div className="pointer-events-none absolute -bottom-5 right-10 h-20 w-20 rounded-full bg-white/5" />
-
-      <div className="relative flex flex-col gap-2.5 p-4">
-        {/* Ligne haute : champion du jour + trophée */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-white/50">
-              Champion du jour
-            </p>
-            <p className="mt-0.5 font-serif text-[20px] font-black leading-tight text-yellow-200 truncate">
-              {champion.name}
-            </p>
-          </div>
-          <div className="shrink-0 flex items-center gap-2">
-            <div className="text-right">
-              <p className="text-[9px] font-medium uppercase tracking-wide text-white/45">pages</p>
-              <p className="font-serif text-[26px] font-black leading-none text-white">
-                {champion.pages}
-              </p>
-            </div>
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fde68a" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
-                <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
-                <path d="M4 22h16" />
-                <path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22" />
-                <path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22" />
-                <path d="M18 2H6v7a6 6 0 0 0 12 0V2z" />
-              </svg>
-            </div>
-          </div>
-        </div>
-
-        {/* Champion d'hier */}
-        {yesterdayChampion && (
-          <p className="text-[10.5px] font-medium text-white/50">
-            Champion d&apos;hier : <span className="font-semibold text-white/75">{yesterdayChampion.name}</span>
-          </p>
-        )}
-      </div>
-    </div>
   );
 }
 
