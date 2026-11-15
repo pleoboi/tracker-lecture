@@ -195,6 +195,30 @@ export async function findLogCover(
   return { cover: `https://uploads.mangadex.org/covers/${mangadexId}/${best.attributes.fileName}.256.jpg`, volume: vol };
 }
 
+/**
+ * Couverture exacte de chaque tome demandé (édition française en priorité, sinon japonaise).
+ * Un tome sans couverture connue (pas encore relié) est absent du résultat.
+ */
+export async function findVolumeCovers(mangadexId: string, volumes: number[]): Promise<Record<number, string>> {
+  const covers: MdCover[] = [];
+  for (let offset = 0; offset < 400; offset += 100) {
+    const json = await md<{ data: MdCover[]; total: number }>(
+      `/cover?manga[]=${mangadexId}&limit=100&offset=${offset}&order[volume]=asc`
+    );
+    covers.push(...(json?.data ?? []));
+    if (!json || covers.length >= json.total) break;
+  }
+  const rank = (c: MdCover) => (c.attributes.locale === "fr" ? 0 : c.attributes.locale === "ja" ? 1 : 2);
+  const out: Record<number, string> = {};
+  for (const v of volumes) {
+    const best = covers
+      .filter((c) => c.attributes.volume != null && Number(c.attributes.volume) === v)
+      .sort((a, b) => rank(a) - rank(b))[0];
+    if (best) out[v] = `https://uploads.mangadex.org/covers/${mangadexId}/${best.attributes.fileName}.256.jpg`;
+  }
+  return out;
+}
+
 /* ---------------- Flux MANGA Plus (toutes séries, VF) ---------------- */
 
 // Groupe officiel "MangaPlus" sur MangaDex : uniquement des chapitres publiés

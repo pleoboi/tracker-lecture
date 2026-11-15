@@ -32,6 +32,11 @@ const manga: MangaWrapped = {
   topSeries: { id: 1, title: "ONE PIECE", author: "Eiichirō Oda", cover_url: OP, chapters: 48, volumes: 0 },
   bestDay: { date: "2026-10-12", chapters: 14, volumes: 0 },
   daily: daily(2026, 10, { 2: 3, 3: 4, 5: 6, 6: 2, 9: 5, 10: 7, 11: 3, 12: 14, 13: 2, 16: 4, 19: 1, 20: 3, 23: 5, 26: 2, 27: 4, 30: 3 }),
+  volumeCovers: [
+    { mangaId: 2, title: "Vagabond", volume: 32, cover_url: "https://uploads.mangadex.org/covers/d1a9fdeb-f713-407f-960c-8326b586e6fd/03e80417-426f-45ed-b144-0e1d76695c2f.jpg.256.jpg" },
+    { mangaId: 2, title: "Vagabond", volume: 31, cover_url: "https://uploads.mangadex.org/covers/d1a9fdeb-f713-407f-960c-8326b586e6fd/0992482c-90f0-4076-892b-361bd06c91c6.jpg.256.jpg" },
+    { mangaId: 1, title: "ONE PIECE", volume: 114, cover_url: OP },
+  ],
   coverPool: [
     { id: 1, title: "ONE PIECE", cover_url: OP },
     { id: 2, title: "Vagabond", cover_url: VAGA },
@@ -102,11 +107,16 @@ const mixed: WrappedStats = {
 const mangaOnly: WrappedStats = { ...base, hasBooks: false, manga };
 
 function Demo() {
-  const mode = useSearchParams().get("mode") === "mixte" ? "mixte" : "manga";
+  const params = useSearchParams();
+  const mode = params.get("mode") === "mixte" ? "mixte" : "manga";
+  // ?mois=11 ou 12 : aperçu de l'ambiance d'hiver (neige) du Wrapped
+  const month = Number(params.get("mois")) || 10;
+  const label = ["", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin", "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"][month] ?? "Octobre";
+  const base = mode === "mixte" ? mixed : mangaOnly;
   return (
     <WrappedStory
-      key={mode}
-      stats={mode === "mixte" ? mixed : mangaOnly}
+      key={mode + month}
+      stats={{ ...base, month, monthLabel: `${label} 2026` }}
       profile={{ displayName: "Léo", avatarUrl: null }}
       onClose={() => {}}
     />

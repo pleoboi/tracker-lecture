@@ -101,6 +101,11 @@ function RankingModal({ open, onClose }: { open: boolean; onClose: () => void })
   const [day, setDay] = useState<"today" | "yesterday">("today");
   const [rows, setRows] = useState<Record<string, Ranked[]>>({});
   useEffect(() => {
+    const clear = () => setRows({});
+    window.addEventListener("mangas-updated", clear);
+    return () => window.removeEventListener("mangas-updated", clear);
+  }, []);
+  useEffect(() => {
     if (!open || rows[day]) return;
     const date = day === "today" ? todayISO() : shiftDateISO(todayISO(), -1);
     rankingOf(date).then((r) => setRows((prev) => ({ ...prev, [day]: r })));
@@ -267,7 +272,7 @@ export default function MangaChampion() {
   const [showRanking, setShowRanking] = useState(false);
 
   useEffect(() => {
-    (async () => {
+    const load = async () => {
       const [t, y] = await Promise.all([championOf(todayISO()), championOf(shiftDateISO(todayISO(), -1))]);
       const ids = [t?.userId, y?.userId].filter(Boolean) as string[];
       const { data: profs } = ids.length
@@ -279,7 +284,11 @@ export default function MangaChampion() {
       setToday(full(t));
       setYesterday(full(y));
       setLoaded(true);
-    })();
+    };
+    load();
+    // Session enregistrée depuis le bouton + : le score du champion se met à jour tout de suite
+    window.addEventListener("mangas-updated", load);
+    return () => window.removeEventListener("mangas-updated", load);
   }, []);
 
   if (!loaded || (!today && !yesterday)) return null;

@@ -528,6 +528,10 @@ export interface VolumeEvent {
   manga_id: number;
   /** Tomes gagnés à cette date. */
   delta: number;
+  /** Dernier tome atteint grâce à cette session. */
+  volume: number;
+  /** Session à l'origine (pour retrouver la couverture du tome). */
+  logId: number;
 }
 
 /**
@@ -550,22 +554,34 @@ export function volumeEvents(
     // Méthode 1 : tomes notés tels quels
     const fromVolumes: VolumeEvent[] = sorted
       .filter((l) => l.unit === "volume")
-      .map((l) => ({ date: l.date, manga_id: mangaId, delta: l.amount }));
+      .map((l) => ({ date: l.date, manga_id: mangaId, delta: l.amount, volume: l.end_value, logId: l.id }));
     // Méthode 2 : tome atteint déduit des chapitres lus
     const fromChapters: VolumeEvent[] = [];
-    let reached = 0;
-    let lastChapterDate: string | null = null;
-    for (const l of sorted) {
-      if (l.unit !== "chapter") continue;
-      lastChapterDate = l.date;
-      if (l.volume != null && l.volume > reached) {
-        fromChapters.push({ date: l.date, manga_id: mangaId, delta: l.volume - reached });
+    const chapterLogs = sorted.filter((l) => l.unit === "chapter");
+    // Série reprise en cours de route (ex. première session qui s'arrête au ch. 1176 après 1 chapitre) :
+    // les tomes d'avant ne comptent pas, on part du premier tome connu.
+    const first = chapterLogs[0];
+    const midway = !!first && first.end_value - first.amount > 0;
+    let reached: number | null = midway ? null : 0;
+    for (const l of chapterLogs) {
+      // Chapitres pas encore sortis en tome : pas de tome, rien à compter
+      if (l.volume == null) continue;
+      if (reached == null) {
+        reached = l.volume;
+        continue;
+      }
+      if (l.volume > reached) {
+        fromChapters.push({ date: l.date, manga_id: mangaId, delta: l.volume - reached, volume: l.volume, logId: l.id });
         reached = l.volume;
       }
     }
     // Sessions anciennes sans tome mémorisé : la progression actuelle de la série complète
+    // (seulement pour une série lue depuis le début)
     const cur = current.get(mangaId) ?? 0;
-    if (lastChapterDate && cur > reached) fromChapters.push({ date: lastChapterDate, manga_id: mangaId, delta: cur - reached });
+    const lastChapter = chapterLogs[chapterLogs.length - 1];
+    if (!midway && lastChapter && cur > (reached ?? 0)) {
+      fromChapters.push({ date: lastChapter.date, manga_id: mangaId, delta: cur - (reached ?? 0), volume: cur, logId: lastChapter.id });
+    }
 
     const total = (evs: VolumeEvent[]) => evs.reduce((s, e) => s + e.delta, 0);
     out.push(...(total(fromChapters) >= total(fromVolumes) ? fromChapters : fromVolumes));

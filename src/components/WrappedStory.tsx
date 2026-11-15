@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { toPng } from "html-to-image";
 import { Cover } from "./ui";
 import type { WrappedStats } from "../lib/wrapped";
+import WrappedSnow from "./WrappedSnow";
 
 const SLIDE_MS = 6200;
 const TICK_MS = 50;
@@ -504,6 +505,14 @@ export default function WrappedStory({
           <div className="animate-fadeUp flex flex-col items-center gap-3" style={{ ["--delay" as string]: "0.08s" }}>
             <Eyebrow>Le Wrapped de {firstName}</Eyebrow>
             <h2 className="font-serif text-[40px] font-black leading-[0.95] text-white">{stats.monthLabel}</h2>
+            {(stats.month === 11 || stats.month === 12) && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/40 bg-white/15 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-white backdrop-blur-sm">
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+                  <path d="M12 2v20M3.3 7l17.4 10M3.3 17L20.7 7" />
+                </svg>
+                {stats.month === 12 ? "Édition de Noël" : "Édition d'hiver"}
+              </span>
+            )}
             <p className="max-w-[230px] text-[14.5px] leading-snug text-white/80">
               {!hasBooks
                 ? "Ton mois manga, mis en lumière. Prêt·e à voir ce que tu as accompli ?"
@@ -737,6 +746,37 @@ export default function WrappedStory({
           </div>
         ),
       });
+
+      // Les tomes lus ce mois-ci, en couvertures
+      const volCovers = manga.volumeCovers ?? [];
+      if (volCovers.length > 0) {
+        const TILT = [-3, 2, -2, 3, 2, -3, 3, -2];
+        list.push({
+          tone: "manga",
+          ghostWord: { word: "TOME", corner: "bottom" },
+          render: () => (
+            <div className="flex w-full flex-col items-center gap-5 text-center">
+              <div className="animate-fadeUp flex flex-col items-center gap-1.5" style={{ ["--delay" as string]: "0.04s" }}>
+                <Eyebrow>Tes tomes du mois</Eyebrow>
+                <p className="font-serif text-[26px] font-black leading-tight text-white">
+                  {manga.volumes > 0 ? `${manga.volumes} tome${manga.volumes > 1 ? "s" : ""} lu${manga.volumes > 1 ? "s" : ""}` : "Tes lectures en tomes"}
+                </p>
+              </div>
+              <div className="grid w-full grid-cols-4 gap-x-2.5 gap-y-4">
+                {volCovers.map((v, i) => (
+                  <div key={`${v.mangaId}-${v.volume}`} className="animate-scaleIn flex min-w-0 flex-col items-center gap-1" style={{ ["--delay" as string]: `${0.1 + i * 0.07}s` }}>
+                    <div style={{ transform: `rotate(${TILT[i % TILT.length]}deg)` }}>
+                      <Cover id={-v.mangaId} title={v.title} coverUrl={proxied(v.cover_url) ?? null} className="aspect-[2/3] h-auto w-full shadow-xl ring-2 ring-white/40" rounded="rounded-md" />
+                    </div>
+                    <span className="rounded-[4px] bg-black/45 px-1.5 text-[10.5px] font-bold text-white">T. {v.volume}</span>
+                    <span className="line-clamp-1 w-full text-[9.5px] font-medium text-white/75">{v.title}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ),
+        });
+      }
 
       if (manga.topSeries) {
         const t = manga.topSeries;
@@ -1077,6 +1117,8 @@ export default function WrappedStory({
           <GlowSpots key={`glow-${index}`} tone={slide.tone} />
           {slide.ghostWord && <GhostWord key={`ghost-${index}`} word={slide.ghostWord.word} corner={slide.ghostWord.corner} />}
           <NoiseOverlay />
+          {/* Ambiance d'hiver : Wrapped de novembre et décembre */}
+          {(stats.month === 11 || stats.month === 12) && <WrappedSnow december={stats.month === 12} />}
           {isLast && <Confetti key={`confetti-${index}`} />}
 
           <div

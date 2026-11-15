@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import type { Book, ReadingLog } from "./types";
-import type { Manga, MangaLog } from "./manga";
+import { fetchMyMangaLogs, volumeEvents, type Manga, type MangaLog } from "./manga";
 
 const MONTHS_FULL = [
   "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
@@ -49,6 +49,27 @@ export interface MangaWrapped {
   /** Unités lues par jour (chapitres + tomes), pour la frise de régularité */
   daily: { date: string; pages: number }[];
   coverPool: { id: number; title: string; cover_url: string | null }[];
+  /** Tomes lus ce mois-ci (le plus récent d'abord), avec leur couverture. */
+  volumeCovers?: { mangaId: number; title: string; volume: number; cover_url: string | null }[];
+}
+
+async function attachExactVolumeCovers(items: { mangaId: number; volume: number; cover_url: string | null }[]) {
+  if (!items.length || typeof window === "undefined") return;
+  try {
+    const res = await fetch("/api/manga/volume-covers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ items: items.map((i) => ({ mangaId: i.mangaId, volume: i.volume })) }),
+    });
+    if (!res.ok) return;
+    const json = (await res.json()) as { covers?: Record<string, string> };
+    for (const it of items) {
+      const url = json.covers?.[`${it.mangaId}-${it.volume}`];
+      if (url) it.cover_url = url;
+    }
+  } catch {
+    /* hors ligne : on garde la couverture enregistrée avec la session */
+  }
 }
 
 async function getMangaWrapped(
@@ -59,14 +80,17 @@ async function getMangaWrapped(
   prevEnd: string,
   dailyDates: string[]
 ): Promise<MangaWrapped | null> {
-  const [{ data: logsData, error }, { data: prevData }, { data: mangasData }] = await Promise.all([
-    supabase.from("manga_logs").select("*").eq("user_id", userId).gte("date", start).lte("date", end),
+  const [allLogs, { data: prevData, error }, { data: mangasData }] = await Promise.all([
+    // Tout l'historique : les tomes lus se déduisent de la progression depuis le début
+    fetchMyMangaLogs(userId).catch(() => null),
     supabase.from("manga_logs").select("unit, amount").eq("user_id", userId).gte("date", prevStart).lte("date", prevEnd),
     supabase.from("mangas").select("*").eq("user_id", userId),
   ]);
-  if (error) return null; // tables absentes / indisponibles : on ignore la partie manga
-  const logs = (logsData as MangaLog[]) || [];
+  if (error || !allLogs) return null; // tables absentes / indisponibles : on ignore la partie manga
+  const logs = allLogs.filter((l) => l.date >= start && l.date <= end);
   const mangas = (mangasData as Manga[]) || [];
+  // Tomes lus ce mois-ci : tomes atteints (déduits des chapitres, hors scans pas encore sortis en tome) ou notés en tomes
+  const volEvents = volumeEvents(mangas, allLogs).filter((e) => e.date >= start && e.date <= end);
   const byId = new Map(mangas.map((m) => [m.id, m]));
 
   const seriesFinished = mangas
@@ -74,7 +98,8 @@ async function getMangaWrapped(
     .map((m) => ({ id: m.id, title: m.title, cover_url: m.cover_url ?? null, rating: m.rating ?? null }));
   if (!logs.length && !seriesFinished.length) return null;
 
-  const sum = (u: "chapter" | "volume") => logs.filter((l) => l.unit === u).reduce((s, l) => s + l.amount, 0);
+  const chapterTotal = logs.filter((l) => l.unit === "chapter").reduce((s, l) => s + l.amount, 0);
+  const volumeTotal = volEvents.reduce((s, e) => s + e.delta, 0);
   const prev = ((prevData as Pick<MangaLog, "unit" | "amount">[]) || []).filter((l) => l.unit === "chapter").reduce((s, l) => s + l.amount, 0);
 
   const perDay = new Map<string, { chapters: number; volumes: number }>();
@@ -83,9 +108,14 @@ async function getMangaWrapped(
     const d = perDay.get(l.date) ?? { chapters: 0, volumes: 0 };
     const s = perSeries.get(l.manga_id) ?? { chapters: 0, volumes: 0 };
     if (l.unit === "chapter") { d.chapters += l.amount; s.chapters += l.amount; }
-    else { d.volumes += l.amount; s.volumes += l.amount; }
     perDay.set(l.date, d);
     perSeries.set(l.manga_id, s);
+  }
+  for (const e of volEvents) {
+    const d = perDay.get(e.date);
+    const s = perSeries.get(e.manga_id);
+    if (d) d.volumes += e.delta;
+    if (s) s.volumes += e.delta;
   }
   // Un tome pèse environ 10 chapitres pour départager jours et séries
   const weight = (x: { chapters: number; volumes: number }) => x.chapters + x.volumes * 10;
@@ -97,11 +127,31 @@ async function getMangaWrapped(
   const top = ranked[0];
   const topManga = top ? byId.get(top[0]) : undefined;
 
+  // Tomes lus ce mois-ci, un par série et par tome, avec la couverture du tome (sinon celle de la série)
+  const logById = new Map(allLogs.map((l) => [l.id, l]));
+  const seenVol = new Set<string>();
+  const volumeCovers = [...volEvents]
+    .sort((a, b) => b.date.localeCompare(a.date) || b.volume - a.volume)
+    .filter((e) => {
+      const k = `${e.manga_id}-${e.volume}`;
+      if (seenVol.has(k)) return false;
+      seenVol.add(k);
+      return !!byId.get(e.manga_id);
+    })
+    .slice(0, 8)
+    .map((e) => {
+      const m = byId.get(e.manga_id)!;
+      return { mangaId: m.id, title: m.title, volume: e.volume, cover_url: logById.get(e.logId)?.cover_url ?? m.cover_url ?? null };
+    });
+
+  // Couverture exacte de chaque tome (et non celle de la série) : demandée au serveur, qui interroge MangaDex
+  await attachExactVolumeCovers(volumeCovers);
+
   const poolIds = [...ranked.map(([id]) => id), ...seriesFinished.map((m) => m.id).filter((id) => !perSeries.has(id))];
 
   return {
-    chapters: sum("chapter"),
-    volumes: sum("volume"),
+    chapters: chapterTotal,
+    volumes: volumeTotal,
     sessionsCount: logs.length,
     daysActive: perDay.size,
     longestStreak: longestConsecutiveStreak([...perDay.keys()]),
@@ -113,6 +163,7 @@ async function getMangaWrapped(
       : null,
     bestDay,
     daily: dailyDates.map((date) => ({ date, pages: (perDay.get(date)?.chapters ?? 0) + (perDay.get(date)?.volumes ?? 0) })),
+    volumeCovers,
     coverPool: poolIds
       .map((id) => byId.get(id))
       .filter((m): m is Manga => !!m)
