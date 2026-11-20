@@ -10,6 +10,7 @@ import { Cover, ProgressBar, Button, AvatarImg } from "../../components/ui";
 import AddBookModal from "../../components/AddBookModal";
 import LogReadingModal from "../../components/LogReadingModal";
 import PodiumModal from "../../components/PodiumModal";
+import ShareInviteCard from "../../components/ShareInviteCard";
 import { ChampionFrost } from "../../components/ChampionWinterVariants";
 import ChallengeModal, { type ChallengeSummary } from "../../components/ChallengeModal";
 import Lightbox from "../../components/Lightbox";
@@ -1052,6 +1053,11 @@ export default function AccueilPage() {
           </div>
         </section>
       )}
+
+      {/* Partage du lien d'inscription, tout en bas de l'accueil */}
+      <div className="mt-6">
+        <ShareInviteCard userId={userId} universe="books" />
+      </div>
 
       <AddBookModal
         open={showAdd}

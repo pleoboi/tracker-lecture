@@ -29,7 +29,7 @@ type Like = { log_id: number; liker_id: string };
 
 type Profile = { id: string; display_name: string; avatar_url: string | null };
 
-const DAYS = 21;
+const DAYS = 3;
 
 function dayLabel(iso: string) {
   const today = todayISO();
@@ -104,7 +104,7 @@ export default function FriendsMangaActivity({ userId }: { userId: string }) {
           .from("manga_logs")
           .select("*, mangas(title, cover_url, status)")
           .in("user_id", ids)
-          .gte("date", shiftDateISO(todayISO(), -DAYS))
+          .gte("date", shiftDateISO(todayISO(), -(DAYS - 1)))
           .order("date", { ascending: false })
           .order("id", { ascending: false })
           .limit(60),

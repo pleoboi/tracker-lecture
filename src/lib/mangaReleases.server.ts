@@ -40,10 +40,10 @@ export async function resolveMangadexId(title: string, anilistId: number | null)
 
 export type LatestChapter = { number: number; title: string | null; at: string; url: string };
 
-/** Dernier chapitre sorti en français, lien officiel (MANGA Plus...) quand MangaDex le connaît. */
+/** Dernier chapitre sorti (toutes langues), lien officiel (MANGA Plus...) quand MangaDex le connaît. */
 export async function fetchLatestChapter(mangadexId: string): Promise<LatestChapter | null> {
   const q = new URLSearchParams({ manga: mangadexId, limit: "20", "order[chapter]": "desc" });
-  q.append("translatedLanguage[]", "fr");
+  // Toutes langues : on veut le dernier scan sorti, même s'il n'est pas encore traduit en français.
   ["safe", "suggestive", "erotica"].forEach((c) => q.append("contentRating[]", c));
   const json = await md<{ data: MdChapter[] }>(`/chapter?${q}`);
   const chapters = (json?.data ?? []).filter((c) => c.attributes.chapter && !isNaN(Number(c.attributes.chapter)));
@@ -59,6 +59,15 @@ export async function fetchLatestChapter(mangadexId: string): Promise<LatestChap
     at: same.map((c) => c.attributes.publishAt).sort()[0],
     url: official?.attributes.externalUrl ?? `https://mangadex.org/chapter/${ref.id}`,
   };
+}
+
+/** Dernier tome sorti : plus grand numéro de tome connu de MangaDex (toutes langues). */
+export async function fetchLatestVolume(mangadexId: string): Promise<number | null> {
+  const json = await md<{ volumes?: Record<string, { volume: string }> }>(`/manga/${mangadexId}/aggregate`);
+  const nums = Object.values(json?.volumes ?? {})
+    .map((v) => Number(v.volume))
+    .filter((n) => Number.isFinite(n) && n > 0);
+  return nums.length ? Math.floor(Math.max(...nums)) : null;
 }
 
 type Row = {
@@ -123,6 +132,10 @@ export async function refreshReleases(rows: Row[], opts: { skipNotifyUserId?: st
         latest_checked_at: now,
       })
       .eq("mangadex_id", mdId);
+
+    // Colonne ajoutée par la migration v41 : mise à jour séparée pour ne rien casser si elle manque.
+    const latestVolume = await fetchLatestVolume(mdId);
+    if (latestVolume) await adminSupabase.from("mangas").update({ latest_volume: latestVolume }).eq("mangadex_id", mdId);
 
     for (const m of members) {
       const isNew = m.latest_chapter != null && latest.number > Number(m.latest_chapter);

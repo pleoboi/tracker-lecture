@@ -14,6 +14,7 @@ import {
   enrichMangaSummary,
   checkMangaBadges,
   releaseState,
+  releasedVolumes,
   readTarget,
   unitLabel,
   type Manga,
@@ -61,7 +62,10 @@ export default function MangaDetailPage() {
     setNotes(mm?.notes ?? "");
     setReadUrl(mm?.read_url ?? "");
     setReadUrlVolume(mm?.read_url_volume ?? "");
-    setTotals({ chapters: mm?.total_chapters ? String(mm.total_chapters) : "", volumes: mm?.total_volumes ? String(mm.total_volumes) : "" });
+    const ongoing = mm?.publication_status === "RELEASING";
+    const ch = mm ? (ongoing ? mm.manual_latest_chapter ?? mm.latest_chapter : mm.total_chapters) : null;
+    const vol = mm ? releasedVolumes(mm) : null;
+    setTotals({ chapters: ch ? String(Math.floor(Number(ch))) : "", volumes: vol ? String(vol) : "" });
     setLogs((ls as MangaLog[]) ?? []);
     setLoading(false);
   }, [id]);
@@ -144,7 +148,12 @@ export default function MangaDetailPage() {
 
   const saveTotals = async () => {
     const toInt = (s: string) => (parseInt(s, 10) > 0 ? parseInt(s, 10) : null);
-    await patch({ total_chapters: toInt(totals.chapters), total_volumes: toInt(totals.volumes) });
+    if (manga?.publication_status === "RELEASING") {
+      // Série en cours : on corrige le dernier chapitre / tome SORTI (vide = retour à la détection automatique)
+      await patch({ manual_latest_chapter: toInt(totals.chapters), manual_latest_volume: toInt(totals.volumes) });
+    } else {
+      await patch({ total_chapters: toInt(totals.chapters), total_volumes: toInt(totals.volumes) });
+    }
     setEditingTotals(false);
   };
 
@@ -198,7 +207,7 @@ export default function MangaDetailPage() {
           <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-3">
             {[
               { label: "Chapitre", current: manga.current_chapter, total: isOngoingSeries ? releaseState(manga)?.latest ?? null : manga.total_chapters },
-              { label: "Tome", current: manga.current_volume, total: manga.total_volumes },
+              { label: "Tome", current: manga.current_volume, total: releasedVolumes(manga) },
             ].map((u) => (
               <div key={u.label} className="flex flex-col gap-1.5 rounded-lg border-2 border-ink bg-card p-3">
                 <span className="text-[10.5px] font-bold uppercase tracking-wide text-muted">{u.label}</span>
@@ -222,6 +231,7 @@ export default function MangaDetailPage() {
                     <span className="font-medium text-muted"> · {new Date(manga.latest_chapter_at).toLocaleDateString("fr-FR", { day: "numeric", month: "long" })}</span>
                   )}
                 </span>
+                {releasedVolumes(manga) ? <span className="font-medium text-muted">Dernier tome sorti : {releasedVolumes(manga)}</span> : null}
                 <span className={`font-bold ${rs.upToDate ? "text-success" : "text-violet-deep"}`}>
                   {rs.upToDate ? "Tu es à jour" : `${rs.behind} ch. de retard`}
                 </span>
@@ -244,7 +254,7 @@ export default function MangaDetailPage() {
               </button>
               {!editingTotals ? (
                 <button onClick={() => setEditingTotals(true)} className="text-[12px] font-semibold text-muted hover:text-ink">
-                  Modifier les totaux
+                  {isOngoingSeries ? "Corriger les sorties" : "Modifier les totaux"}
                 </button>
               ) : (
                 <div className="flex items-center gap-2">
@@ -252,14 +262,14 @@ export default function MangaDetailPage() {
                     inputMode="numeric"
                     value={totals.chapters}
                     onChange={(e) => setTotals({ ...totals, chapters: e.target.value.replace(/\D/g, "") })}
-                    placeholder="Ch."
+                    placeholder={isOngoingSeries ? "Ch. sortis" : "Ch."}
                     className="w-20 rounded-lg border-2 border-line bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-ink"
                   />
                   <input
                     inputMode="numeric"
                     value={totals.volumes}
                     onChange={(e) => setTotals({ ...totals, volumes: e.target.value.replace(/\D/g, "") })}
-                    placeholder="Tomes"
+                    placeholder={isOngoingSeries ? "Tomes sortis" : "Tomes"}
                     className="w-20 rounded-lg border-2 border-line bg-input px-2 py-1.5 text-sm text-ink outline-none focus:border-ink"
                   />
                   <button onClick={saveTotals} className="rounded-lg bg-ink px-3 py-1.5 text-[12px] font-bold text-paper">OK</button>

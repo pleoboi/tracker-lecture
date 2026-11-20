@@ -17,6 +17,7 @@ import AddMangaModal from "../../components/manga/AddMangaModal";
 import LogMangaModal from "../../components/manga/LogMangaModal";
 import FriendsMangaActivity from "../../components/manga/FriendsMangaActivity";
 import MangaChampion from "../../components/manga/MangaChampion";
+import ShareInviteCard from "../../components/ShareInviteCard";
 
 function relativeDay(iso: string) {
   const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -212,6 +213,9 @@ export default function MangaPage() {
 
         </>
       )}
+
+      {/* Partage du lien d'inscription, tout en bas de l'accueil */}
+      <ShareInviteCard userId={user?.id} universe="manga" />
 
       {toast && (
         <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+6.5rem)] left-1/2 z-[70] -translate-x-1/2 rounded-xl border-2 border-ink bg-card px-4 py-2.5 text-sm font-bold text-ink shadow-[4px_4px_0_var(--color-ink)] md:bottom-6">

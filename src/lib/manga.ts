@@ -29,6 +29,9 @@ export interface Manga {
   date_finished?: string | null;
   mangadex_id?: string | null;
   latest_chapter?: number | null;
+  latest_volume?: number | null;
+  manual_latest_chapter?: number | null;
+  manual_latest_volume?: number | null;
   latest_chapter_title?: string | null;
   latest_chapter_at?: string | null;
   latest_chapter_url?: string | null;
@@ -133,11 +136,17 @@ export function isOngoing(m: Pick<Manga, "publication_status">): boolean {
  * lequel le bouton "Lire" ne mène pas. Le total saisi à la main est ignoré ici.
  */
 export function releaseState(m: Manga): { latest: number; behind: number; upToDate: boolean } | null {
-  if (!isOngoing(m) || m.latest_chapter == null) return null;
-  const latest = Math.floor(Number(m.latest_chapter));
+  const source = m.manual_latest_chapter ?? m.latest_chapter;
+  if (!isOngoing(m) || source == null) return null;
+  const latest = Math.floor(Number(source));
   if (latest <= 0) return null;
   const behind = Math.max(0, latest - m.current_chapter);
   return { latest, behind, upToDate: behind === 0 };
+}
+
+/** Nombre de tomes sortis : valeur corrigée à la main, sinon détectée, sinon total connu. */
+export function releasedVolumes(m: Manga): number | null {
+  return m.manual_latest_volume ?? (isOngoing(m) ? m.latest_volume ?? null : null) ?? m.total_volumes ?? null;
 }
 
 /**
@@ -200,7 +209,7 @@ export function progressSummary(m: Manga): string {
   const parts: string[] = [];
   const latest = releaseState(m)?.latest ?? null;
   if (m.current_chapter > 0) parts.push(`Ch. ${m.current_chapter}${latest ? ` / ${latest} sortis` : m.total_chapters ? ` / ${m.total_chapters}` : ""}`);
-  if (m.current_volume > 0) parts.push(`T. ${m.current_volume}${m.total_volumes ? ` / ${m.total_volumes}` : ""}`);
+  if (m.current_volume > 0) parts.push(`T. ${m.current_volume}${releasedVolumes(m) ? ` / ${releasedVolumes(m)}` : ""}`);
   return parts.join(" · ") || "Pas commencé";
 }
 
