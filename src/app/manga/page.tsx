@@ -47,6 +47,15 @@ export default function MangaPage() {
 
   // Vérifie les nouveaux chapitres des séries en cours de parution (MangaDex,
   // côté serveur), puis recharge si quelque chose a été mis à jour.
+  // Séries lues par tomes : retrouve le chapitre atteint (sessions déjà enregistrées comprises).
+  useEffect(() => {
+    if (!user) return;
+    fetch("/api/manga/sync-chapters", { method: "POST" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => { if (res?.updated) load(); })
+      .catch(() => {});
+  }, [user, load]);
+
   useEffect(() => {
     if (!user) return;
     fetch("/api/manga/refresh", { method: "POST" })

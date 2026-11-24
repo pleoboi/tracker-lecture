@@ -6,8 +6,10 @@ import { useAuth } from "../lib/auth-context";
 import type { Book } from "../lib/types";
 import { todayISO, pct, shiftDateISO } from "../lib/books";
 import { Modal, Button, FieldLabel, inputClass, Cover } from "./ui";
-import RichTextEditor from "./RichTextEditor";
 import { compressImage } from "../lib/image";
+import QuizModal from "./QuizModal";
+import QuoteComposer from "./QuoteComposer";
+import type { QuizQuestion, QuizResult } from "../lib/quiz";
 
 function fmtDate(d: string) {
   return new Date(d).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
@@ -127,7 +129,7 @@ function SessionStarRating({ value, onChange }: { value: number; onChange: (v: n
   return (
     <div className="flex flex-col items-center gap-2 py-2">
       <p className="min-h-[18px] text-[13px] font-semibold text-muted transition-all">
-        {display > 0 ? display.toFixed(1).replace(".", ",") + " / 5" : "Rate"}
+        {display > 0 ? display.toFixed(1).replace(".", ",") + " / 5" : "Comment était ce passage ?"}
       </p>
       <div
         ref={containerRef}
@@ -184,16 +186,18 @@ export default function LogReadingModal({
 
   // ── Step "log" ──
   const [step, setStep] = useState<"log" | "complete">("log");
+  const [quizFlow, setQuizFlow] = useState<{ quiz: QuizQuestion; completed: boolean; bookId: number } | null>(null);
   const [bookId, setBookId] = useState<string>("");
   const [date, setDate] = useState(todayISO());
   const [endPage, setEndPage] = useState("");
   const [sessionNotes, setSessionNotes] = useState("");
   const [sessionPhotoUrl, setSessionPhotoUrl] = useState("");
-  const [showExtras, setShowExtras] = useState(false);
   const [sessionRating, setSessionRating] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [quoteOpen, setQuoteOpen] = useState(false);
+  const [quotesAdded, setQuotesAdded] = useState(0);
 
   // ── Step "complete" ──
   const [completionStats, setCompletionStats] = useState<CompletionStats | null>(null);
@@ -209,9 +213,10 @@ export default function LogReadingModal({
       setSessionNotes("");
       setSessionPhotoUrl("");
       setSessionRating(0);
-      setShowExtras(false);
       setError(null);
       setPhotoUploading(false);
+      setQuoteOpen(false);
+      setQuotesAdded(0);
       setCompletionStats(null);
       setReviewText("");
       setReviewRating(0);
@@ -317,6 +322,25 @@ export default function LogReadingModal({
       })
       .eq("id", book.id);
 
+    // Palier de lecture franchi (50 / 100 %) : une question avant de continuer.
+    if (diff > 0) {
+      try {
+        const res = await fetch(`/api/quiz?bookId=${book.id}&from=${book.progress}&to=${target}`);
+        const data = (await res.json()) as { quiz: QuizQuestion | null };
+        if (data.quiz) {
+          setSaving(false);
+          setQuizFlow({ quiz: data.quiz, completed, bookId: book.id });
+          return;
+        }
+      } catch {}
+    }
+    await finishSave(completed);
+  };
+
+  // Fin de l'enregistrement : écran de fin de livre ou fermeture avec message.
+  const finishSave = async (completed: boolean) => {
+    if (!book || !user) return;
+    const hasSessionExtras = !!sessionNotes.trim() || !!sessionPhotoUrl.trim();
     if (completed) {
       // Récupère la date du premier log pour calculer les KPIs
       const { data: firstLog } = await supabase
@@ -395,6 +419,30 @@ export default function LogReadingModal({
     onClose();
   };
 
+  // ── Render : question de palier ─────────────────────────────────────────
+  if (quizFlow && book) {
+    return (
+      <QuizModal
+        open={open}
+        bookTitle={book.title}
+        quiz={quizFlow.quiz}
+        onAnswer={async (choice) => {
+          const res = await fetch("/api/quiz", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ quizId: quizFlow.quiz.id, bookId: quizFlow.bookId, choice }),
+          }).catch(() => null);
+          return res?.ok ? ((await res.json()) as QuizResult) : null;
+        }}
+        onClose={() => {
+          const completed = quizFlow.completed;
+          setQuizFlow(null);
+          void finishSave(completed);
+        }}
+      />
+    );
+  }
+
   // ── Render : étape "complete" ───────────────────────────────────────────
   if (step === "complete" && book && completionStats) {
     return (
@@ -426,7 +474,7 @@ export default function LogReadingModal({
                   rounded="rounded-lg"
                 />
               ) : (
-                <div className="text-4xl">📚</div>
+                <div className="h-[80px] w-[55px] rounded-lg bg-white/15" />
               )}
             </div>
             <div>
@@ -532,8 +580,8 @@ export default function LogReadingModal({
               {saving
                 ? "Enregistrement…"
                 : book && validNumber && target === book.pages
-                  ? "Terminer le livre ✓"
-                  : "Enregistrer la session"}
+                  ? "Terminer le livre"
+                  : diff > 0 ? `Enregistrer +${diff} pages` : "Enregistrer la session"}
             </Button>
             <p className="text-[11px] leading-4 text-muted">
               La progression et la durée de lecture se mettent à jour automatiquement.
@@ -545,20 +593,66 @@ export default function LogReadingModal({
       {books.length === 0 ? (
         <p className="text-sm text-muted">Ajoute d&apos;abord un livre en cours de lecture.</p>
       ) : (
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-5">
+          {/* Choix du livre : couvertures (comme pour les mangas) */}
+          {books.length > 1 ? (
+            <div className="-mx-6 flex gap-2.5 overflow-x-auto px-6 pb-1">
+              {books.map((b) => {
+                const active = String(b.id) === bookId;
+                return (
+                  <button
+                    key={b.id}
+                    type="button"
+                    onClick={() => { setBookId(String(b.id)); setEndPage(""); }}
+                    className={`flex w-[76px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1 transition-opacity ${active ? "opacity-100" : "opacity-50 hover:opacity-80"}`}
+                  >
+                    <div className={active ? "rounded-[6px] ring-2 ring-violet ring-offset-2 ring-offset-paper" : ""}>
+                      <Cover id={b.id} title={b.title} coverUrl={b.cover_url} className="h-[100px] w-[68px]" rounded="rounded-[6px]" />
+                    </div>
+                    <span className="line-clamp-2 text-center text-[10.5px] font-semibold leading-tight text-ink">{b.title}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : book ? (
+            <div className="flex items-center gap-3">
+              <Cover id={book.id} title={book.title} coverUrl={book.cover_url} className="h-[72px] w-[50px]" rounded="rounded-[6px]" />
+              <div className="min-w-0">
+                <p className="truncate font-serif text-[16px] font-bold text-ink">{book.title}</p>
+                <p className="truncate text-[12.5px] text-muted">{book.author}</p>
+              </div>
+            </div>
+          ) : null}
+
           <div>
-            <FieldLabel>Livre</FieldLabel>
-            <select
-              value={bookId}
-              onChange={(e) => { setBookId(e.target.value); setEndPage(""); }}
-              className={inputClass + " font-medium"}
-            >
-              {books.map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.title} — {b.author}
-                </option>
-              ))}
-            </select>
+            <FieldLabel>{isPercentMode ? "Jusqu'à quel pourcentage" : "Jusqu'à quelle page"}</FieldLabel>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={isPercentMode ? 100 : (book?.pages || 9999)}
+                value={endPage}
+                onChange={(e) => setEndPage(e.target.value)}
+                placeholder={book ? String(isPercentMode ? pct(book) : book.progress) : "0"}
+                className={inputClass + " text-center text-xl font-bold"}
+                autoFocus
+              />
+              <span className="whitespace-nowrap text-sm font-medium text-muted">
+                {isPercentMode ? "%" : `/ ${book?.pages ?? "—"}`}
+              </span>
+            </div>
+            {book && (
+              <p className="mt-1.5 text-center text-[12px] text-muted">
+                {book.progress > 0 ? `Tu en étais page ${book.progress}` : "Première session sur ce livre"}
+                {isPercentMode && validNumber ? ` · ≈ page ${target}` : ""}
+                {validNumber && diff > 0 && <span className="font-bold text-violet-deep"> · +{diff} pages</span>}
+                {validNumber && diff < 0 && <span className="font-bold text-danger"> · correction de {diff} pages</span>}
+              </p>
+            )}
+            {book && validNumber && target === book.pages && (
+              <p className="mt-1 text-center text-[12px] font-semibold text-violet-deep">Lecture terminée !</p>
+            )}
           </div>
 
           <div>
@@ -567,122 +661,67 @@ export default function LogReadingModal({
           </div>
 
           <div>
-            <FieldLabel>{isPercentMode ? "Avancement d'arrêt" : "Page d'arrêt"}</FieldLabel>
-            <div className="flex items-center gap-3">
-              <input
-                type="number"
-                min={0}
-                max={isPercentMode ? 100 : (book?.pages || 9999)}
-                value={endPage}
-                onChange={(e) => setEndPage(e.target.value)}
-                placeholder={book ? String(isPercentMode ? pct(book) : book.progress) : "0"}
-                className={inputClass + " text-lg font-bold"}
-                autoFocus
-              />
-              <span className="whitespace-nowrap text-sm font-medium text-muted">
-                {isPercentMode ? "%" : `/ ${book?.pages ?? "—"}`}
-              </span>
-            </div>
-            {isPercentMode && book && validNumber && (
-              <p className="mt-1.5 text-[11px] text-muted">≈ page {target} / {book.pages}</p>
-            )}
-            {/* Badge "Livre terminé" quand la page = total */}
-            {book && validNumber && target === book.pages && (
-              <p className="mt-1.5 text-[11.5px] font-semibold text-violet-deep">
-                ✓ Lecture terminée !
+            <FieldLabel>Note du passage lu (facultatif)</FieldLabel>
+            <div className="rounded-xl border border-line bg-card px-2 pt-1">
+              <SessionStarRating value={sessionRating} onChange={setSessionRating} />
+              <p className="pb-2 text-center text-[11px] text-muted">
+                Note seulement les pages que tu viens de lire, pas le livre entier.
               </p>
+            </div>
+          </div>
+
+          <div>
+            <FieldLabel>Mini-review du passage (facultatif)</FieldLabel>
+            <textarea
+              value={sessionNotes}
+              onChange={(e) => setSessionNotes(e.target.value)}
+              rows={2}
+              placeholder="Ce passage était…"
+              className={`${inputClass} resize-none`}
+            />
+          </div>
+
+          <div>
+            <FieldLabel>Photo de session (facultatif)</FieldLabel>
+            {sessionPhotoUrl ? (
+              <div className="relative">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={sessionPhotoUrl} alt="Photo de session" className="h-32 w-full rounded-xl object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setSessionPhotoUrl("")}
+                  className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-[11px] text-white"
+                  aria-label="Retirer la photo"
+                >
+                  ✕
+                </button>
+              </div>
+            ) : (
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-input px-4 py-3 text-xs font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep">
+                {photoUploading ? "Upload en cours…" : "Choisir une photo ou en prendre une"}
+                <input type="file" accept="image/*" className="hidden" onChange={handlePhotoUpload} disabled={photoUploading} />
+              </label>
             )}
           </div>
 
-          {validNumber && diff !== 0 && (
-            <div
-              className={`flex items-center justify-between rounded-xl px-3.5 py-3 ${
-                diff > 0 ? "bg-violet-soft" : "bg-danger-soft"
-              }`}
-            >
-              <span className={`text-xs font-medium ${diff > 0 ? "text-violet-deep" : "text-danger"}`}>
-                {diff > 0
-                  ? date === todayISO()
-                    ? "Lu aujourd'hui"
-                    : date === shiftDateISO(todayISO(), -1)
-                      ? "Lu hier"
-                      : `Lu le ${dateBarLabel(date)}`
-                  : "Correction"}
-              </span>
-              <span className={`text-sm font-semibold ${diff > 0 ? "text-violet-deep" : "text-danger"}`}>
-                {diff > 0 ? `+ ${diff} pages` : `${diff} pages`}
-              </span>
+          {book && (
+            <div>
+              <FieldLabel>Citation (facultatif)</FieldLabel>
+              <button
+                type="button"
+                onClick={() => setQuoteOpen(true)}
+                className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-input px-4 py-3 text-xs font-medium text-muted transition-[transform,color,border-color] duration-[140ms] hover:border-violet hover:text-violet-deep active:scale-[0.98]"
+              >
+                {quotesAdded > 0 ? `${quotesAdded} citation${quotesAdded > 1 ? "s" : ""} ajoutée${quotesAdded > 1 ? "s" : ""} · en ajouter une autre` : "Ajouter une citation de ce passage, à écrire ou à photographier"}
+              </button>
+              <QuoteComposer
+                open={quoteOpen}
+                onClose={() => setQuoteOpen(false)}
+                books={[{ id: book.id, title: book.title, author: book.author, cover_url: book.cover_url }]}
+                onSaved={() => setQuotesAdded((n) => n + 1)}
+              />
             </div>
           )}
-
-          <button
-            type="button"
-            onClick={() => setShowExtras((v) => !v)}
-            className="flex items-center gap-1.5 text-xs font-medium text-violet-deep"
-          >
-            <span className="text-base leading-none">{showExtras ? "▾" : "▸"}</span>
-            {showExtras ? "Masquer les détails de session" : "Ajouter une note ou une photo"}
-          </button>
-
-          {showExtras && (
-            <div className="flex flex-col gap-3 rounded-2xl border border-violet/20 bg-violet-soft p-3.5">
-              {/* Évaluation de session */}
-              <div>
-                <FieldLabel>Évaluation de session (optionnel)</FieldLabel>
-                <div className="mt-1">
-                  <SessionStarRating value={sessionRating} onChange={setSessionRating} />
-                </div>
-              </div>
-
-              <div>
-                <FieldLabel>Note de session (optionnel)</FieldLabel>
-                <RichTextEditor
-                  value={sessionNotes}
-                  onChange={setSessionNotes}
-                  placeholder="Impressions, citations, contexte de lecture…"
-                />
-              </div>
-              <div>
-                <FieldLabel>Photo de session (optionnel)</FieldLabel>
-                {sessionPhotoUrl ? (
-                  <div className="relative mt-1">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={sessionPhotoUrl}
-                      alt="Photo de session"
-                      className="h-32 w-full rounded-xl object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setSessionPhotoUrl("")}
-                      className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-black/50 text-[11px] text-white"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                ) : (
-                  <label className="mt-1 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-line bg-input px-4 py-3 text-xs font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep">
-                    {photoUploading ? (
-                      <span>Upload en cours…</span>
-                    ) : (
-                      <>
-                        <span className="text-base">📷</span>
-                        <span>Choisir une photo / prendre en direct</span>
-                      </>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handlePhotoUpload}
-                      disabled={photoUploading}
-                    />
-                  </label>
-                )}
-              </div>
-            </div>
-          )}
-
         </div>
       )}
     </Modal>

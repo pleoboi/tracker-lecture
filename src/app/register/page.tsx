@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { Button } from "../../components/ui";
 import { ALL_UNIVERSES, homeFor, type Universe } from "../../lib/universes";
+import AuthScene, { authCardClass } from "../../components/AuthScene";
 
 const UNIVERSE_OPTIONS: { key: Universe; label: string; desc: string }[] = [
   { key: "books", label: "Livres", desc: "Tes lectures, objectifs et ton club" },
@@ -89,17 +90,15 @@ function RegisterForm() {
     router.push(`/email-sent?email=${encodeURIComponent(email)}`);
   };
 
+  const wanted = searchParams.get("univers");
   return (
-    <div className="flex min-h-screen items-center justify-center bg-paper px-5 py-12">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="font-serif text-4xl font-black text-ink">Swena</h1>
-          <p className="mt-1.5 text-sm text-muted">Rejoins le cercle de lecture</p>
-        </div>
+    <AuthScene initial={wanted === "manga" ? "manga" : wanted === "livres" || wanted === "books" ? "livres" : null}>
+      {(u) => (
+      <>
 
         <form
           onSubmit={handleSubmit}
-          className="flex flex-col gap-4 rounded-2xl border border-line bg-card p-6 shadow-sm"
+          className={authCardClass(u)}
         >
           <h2 className="font-serif text-xl font-bold text-ink">Créer un compte</h2>
 
@@ -205,7 +204,8 @@ function RegisterForm() {
             Se connecter
           </Link>
         </p>
-      </div>
-    </div>
+      </>
+      )}
+    </AuthScene>
   );
 }

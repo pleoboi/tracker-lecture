@@ -40,25 +40,33 @@ export async function resolveMangadexId(title: string, anilistId: number | null)
 
 export type LatestChapter = { number: number; title: string | null; at: string; url: string };
 
-/** Dernier chapitre sorti (toutes langues), lien officiel (MANGA Plus...) quand MangaDex le connaît. */
+/**
+ * Dernier chapitre sorti, EN FRANÇAIS en priorité : le numéro et le lien viennent de la même entrée
+ * (lien officiel MANGA Plus VF quand MangaDex le connaît, sinon la page du chapitre français).
+ * Les liens d'une édition anglaise ne mènent pas à la VF : on ne les utilise que s'il n'existe
+ * aucun chapitre français pour la série.
+ */
 export async function fetchLatestChapter(mangadexId: string): Promise<LatestChapter | null> {
-  const q = new URLSearchParams({ manga: mangadexId, limit: "20", "order[chapter]": "desc" });
-  // Toutes langues : on veut le dernier scan sorti, même s'il n'est pas encore traduit en français.
-  ["safe", "suggestive", "erotica"].forEach((c) => q.append("contentRating[]", c));
-  const json = await md<{ data: MdChapter[] }>(`/chapter?${q}`);
-  const chapters = (json?.data ?? []).filter((c) => c.attributes.chapter && !isNaN(Number(c.attributes.chapter)));
-  if (!chapters.length) return null;
-  const max = Math.max(...chapters.map((c) => Number(c.attributes.chapter)));
-  const same = chapters.filter((c) => Number(c.attributes.chapter) === max);
-  // Lien officiel en priorité pour la lecture
-  const official = same.find((c) => c.attributes.externalUrl);
-  const ref = official ?? same[0];
-  return {
-    number: max,
-    title: ref.attributes.title,
-    at: same.map((c) => c.attributes.publishAt).sort()[0],
-    url: official?.attributes.externalUrl ?? `https://mangadex.org/chapter/${ref.id}`,
+  const build = async (langs: string[] | null) => {
+    const q = new URLSearchParams({ manga: mangadexId, limit: "30", "order[chapter]": "desc" });
+    langs?.forEach((l) => q.append("translatedLanguage[]", l));
+    ["safe", "suggestive", "erotica"].forEach((c) => q.append("contentRating[]", c));
+    const json = await md<{ data: MdChapter[] }>(`/chapter?${q}`);
+    const chapters = (json?.data ?? []).filter((c) => c.attributes.chapter && !isNaN(Number(c.attributes.chapter)));
+    if (!chapters.length) return null;
+    const max = Math.max(...chapters.map((c) => Number(c.attributes.chapter)));
+    const same = chapters.filter((c) => Number(c.attributes.chapter) === max);
+    // Lien officiel en priorité pour la lecture
+    const official = same.find((c) => c.attributes.externalUrl);
+    const ref = official ?? same[0];
+    return {
+      number: max,
+      title: ref.attributes.title,
+      at: same.map((c) => c.attributes.publishAt).sort()[0],
+      url: official?.attributes.externalUrl ?? `https://mangadex.org/chapter/${ref.id}`,
+    } as LatestChapter;
   };
+  return (await build(["fr"])) ?? (await build(null));
 }
 
 /** Dernier tome sorti : plus grand numéro de tome connu de MangaDex (toutes langues). */
@@ -181,6 +189,31 @@ async function volumeOfChapter(mangadexId: string, chapter: number): Promise<num
 }
 
 /**
+ * Dernier chapitre (entier) d'un tome : là où on en est quand on a fini ce tome.
+ * L'agrégat MangaDex mélange plusieurs numérotations (chapitres bonus 0.05, anciennes
+ * éditions) : on parcourt les tomes dans l'ordre et on ne garde que les chapitres entiers
+ * au-delà de la fin du tome précédent.
+ */
+export async function lastChapterOfVolume(mangadexId: string, volume: number): Promise<number | null> {
+  const json = await md<{ volumes?: Record<string, { volume: string; chapters: Record<string, unknown> }> }>(
+    `/manga/${mangadexId}/aggregate`
+  );
+  const vols = Object.values(json?.volumes ?? {})
+    .filter((v) => v.volume !== "none" && Number.isFinite(Number(v.volume)))
+    .sort((x, y) => Number(x.volume) - Number(y.volume));
+  let prevMax = 0;
+  for (const v of vols) {
+    const nums = Object.keys(v.chapters)
+      .map(Number)
+      .filter((n) => Number.isFinite(n) && n >= 1 && Number.isInteger(n) && n > prevMax);
+    const max = nums.length ? Math.max(...nums) : null;
+    if (Number(v.volume) === volume) return max ?? (prevMax || null);
+    if (max != null) prevMax = max;
+  }
+  return null;
+}
+
+/**
  * Couverture du tome lu (ou du tome qui contient le chapitre lu), et numéro de
  * ce tome. Édition française en priorité, sinon japonaise. Si le tome n'a pas
  * encore de couverture (chapitres pas encore reliés), on prend le dernier tome connu.
@@ -189,8 +222,9 @@ export async function findLogCover(
   mangadexId: string,
   unit: "chapter" | "volume",
   value: number
-): Promise<{ cover: string | null; volume: number | null }> {
+): Promise<{ cover: string | null; volume: number | null; chapter: number | null }> {
   const vol = unit === "volume" ? value : await volumeOfChapter(mangadexId, value);
+  const chapter = unit === "volume" ? await lastChapterOfVolume(mangadexId, value) : null;
   const covers: MdCover[] = [];
   for (let offset = 0; offset < 300; offset += 100) {
     const json = await md<{ data: MdCover[]; total: number }>(
@@ -200,12 +234,12 @@ export async function findLogCover(
     if (!json || covers.length >= json.total) break;
   }
   const numbered = covers.filter((c) => c.attributes.volume && !isNaN(Number(c.attributes.volume)));
-  if (!numbered.length) return { cover: null, volume: vol };
+  if (!numbered.length) return { cover: null, volume: vol, chapter };
   const rank = (c: MdCover) => (c.attributes.locale === "fr" ? 0 : c.attributes.locale === "ja" ? 1 : 2);
   const vols = [...new Set(numbered.map((c) => Number(c.attributes.volume)))].sort((a, b) => a - b);
   const target = vol != null ? [...vols].reverse().find((v) => v <= vol) ?? vols[0] : vols[vols.length - 1];
   const best = numbered.filter((c) => Number(c.attributes.volume) === target).sort((a, b) => rank(a) - rank(b))[0];
-  return { cover: `https://uploads.mangadex.org/covers/${mangadexId}/${best.attributes.fileName}.256.jpg`, volume: vol };
+  return { cover: `https://uploads.mangadex.org/covers/${mangadexId}/${best.attributes.fileName}.256.jpg`, volume: vol, chapter };
 }
 
 /**

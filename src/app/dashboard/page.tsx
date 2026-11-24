@@ -15,6 +15,8 @@ import {
 } from "../../components/DashboardWidgets";
 import { DateRangePicker, buildRange, DEFAULT_RANGE, type DateRange } from "../../components/DateRangePicker";
 import PodiumModal from "../../components/PodiumModal";
+import ReadingStreak from "../../components/ReadingStreak";
+import BookSheet, { BOOK_PANEL, type SheetState } from "../../components/BookSheet";
 import WrappedStory, { IconGlyph } from "../../components/WrappedStory";
 import { getMonthlyWrapped, type WrappedStats } from "../../lib/wrapped";
 import {
@@ -88,6 +90,8 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [championDays, setChampionDays] = useState(0);
   const [showAllAuthors, setShowAllAuthors] = useState(false);
+  const [sheet, setSheet] = useState<SheetState>(null);
+  const pick = (title: string, list: Book[]) => { if (list.length) setSheet({ title, books: list }); };
   const [showPodium, setShowPodium] = useState(false);
   const [wrapped, setWrapped] = useState<WrappedStats | null>(null);
   const [wrappedLoading, setWrappedLoading] = useState(false);
@@ -362,6 +366,11 @@ export default function DashboardPage() {
     authorMap.set(book.author.trim(), (authorMap.get(book.author.trim()) || 0) + 1);
   });
   const authorRanking = Array.from(authorMap.entries()).sort((a, b) => b[1] - a[1]);
+  const authorBooks = (author: string) => books.filter((b) => {
+    if (b.status !== "completed" || b.author.trim() !== author) return false;
+    const cs = completionDateOf(b);
+    return !!cs && cs >= dateFrom && cs <= dateTo;
+  });
   const top5Authors = authorRanking.slice(0, 5);
   const extraAuthors = authorRanking.slice(5);
   const maxAuthorBooks = top5Authors[0]?.[1] ?? 1;
@@ -440,12 +449,15 @@ export default function DashboardPage() {
             <StatCard label={`Pages ${periodLabel}`} value={totalPages.toLocaleString("fr-FR")} accent="var(--color-ink)"
               vs={selectedFriendId ? { label: friendName, value: friendTotalPages.toLocaleString("fr-FR") } : undefined} />
             <StatCard label={`Livres ${periodLabel}`} value={String(totalBooks)}
+              onClick={() => pick("Livres terminés", booksInRange.filter((b) => b.status === "completed"))}
               unit={isYTD && goals.reading_books_year !== null ? `/ ${goals.reading_books_year}` : undefined} accent={VIOLET_DEEP}
               vs={selectedFriendId ? { label: friendName, value: String(friendTotalBooks) } : undefined} />
-            <StatCard label="Moyenne / jour" value={String(avgPerDay)} unit="pages" accent="#6e7a5a"
+            <StatCard label="Moyenne / jour" value={String(avgPerDay)} unit="pages" accent="var(--color-ink)"
               vs={selectedFriendId ? { label: friendName, value: `${friendAvgPerDay} p.` } : undefined} />
-            <StatCard label="Journée record" value={String(recordDay)} unit="pages" accent="#d7a33f" />
+            <StatCard label="Journée record" value={String(recordDay)} unit="pages" accent="var(--color-ink)" />
           </div>
+
+          <ReadingStreak dates={logs.map((l) => l.date)} />
 
           <div className="grid gap-4 md:grid-cols-2">
             <ObjectiveChart key={`pages-${selectedFriendId ?? "solo"}`} title="Pages lues" type="area" data={chartPagesData}
@@ -462,14 +474,11 @@ export default function DashboardPage() {
 
           <button
             onClick={() => setShowPodium(true)}
-            className="relative w-full overflow-hidden rounded-2xl p-4 text-left shadow-md transition-opacity hover:opacity-90"
-            style={{ background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 55%, #4f46e5 100%)" }}
+            className={`relative w-full p-4 text-left transition-transform active:scale-[0.99] ${BOOK_PANEL}`}
           >
-            <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10" />
-            <div className="pointer-events-none absolute -bottom-5 right-10 h-20 w-20 rounded-full bg-white/5" />
             <div className="relative flex items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/15">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fde68a" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-violet-soft text-violet-deep">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6" />
                   <path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18" />
                   <path d="M4 22h16" />
@@ -479,13 +488,13 @@ export default function DashboardPage() {
                 </svg>
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-serif text-[15px] font-semibold text-white/90">Trophées Champion du jour</p>
-                <p className="text-xs text-white/55">Jours où tu as lu le plus de pages parmi tous les membres</p>
+                <p className="font-serif text-[15px] font-semibold text-ink">Trophées Champion du jour</p>
+                <p className="text-xs text-muted">Jours où tu as lu le plus de pages parmi tous les membres</p>
               </div>
               <div className="shrink-0 text-right">
-                <p className="font-serif text-3xl font-black text-yellow-200">{championDays}</p>
-                <p className="text-[11px] font-medium text-white/60">{championDays > 1 ? "jours" : "jour"}</p>
-                <p className="mt-0.5 text-[9.5px] text-white/40">Voir le podium →</p>
+                <p className="font-serif text-3xl font-black text-ink">{championDays}</p>
+                <p className="text-[11px] font-medium text-muted">{championDays > 1 ? "jours" : "jour"}</p>
+                <p className="mt-0.5 text-[9.5px] text-muted">Voir le podium →</p>
               </div>
             </div>
           </button>
@@ -493,31 +502,28 @@ export default function DashboardPage() {
           <button
             onClick={openLastWrapped}
             disabled={wrappedLoading}
-            className="relative w-full overflow-hidden rounded-2xl p-4 text-left shadow-md transition-opacity hover:opacity-90 disabled:opacity-60"
-            style={{ background: "linear-gradient(135deg, #2e9c98 0%, #1f6f6c 55%, #123f3d 100%)" }}
+            className={`relative w-full p-4 text-left transition-transform active:scale-[0.99] disabled:opacity-60 ${BOOK_PANEL}`}
           >
-            <div className="pointer-events-none absolute -right-6 -top-6 h-28 w-28 rounded-full bg-white/10" />
-            <div className="pointer-events-none absolute -bottom-5 right-10 h-20 w-20 rounded-full bg-white/5" />
             <div className="relative flex items-center gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/15 p-2.5">
-                <IconGlyph variant="sparkle" accent="#a8f2e5" />
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-violet-soft p-2.5">
+                <IconGlyph variant="sparkle" accent="var(--color-violet-deep)" />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="font-serif text-[15px] font-semibold text-white/90">Ton Wrapped du mois</p>
-                <p className="text-xs text-white/55">Retrouve le récap en stories de ton mois précédent</p>
+                <p className="font-serif text-[15px] font-semibold text-ink">Ton Wrapped du mois</p>
+                <p className="text-xs text-muted">Retrouve le récap en stories de ton mois précédent</p>
               </div>
-              <p className="shrink-0 text-[11px] font-medium text-white/60">
+              <p className="shrink-0 text-[11px] font-medium text-muted">
                 {wrappedLoading ? "…" : wrappedEmpty ? "Rien à afficher" : "Revoir →"}
               </p>
             </div>
           </button>
 
           {top5Authors.length > 0 && (
-            <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
+            <div className={`flex flex-col gap-3 p-4 ${BOOK_PANEL}`}>
               <h2 className="font-serif text-[15px] font-medium text-ink">Classement par auteur</h2>
               <div className="flex flex-col gap-3">
                 {top5Authors.map(([author, count], i) => (
-                  <div key={author} className="flex items-center gap-3">
+                  <button key={author} type="button" onClick={() => pick(author, authorBooks(author))} className="flex items-center gap-3 text-left transition-transform active:scale-[0.98]">
                     <span className="w-5 shrink-0 text-center text-xs font-bold text-muted">{i + 1}</span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
@@ -528,18 +534,18 @@ export default function DashboardPage() {
                         <div className="h-full rounded-full bg-violet transition-all duration-500" style={{ width: `${(count / maxAuthorBooks) * 100}%` }} />
                       </div>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
               {extraAuthors.length > 0 && (
                 <>
                   {showAllAuthors && (
-                    <div className="flex flex-col gap-2 border-t border-line pt-3">
+                    <div className="flex flex-wrap gap-1.5 border-t border-line pt-3">
                       {extraAuthors.map(([author, count]) => (
-                        <div key={author} className="flex items-center justify-between gap-2">
-                          <span className="truncate text-[12.5px] text-ink-2">{author}</span>
-                          <span className="shrink-0 text-[11px] font-semibold text-muted">{count} livre{count > 1 ? "s" : ""}</span>
-                        </div>
+                        <button key={author} type="button" onClick={() => pick(author, authorBooks(author))}
+                          className="rounded-full border border-line px-2.5 py-1 text-[12px] text-ink-2 transition-transform active:scale-95">
+                          {author}{count > 1 && <span className="ml-1 font-bold text-ink">{count}</span>}
+                        </button>
                       ))}
                     </div>
                   )}
@@ -563,7 +569,8 @@ export default function DashboardPage() {
             </div>
           )}
 
-          <RatingsChart counts={ratingCounts} average={ratingAvg} total={ratedCount} />
+          <RatingsChart counts={ratingCounts} average={ratingAvg} total={ratedCount}
+            onBarClick={(i) => pick(`Notés ${((i + 1) / 2).toFixed(1).replace(".", ",")} / 5`, books.filter((b) => (b.rating ?? 0) > 0 && Math.min(9, Math.max(0, Math.round((b.rating ?? 0) * 2) - 1)) === i))} />
 
           {showDeepAnalysis ? (
             <>
@@ -574,16 +581,16 @@ export default function DashboardPage() {
                 <div className="h-px flex-1 bg-line" />
               </div>
 
-              <GenreBreakdown books={booksInRange} />
+              <GenreBreakdown books={booksInRange} onPick={pick} />
 
-              <FictionDonut books={booksInRange} />
-              <PageCountHistogram books={booksInRange} />
+              <FictionDonut books={booksInRange} onPick={pick} />
+              <PageCountHistogram books={booksInRange} onPick={pick} />
 
-              <AuthorDeepDive books={booksInRange} />
+              <AuthorDeepDive books={booksInRange} onPick={pick} />
 
-              <CriticalDivergence books={booksInRange} />
+              <CriticalDivergence books={booksInRange} onPick={pick} />
 
-              <PublicationTimeline books={booksInRange} />
+              <PublicationTimeline books={booksInRange} onPick={pick} />
             </>
           ) : completedInRangeCount > 0 ? (
             <p className="py-4 text-center text-[11.5px] text-muted">
@@ -593,6 +600,7 @@ export default function DashboardPage() {
         </>
       )}
 
+      <BookSheet sheet={sheet} onClose={() => setSheet(null)} linkable />
       {showPodium && <PodiumModal onClose={() => setShowPodium(false)} />}
       {wrapped && (
         <WrappedStory

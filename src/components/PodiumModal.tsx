@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabase";
+import { useAuth } from "../lib/auth-context";
+import { championScope } from "../lib/championScope";
 import { Snowfall } from "./ChampionProposals";
 
 interface PodiumEntry {
@@ -39,6 +41,7 @@ export default function PodiumModal({ onClose, initialDate, demo }: { onClose: (
   const [date, setDate] = useState(initialDate ?? todayISO());
   const [podium, setPodium] = useState<PodiumEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const { user } = useAuth();
 
   useEffect(() => {
     const load = async () => {
@@ -48,15 +51,16 @@ export default function PodiumModal({ onClose, initialDate, demo }: { onClose: (
         return;
       }
       setLoading(true);
-      const [{ data: logsData }, { data: profilesData }] = await Promise.all([
+      const [{ data: logsData }, { data: profilesData }, inScope] = await Promise.all([
         supabase.from("reading_logs").select("user_id, pages_read").eq("date", date),
         supabase.from("user_profiles").select("id, display_name"),
+        championScope(user?.id),
       ]);
 
       type LogRow = { user_id: string; pages_read: number };
       type ProfRow = { id: string; display_name: string };
 
-      const logs = (logsData as LogRow[]) || [];
+      const logs = ((logsData as LogRow[]) || []).filter((l) => inScope(l.user_id));
       const profiles = (profilesData as ProfRow[]) || [];
       const profileMap = new Map(profiles.map((p) => [p.id, p.display_name]));
 

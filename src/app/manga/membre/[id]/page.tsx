@@ -258,18 +258,16 @@ export default function MangaMemberPage() {
       {/* En-tête */}
       <div className="manga-panel manga-speedlines relative flex min-w-0 items-start gap-4 px-4 py-5">
         {!isOwn && user?.id && (
-          <button
-            onClick={() => { setMessageText(""); setShowMessage(true); }}
+          <Link
+            href={`/messages/${memberId}`}
             className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border-2 border-ink bg-card text-ink"
             aria-label="Envoyer un message"
             title="Envoyer un message"
           >
-            <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-              <circle cx="5" cy="12" r="1.5" />
-              <circle cx="12" cy="12" r="1.5" />
-              <circle cx="19" cy="12" r="1.5" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12Z" />
             </svg>
-          </button>
+          </Link>
         )}
         <AvatarImg url={profile.avatar_url} name={profile.display_name} className="h-16 w-16 text-2xl" />
         <div className="min-w-0 flex-1">

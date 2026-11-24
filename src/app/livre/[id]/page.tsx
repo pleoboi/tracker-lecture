@@ -16,6 +16,7 @@ import RichTextEditor from "../../../components/RichTextEditor";
 import Lightbox from "../../../components/Lightbox";
 import { notifyUser } from "../../../lib/push.client";
 import { stripHtml } from "../../../lib/googleBooks";
+import BookQuotes from "../../../components/BookQuotes";
 
 const GENRES = [
   "Roman", "Fiction", "Non-Fiction", "Classique", "Nouvelle",
@@ -1428,6 +1429,11 @@ export default function BookDetailPage() {
           )}
         </div>
       )}
+
+      <BookQuotes
+        title={book.title}
+        ownBook={isOwner && activeBook ? { id: activeBook.id, title: activeBook.title, author: activeBook.author, cover_url: activeBook.cover_url } : null}
+      />
 
       {isOwner && <LogReadingModal
         open={showLog}

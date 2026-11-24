@@ -10,6 +10,7 @@ import { Cover, ProgressBar, Button, AvatarImg } from "../../components/ui";
 import AddBookModal from "../../components/AddBookModal";
 import LogReadingModal from "../../components/LogReadingModal";
 import PodiumModal from "../../components/PodiumModal";
+import { championScope } from "../../lib/championScope";
 import ShareInviteCard from "../../components/ShareInviteCard";
 import { ChampionFrost } from "../../components/ChampionWinterVariants";
 import ChallengeModal, { type ChallengeSummary } from "../../components/ChallengeModal";
@@ -168,11 +169,12 @@ export default function AccueilPage() {
     const threeDaysAgoDate = shiftISO(-3); // YYYY-MM-DD — date effective de lecture
 
     // Étape 1 : profils, champion du jour (non filtré), champion d'hier, et liste des suivis
-    const [{ data: profilesData }, { data: todayAllLogs }, { data: followData }, { data: yesterdayAllLogs }] = await Promise.all([
+    const [{ data: profilesData }, { data: todayAllLogs }, { data: followData }, { data: yesterdayAllLogs }, inScope] = await Promise.all([
       supabase.from("user_profiles").select("id, display_name, avatar_url"),
       supabase.from("reading_logs").select("user_id, pages_read").eq("date", todayStr),
       supabase.from("user_follows").select("following_id").eq("follower_id", userId),
       supabase.from("reading_logs").select("user_id, pages_read").eq("date", yesterdayStr),
+      championScope(userId),
     ]);
 
     const followingIds = ((followData || []) as { following_id: string }[]).map((f) => f.following_id);
@@ -206,7 +208,7 @@ export default function AccueilPage() {
 
     // Calcul du champion du jour (toutes sessions confondues)
     const pagesByUser = new Map<string, number>();
-    ((todayAllLogs as { user_id: string; pages_read: number }[]) || []).forEach((l) => {
+    ((todayAllLogs as { user_id: string; pages_read: number }[]) || []).filter((l) => inScope(l.user_id)).forEach((l) => {
       pagesByUser.set(l.user_id, (pagesByUser.get(l.user_id) || 0) + l.pages_read);
     });
     const sorted = [...pagesByUser.entries()].sort((a, b) => b[1] - a[1]);
@@ -224,7 +226,7 @@ export default function AccueilPage() {
 
     // Champion d'hier
     const pagesByUserYesterday = new Map<string, number>();
-    ((yesterdayAllLogs as { user_id: string; pages_read: number }[]) || []).forEach((l) => {
+    ((yesterdayAllLogs as { user_id: string; pages_read: number }[]) || []).filter((l) => inScope(l.user_id)).forEach((l) => {
       pagesByUserYesterday.set(l.user_id, (pagesByUserYesterday.get(l.user_id) || 0) + l.pages_read);
     });
     const sortedYesterday = [...pagesByUserYesterday.entries()].sort((a, b) => b[1] - a[1]);

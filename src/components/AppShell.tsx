@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../lib/auth-context";
+import ChatPopup, { ChatButton } from "./ChatPopup";
 import { supabase } from "../lib/supabase";
 import type { Book } from "../lib/types";
 import GuideModal from "./GuideModal";
@@ -23,7 +24,7 @@ type NavItem = { name: string; href: string; icon: React.ReactNode; shortName?: 
 
 // Incrémenter pour refaire apparaître le rappel "Nouveautés" (une fois par
 // compte déjà en place) après un prochain lot de fonctionnalités.
-const WHATS_NEW_VERSION = "2026-09-communaute-scanner";
+const WHATS_NEW_VERSION = "2026-11-quiz-stats-chat";
 
 const allNavItems: NavItem[] = [
   {
@@ -395,6 +396,7 @@ function TopBar({
           >
             ?
           </button>
+          <ChatButton />
           <div className="relative">
             <button
               onClick={onNotifClick}
@@ -1022,6 +1024,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <main className="mx-auto w-full max-w-2xl px-5 pb-32 pt-3 md:max-w-6xl md:px-10 md:pb-12 md:pt-6">
         {children}
       </main>
+
+      <ChatPopup />
 
       <BottomNav pathname={pathname} onPlus={() => setShowActionMenu(true)} userId={user?.id} manga={manga} />
 

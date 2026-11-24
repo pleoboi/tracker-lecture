@@ -48,6 +48,11 @@ export default function MembrePage() {
   const [sendingMessage, setSendingMessage] = useState(false);
   const [showRecoModal, setShowRecoModal] = useState(false);
   const [recoBooks, setRecoBooks] = useState<{ id: number; title: string; author: string; cover_url: string | null }[]>([]);
+  const [quotesCount, setQuotesCount] = useState<number | null>(null);
+  useEffect(() => {
+    supabase.from("book_quotes").select("id", { count: "exact", head: true }).eq("user_id", memberId)
+      .then(({ count, error }) => setQuotesCount(error ? null : count ?? 0));
+  }, [memberId]);
   const [recoSearch, setRecoSearch] = useState("");
   const [recoSelected, setRecoSelected] = useState<{ id: number; title: string; author: string; cover_url: string | null } | null>(null);
   const [recoMessage, setRecoMessage] = useState("");
@@ -200,6 +205,8 @@ export default function MembrePage() {
     { label: "Journal",      href: isOwn ? "/journal" : `/membre/${memberId}/journal`,           count: logs.length },
     { label: "Bibliothèque", href: isOwn ? "/bibliotheque" : `/membre/${memberId}/bibliotheque`,  count: books.length },
     { label: "Statistiques", href: isOwn ? "/dashboard" : `/membre/${memberId}/statistiques`,     count: null },
+    { label: "Galerie",      href: `/membre/${memberId}/galerie`,    count: logs.filter((l) => !!l.session_photo_url).length },
+    { label: "Citations",    href: `/membre/${memberId}/citations`,  count: quotesCount },
     { label: "Badges",       href: `/membre/${memberId}/badges`,     count: badgeCount },
     { label: "Challenges",   href: `/membre/${memberId}/challenges`, count: challengesCount },
     { label: "Listes",       href: `/membre/${memberId}/listes`,     count: listsCount },
@@ -214,18 +221,16 @@ export default function MembrePage() {
           retiré : chaque section a désormais son propre lien de retour). */}
       <div className="relative flex items-center gap-4 rounded-2xl bg-violet-soft px-5 py-6">
         {!isOwn && user?.id && (
-          <button
-            onClick={() => { setMessageText(""); setShowMessageModal(true); }}
+          <Link
+            href={`/messages/${memberId}`}
             className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-line bg-card text-muted transition-colors hover:border-violet/40 hover:text-ink"
             aria-label="Envoyer un message"
             title="Envoyer un message"
           >
-            <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
-              <circle cx="5" cy="12" r="1.5" />
-              <circle cx="12" cy="12" r="1.5" />
-              <circle cx="19" cy="12" r="1.5" />
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12Z" />
             </svg>
-          </button>
+          </Link>
         )}
         <AvatarImg url={profile.avatar_url} name={profile.display_name} className="h-16 w-16 text-2xl" />
         <div className="min-w-0 flex-1">
@@ -281,6 +286,12 @@ export default function MembrePage() {
               >
                 Recommander un livre
               </button>
+              <Link
+                href={`/messages/${memberId}`}
+                className="flex items-center justify-center rounded-2xl border border-line bg-card px-4 py-3 text-sm font-semibold text-ink transition-colors hover:border-violet/40 sm:rounded-xl sm:py-2"
+              >
+                Message
+              </Link>
             </div>
           )}
         </div>

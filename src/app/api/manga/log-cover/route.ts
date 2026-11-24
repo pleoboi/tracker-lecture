@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   }
   if (!mdId) return NextResponse.json({ cover: null });
 
-  const { cover, volume } = await findLogCover(mdId, log.unit, log.end_value);
+  const { cover, volume, chapter } = await findLogCover(mdId, log.unit, log.end_value);
   if (cover) await adminSupabase.from("manga_logs").update({ cover_url: cover }).eq("id", log.id);
   // Tome des chapitres lus : sert à fusionner les sessions du même tome dans l'activité du club.
   // Mise à jour séparée pour que la couverture reste posée même si la colonne n'existe pas encore (v39).
@@ -45,5 +45,15 @@ export async function POST(req: NextRequest) {
   if (volume != null && log.unit === "chapter") {
     await adminSupabase.from("mangas").update({ current_volume: volume }).eq("id", log.manga_id).eq("current_chapter", log.end_value);
   }
-  return NextResponse.json({ cover, volume });
+  // Lecture par tomes : le chapitre atteint est le dernier chapitre du tome fini
+  // (jamais en arrière si on en est déjà plus loin).
+  if (chapter != null && log.unit === "volume") {
+    await adminSupabase
+      .from("mangas")
+      .update({ current_chapter: chapter })
+      .eq("id", log.manga_id)
+      .eq("current_volume", log.end_value)
+      .lt("current_chapter", chapter);
+  }
+  return NextResponse.json({ cover, volume, chapter });
 }

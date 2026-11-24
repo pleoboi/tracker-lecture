@@ -151,14 +151,23 @@ export default function LogMangaModal({
 
     // Couverture du tome correspondant (MangaDex, côté serveur) : en arrière-plan,
     // la session est déjà enregistrée.
+    // Session par tomes : on attend (4 s max) pour annoncer à quel chapitre on en est.
+    let chapterAfter: number | null = null;
     if (inserted?.id) {
-      fetch("/api/manga/log-cover", {
+      const call = fetch("/api/manga/log-cover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ logId: inserted.id }),
       })
-        .then(() => window.dispatchEvent(new CustomEvent("mangas-updated")))
-        .catch(() => {});
+        .then((r) => r.json())
+        .then((d: { chapter?: number | null }) => {
+          window.dispatchEvent(new CustomEvent("mangas-updated"));
+          return d.chapter ?? null;
+        })
+        .catch(() => null);
+      if (unit === "volume") {
+        chapterAfter = await Promise.race([call, new Promise<null>((r) => setTimeout(() => r(null), 4000))]);
+      }
     }
 
     setSaving(false);
@@ -167,7 +176,7 @@ export default function LogMangaModal({
     onSaved(
       finished
         ? `« ${selected.title} » terminé`
-        : `+${amount} ${unitLabel(unit, amount)} sur « ${selected.title} »`
+        : `+${amount} ${unitLabel(unit, amount)} sur « ${selected.title} »${chapterAfter ? ` · tu en es au chapitre ${chapterAfter}` : ""}`
     );
   };
 

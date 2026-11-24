@@ -9,18 +9,17 @@ import {
   YAxis,
   Tooltip,
   LabelList,
+  Cell,
   ResponsiveContainer,
   LineChart,
   Line,
 } from "recharts";
 import type { Book } from "../lib/types";
+import { BOOK_PANEL, type PickFn } from "./BookSheet";
 
 // ── Palette genres ────────────────────────────────────────────────────────────
-const GENRE_PALETTE = [
-  "#6366f1", "#7c3aed", "#ec4899", "#f59e0b", "#10b981",
-  "#8b5cf6", "#ef4444", "#3b82f6", "#f97316", "#14b8a6",
-  "#84cc16", "#f43f5e", "#a855f7", "#22d3ee",
-];
+// Une seule teinte (violet) déclinée en nuances : plus sobre que l'arc-en-ciel d'avant.
+const GENRE_PALETTE = Array.from({ length: 10 }, (_, i) => `color-mix(in srgb, var(--color-violet) ${100 - i * 7}%, var(--color-card))`);
 
 // ── Classification Fiction / Non-Fiction ──────────────────────────────────────
 const FICTION_KEYS = [
@@ -76,7 +75,7 @@ function SectionLabel({ label }: { label: string }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // 1. GENRE BREAKDOWN — top 10, pas d'expansion
 // ══════════════════════════════════════════════════════════════════════════════
-export function GenreBreakdown({ books }: { books: Book[] }) {
+export function GenreBreakdown({ books, onPick }: { books: Book[]; onPick?: PickFn }) {
   const completed = books.filter((b) => b.status === "completed");
   const missing = completed.filter((b) => !b.genre).length;
 
@@ -109,18 +108,19 @@ export function GenreBreakdown({ books }: { books: Book[] }) {
   const topGenre = genres[0].name;
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
+    <div className={`flex flex-col gap-3 ${BOOK_PANEL} p-4`}>
       <div>
-        <SectionLabel label="Genre Breakdown" />
+        <SectionLabel label="Genres" />
         <h2 className="font-serif text-[16px] font-semibold text-ink">
-          {topGenre} est votre genre de prédilection
+          {topGenre} est ton genre de prédilection
         </h2>
       </div>
 
       <div className="flex flex-col gap-2.5">
         {genres.map(({ name, count, pct, color }) => (
-          <div key={name} className="flex items-center gap-3">
-            <span className="w-[110px] shrink-0 truncate text-[12.5px] font-semibold" style={{ color }}>
+          <button key={name} type="button" onClick={() => onPick?.(name, completed.filter((b) => (b.genre ?? "").split(",").some((g) => g.trim() === name)))}
+            className="flex items-center gap-3 rounded-md text-left transition-transform active:scale-[0.98]">
+            <span className="w-[110px] shrink-0 truncate text-[12.5px] font-semibold text-ink">
               {name}
             </span>
             <div className="h-2 flex-1 overflow-hidden rounded-full bg-line">
@@ -132,7 +132,7 @@ export function GenreBreakdown({ books }: { books: Book[] }) {
             <span className="w-[32px] shrink-0 text-right text-[12px] font-bold text-ink">
               {count}
             </span>
-          </div>
+          </button>
         ))}
       </div>
 
@@ -152,12 +152,12 @@ export function GenreBreakdown({ books }: { books: Book[] }) {
 // 2. FICTION VS NON-FICTION (Donut)
 // ══════════════════════════════════════════════════════════════════════════════
 const DONUT_META = {
-  Fiction:       { color: "#ec4899", label: "Fiction" },
-  "Non-Fiction": { color: "#6366f1", label: "Non-Fiction" },
-  Inconnu:       { color: "#6b7280", label: "Inconnu" },
+  Fiction:       { color: "var(--color-violet)", label: "Fiction" },
+  "Non-Fiction": { color: "var(--color-ink)", label: "Non-fiction" },
+  Inconnu:       { color: "var(--color-line)", label: "Non classé" },
 };
 
-export function FictionDonut({ books }: { books: Book[] }) {
+export function FictionDonut({ books, onPick }: { books: Book[]; onPick?: PickFn }) {
   const completed = books.filter((b) => b.status === "completed");
   const counts = { Fiction: 0, "Non-Fiction": 0, Inconnu: 0 };
   completed.forEach((b) => { counts[classifyFiction(b.genre)]++; });
@@ -175,11 +175,11 @@ export function FictionDonut({ books }: { books: Book[] }) {
     : "une littérature variée";
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
+    <div className={`flex flex-col gap-3 ${BOOK_PANEL} p-4`}>
       <div>
-        <SectionLabel label="Fiction vs Non-Fiction" />
+        <SectionLabel label="Fiction ou non-fiction" />
         <h2 className="font-serif text-[16px] font-semibold text-ink">
-          Vous lisez principalement {majority}.
+          Tu lis principalement {majority}.
         </h2>
       </div>
 
@@ -192,7 +192,11 @@ export function FictionDonut({ books }: { books: Book[] }) {
             paddingAngle={3}
             dataKey="value"
             isAnimationActive={false}
+            stroke="none"
+            className="cursor-pointer outline-none"
+            onClick={(_, i) => { const k = data[i].name; onPick?.(data[i].label, completed.filter((b) => classifyFiction(b.genre) === k)); }}
           >
+            {data.map((d) => <Cell key={d.name} fill={d.color} />)}
           </Pie>
           <Tooltip
             content={({ active, payload }) =>
@@ -215,7 +219,8 @@ export function FictionDonut({ books }: { books: Book[] }) {
 
       <div className="flex flex-col gap-2 border-t border-line pt-3">
         {[...data].sort((a, b) => b.value - a.value).map(({ name, value, color, label }) => (
-          <div key={name} className="flex items-center justify-between gap-2">
+          <button key={name} type="button" onClick={() => onPick?.(label, completed.filter((b) => classifyFiction(b.genre) === name))}
+            className="flex items-center justify-between gap-2 rounded-md text-left transition-transform active:scale-[0.98]">
             <div className="flex items-center gap-2">
               <div className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
               <span className="text-[12.5px] font-medium text-ink-2">{label}</span>
@@ -224,7 +229,7 @@ export function FictionDonut({ books }: { books: Book[] }) {
               {Math.round((value / total) * 100)}%
               <span className="ml-1 font-normal text-muted">({value} livre{value > 1 ? "s" : ""})</span>
             </span>
-          </div>
+          </button>
         ))}
       </div>
     </div>
@@ -245,7 +250,7 @@ const PAGE_RANGES = [
   { label: "1000+",    min: 1001, max: Infinity },
 ];
 
-export function PageCountHistogram({ books }: { books: Book[] }) {
+export function PageCountHistogram({ books, onPick }: { books: Book[]; onPick?: PickFn }) {
   const completed = books.filter((b) => b.status === "completed" && (b.pages ?? 0) > 0);
   if (completed.length === 0) return null;
 
@@ -262,10 +267,10 @@ export function PageCountHistogram({ books }: { books: Book[] }) {
   }));
 
   return (
-    <div className="rounded-2xl border border-line bg-card p-4">
+    <div className={`${BOOK_PANEL} p-4`}>
       <div className="mb-3 flex items-start justify-between gap-3">
         <div>
-          <SectionLabel label="Formats & Volumes" />
+          <SectionLabel label="Longueur des livres" />
           <h2 className="font-serif text-[16px] font-semibold text-ink">
             La majorité fait entre {peak.label} pages
           </h2>
@@ -278,7 +283,7 @@ export function PageCountHistogram({ books }: { books: Book[] }) {
       </div>
 
       <ResponsiveContainer width="100%" height={160}>
-        <BarChart data={counts} margin={{ top: 20, right: 4, left: -28, bottom: 0 }}>
+        <BarChart data={counts} margin={{ top: 20, right: 4, left: 4, bottom: 0 }}>
           <XAxis
             dataKey="label"
             tick={{ fill: "var(--color-muted)", fontSize: 9 }}
@@ -294,7 +299,9 @@ export function PageCountHistogram({ books }: { books: Book[] }) {
               ) : null
             }
           />
-          <Bar dataKey="value" radius={[4, 4, 0, 0]}>
+          <Bar dataKey="value" radius={[4, 4, 0, 0]} className="cursor-pointer"
+            onClick={(_, i) => { const r = PAGE_RANGES[i]; onPick?.(`${r.label} pages`, completed.filter((b) => (b.pages ?? 0) >= r.min && (b.pages ?? 0) <= r.max)); }}>
+            {counts.map((c, i) => <Cell key={i} fill={c.fill} />)}
             <LabelList dataKey="value" position="top" style={{ fill: "var(--color-muted)", fontSize: 10 }} />
           </Bar>
         </BarChart>
@@ -306,7 +313,7 @@ export function PageCountHistogram({ books }: { books: Book[] }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // 4. AUTHOR DEEP DIVE — top 4, YAxis, tooltip titre livre
 // ══════════════════════════════════════════════════════════════════════════════
-export function AuthorDeepDive({ books }: { books: Book[] }) {
+export function AuthorDeepDive({ books, onPick }: { books: Book[]; onPick?: PickFn }) {
   const completed = books.filter((b) => b.status === "completed");
 
   const authorMap = new Map<string, Book[]>();
@@ -328,7 +335,7 @@ export function AuthorDeepDive({ books }: { books: Book[] }) {
         .filter((b) => (b.rating ?? 0) > 0)
         .map((b) => ({ value: b.rating ?? 0, title: b.title }));
       const topCovers = [...ab].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)).slice(0, 5);
-      return { name, count: ab.length, avg, lineData, topCovers };
+      return { name, count: ab.length, avg, lineData, topCovers, all: ab };
     })
     .sort((a, b) => b.count - a.count)
     .slice(0, 4); // top 4 uniquement
@@ -336,18 +343,18 @@ export function AuthorDeepDive({ books }: { books: Book[] }) {
   if (authors.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-0 rounded-2xl border border-line bg-card p-4">
+    <div className={`flex flex-col gap-0 ${BOOK_PANEL} p-4`}>
       <div className="mb-3">
         <SectionLabel label="Analyse par auteur" />
-        <h2 className="font-serif text-[16px] font-semibold text-ink">Vos auteurs favoris</h2>
+        <h2 className="font-serif text-[16px] font-semibold text-ink">Tes auteurs favoris</h2>
       </div>
 
       <div className="flex flex-col divide-y divide-line">
-        {authors.map(({ name, count, avg, lineData, topCovers }) => {
+        {authors.map(({ name, count, avg, lineData, topCovers, all }) => {
           const initials = name.split(" ").map((w) => w[0] ?? "").join("").slice(0, 2).toUpperCase();
           return (
             <div key={name} className="flex flex-col gap-3 py-4 last:pb-0">
-              <div className="flex items-center gap-3">
+              <button type="button" onClick={() => onPick?.(name, all)} className="flex items-center gap-3 text-left transition-transform active:scale-[0.98]">
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-soft text-[12px] font-bold text-violet-deep">
                   {initials}
                 </div>
@@ -358,12 +365,12 @@ export function AuthorDeepDive({ books }: { books: Book[] }) {
                     {avg > 0 ? ` • Note moy. ${avg.toFixed(1)}` : ""}
                   </p>
                 </div>
-              </div>
+              </button>
 
               {topCovers.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto pb-0.5">
                   {topCovers.map((b) => (
-                    <div key={b.id} className="flex shrink-0 flex-col items-center gap-1">
+                    <button type="button" key={b.id} onClick={() => onPick?.(b.title, [b])} className="flex shrink-0 flex-col items-center gap-1 transition-transform active:scale-95">
                       {b.cover_url ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={b.cover_url} alt={b.title} title={b.title}
@@ -374,9 +381,9 @@ export function AuthorDeepDive({ books }: { books: Book[] }) {
                         </div>
                       )}
                       {(b.rating ?? 0) > 0 && (
-                        <span className="text-[10px] font-semibold text-gold">{(b.rating ?? 0).toFixed(1)}</span>
+                        <span className="text-[10px] font-semibold text-muted">{(b.rating ?? 0).toFixed(1)}</span>
                       )}
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -407,9 +414,9 @@ export function AuthorDeepDive({ books }: { books: Book[] }) {
                       <Line
                         type="monotone"
                         dataKey="value"
-                        stroke="var(--color-gold)"
+                        stroke="var(--color-violet)"
                         strokeWidth={1.5}
-                        dot={{ fill: "var(--color-gold)", r: 3, strokeWidth: 0 }}
+                        dot={{ fill: "var(--color-violet)", r: 3, strokeWidth: 0 }}
                         activeDot={{ r: 4, strokeWidth: 0 }}
                         isAnimationActive={false}
                       />
@@ -428,11 +435,11 @@ export function AuthorDeepDive({ books }: { books: Book[] }) {
 // ══════════════════════════════════════════════════════════════════════════════
 // 5a. DIVERGENCES CRITIQUES — hover tooltip sur les couvertures
 // ══════════════════════════════════════════════════════════════════════════════
-function CoverGrid({ items }: { items: Book[] }) {
+function CoverGrid({ items, onPick }: { items: Book[]; onPick?: PickFn }) {
   return (
     <div className="flex flex-wrap gap-1.5">
       {items.map((b) => (
-        <div key={b.id} className="group relative shrink-0">
+        <button type="button" key={b.id} onClick={() => onPick?.(b.title, [b])} className="group relative shrink-0 transition-transform active:scale-95">
           {b.cover_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
@@ -449,16 +456,16 @@ function CoverGrid({ items }: { items: Book[] }) {
           <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 hidden w-max max-w-[150px] -translate-x-1/2 rounded-lg border border-line bg-card px-2 py-1.5 text-center shadow-md group-hover:block">
             <p className="text-[10px] font-semibold leading-snug text-ink">{b.title}</p>
             {(b.rating ?? 0) > 0 && (
-              <p className="text-[10px] text-gold">{b.rating} / 5</p>
+              <p className="text-[10px] text-muted">{b.rating} / 5</p>
             )}
           </div>
-        </div>
+        </button>
       ))}
     </div>
   );
 }
 
-export function CriticalDivergence({ books }: { books: Book[] }) {
+export function CriticalDivergence({ books, onPick }: { books: Book[]; onPick?: PickFn }) {
   const rated = books.filter((b) => b.status === "completed" && (b.rating ?? 0) > 0);
   if (rated.length < 5) return null;
 
@@ -477,11 +484,11 @@ export function CriticalDivergence({ books }: { books: Book[] }) {
   if (above.length === 0 && below.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-line bg-card p-4">
+    <div className={`flex flex-col gap-4 ${BOOK_PANEL} p-4`}>
       <div>
         <SectionLabel label="Divergences critiques" />
         <h2 className="font-serif text-[16px] font-semibold text-ink">
-          Vos coups de coeur et déceptions
+          Tes coups de cœur et déceptions
           <span className="ml-2 text-[12px] font-normal text-muted">(moy. {avg.toFixed(1)})</span>
         </h2>
       </div>
@@ -490,17 +497,17 @@ export function CriticalDivergence({ books }: { books: Book[] }) {
         {above.length > 0 && (
           <div className="flex flex-col gap-2">
             <p className="text-[10px] font-bold uppercase tracking-widest text-success">
-              Notes au-dessus de votre moyenne
+              Au-dessus de ta moyenne
             </p>
-            <CoverGrid items={above} />
+            <CoverGrid items={above} onPick={onPick} />
           </div>
         )}
         {below.length > 0 && (
           <div className="flex flex-col gap-2">
             <p className="text-[10px] font-bold uppercase tracking-widest text-danger">
-              Notes en dessous de votre moyenne
+              En dessous de ta moyenne
             </p>
-            <CoverGrid items={below} />
+            <CoverGrid items={below} onPick={onPick} />
           </div>
         )}
       </div>
@@ -509,40 +516,25 @@ export function CriticalDivergence({ books }: { books: Book[] }) {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 5b. PUBLICATION TIMELINE — seulement les années avec des livres
-// ══════════════════════════════════════════════════════════════════════════════
-export function PublicationTimeline({ books }: { books: Book[] }) {
+// 5b. PUBLICATION — frise par époques (bulles)
+// Frise par époques : une bulle par période, plus grosse quand on y a lu plus de livres.
+const ERAS = [
+  { short: "< 1900", label: "Avant 1900", min: 1, max: 1899 },
+  { short: "1900", label: "1900 à 1949", min: 1900, max: 1949 },
+  { short: "1950", label: "1950 à 1979", min: 1950, max: 1979 },
+  { short: "1980", label: "1980 à 1999", min: 1980, max: 1999 },
+  { short: "2000", label: "2000 à 2014", min: 2000, max: 2014 },
+  { short: "2015+", label: "Depuis 2015", min: 2015, max: 3000 },
+];
+
+export function PublicationTimeline({ books, onPick }: { books: Book[]; onPick?: PickFn }) {
   const withYear = books.filter(
     (b) => b.status === "completed" && (b.published_year ?? 0) > 0 && (b.published_year ?? 0) <= 2026
   );
   if (withYear.length < 3) return null;
 
-  const yearMap = new Map<number, number>();
-  withYear.forEach((b) => {
-    const y = b.published_year!;
-    yearMap.set(y, (yearMap.get(y) || 0) + 1);
-  });
-
-  // Seulement les années avec au moins 1 livre (pas de remplissage des trous)
-  const data = Array.from(yearMap.entries())
-    .sort((a, b) => a[0] - b[0])
-    .map(([year, value]) => ({ year, value }));
-
-  const years = data.map((d) => d.year);
-  const minY = years[0];
-  const maxY = years[years.length - 1];
-  const range = maxY - minY;
-
-  // Jalons lisibles sur l'axe X
-  const milestones = [
-    1500, 1600, 1700, 1750, 1800, 1850, 1900, 1920, 1940,
-    1950, 1960, 1970, 1980, 1990, 2000, 2005, 2010, 2015, 2020, 2025,
-  ].filter((y) => y >= minY && y <= maxY);
-
-  const labelEvery = range > 100 ? 25 : range > 50 ? 10 : range > 20 ? 5 : 2;
-
-  const barW = Math.max(4, Math.min(16, Math.floor(560 / data.length)));
-  const chartW = Math.max(400, data.length * (barW + 3));
+  const eras = ERAS.map((e) => ({ ...e, books: withYear.filter((b) => (b.published_year ?? 0) >= e.min && (b.published_year ?? 0) <= e.max) }));
+  const max = Math.max(1, ...eras.map((e) => e.books.length));
 
   const modern = withYear.filter((b) => (b.published_year ?? 0) >= 2000).length;
   const classic = withYear.filter((b) => (b.published_year ?? 0) < 1970).length;
@@ -550,52 +542,54 @@ export function PublicationTimeline({ books }: { books: Book[] }) {
     modern > classic * 2 ? "des publications contemporaines"
     : classic > modern * 2 ? "des classiques"
     : "un équilibre entre classiques et contemporain";
-
-  void milestones; // computed but used as fallback; tickFormatter below handles display
+  const oldest = withYear.reduce((m, b) => ((b.published_year ?? 9999) < (m.published_year ?? 9999) ? b : m), withYear[0]);
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
+    <div className={`flex flex-col gap-3 ${BOOK_PANEL} p-4`}>
       <div>
-        <SectionLabel label="Voyage temporel — Année de publication" />
+        <SectionLabel label="Année de publication" />
         <h2 className="font-serif text-[16px] font-semibold text-ink">
-          Vous lisez principalement {headline}
+          Tu lis principalement {headline}
         </h2>
       </div>
 
-      <div className="overflow-x-auto">
-        <div style={{ width: chartW }}>
-          <ResponsiveContainer width="100%" height={150}>
-            <BarChart
-              data={data}
-              margin={{ top: 8, right: 4, left: -36, bottom: 0 }}
-              barSize={barW}
-              barCategoryGap={2}
-            >
-              <XAxis
-                dataKey="year"
-                tick={{ fill: "var(--color-muted)", fontSize: 9 }}
-                axisLine={false}
-                tickLine={false}
-                interval={0}
-                tickFormatter={(v: number) => (v % labelEvery === 0 ? String(v) : "")}
-              />
-              <Tooltip
-                content={({ active, payload }) =>
-                  active && payload?.[0] && (payload[0].value as number) > 0 ? (
-                    <div className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-[11px] shadow-md">
-                      <span className="font-semibold text-ink">{payload[0].payload.year}</span>
-                      <span className="ml-2 text-muted">
-                        {payload[0].value} livre{(payload[0].value as number) > 1 ? "s" : ""}
-                      </span>
-                    </div>
-                  ) : null
-                }
-              />
-              <Bar dataKey="value" fill="var(--color-violet)" radius={[2, 2, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+      <div className="relative mt-1">
+        <div className="absolute left-[8%] right-[8%] top-[28px] h-px bg-line" />
+        <div className="relative grid grid-cols-6">
+          {eras.map((e) => {
+            const n = e.books.length;
+            const size = n ? 26 + (n / max) * 30 : 12;
+            return (
+              <button
+                key={e.short}
+                type="button"
+                disabled={!n}
+                onClick={() => onPick?.(e.label, e.books)}
+                className="flex flex-col items-center gap-1.5 transition-transform active:scale-95 disabled:cursor-default"
+              >
+                <span className="flex h-[56px] items-center">
+                  <span
+                    className="flex items-center justify-center rounded-full text-[11px] font-bold"
+                    style={{
+                      width: size,
+                      height: size,
+                      background: n ? `color-mix(in srgb, var(--color-violet) ${45 + (n / max) * 55}%, var(--color-card))` : "var(--color-line)",
+                      color: "var(--color-cream)",
+                    }}
+                  >
+                    {n || ""}
+                  </span>
+                </span>
+                <span className="text-[10.5px] font-medium text-muted">{e.short}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
+
+      <button type="button" onClick={() => onPick?.("Le plus ancien", [oldest])} className="text-left text-[12px] text-muted">
+        Le plus ancien : <span className="font-semibold text-ink-2">{oldest.title}</span> ({oldest.published_year})
+      </button>
     </div>
   );
 }

@@ -6,14 +6,23 @@ import { supabase } from "../../lib/supabase";
 import { todayISO, shiftDateISO } from "../../lib/books";
 import { AvatarImg, Modal } from "../ui";
 import { mangaProfileHref } from "../../lib/manga";
+import { championScope } from "../../lib/championScope";
+
+async function viewerScope() {
+  const { data } = await supabase.auth.getUser();
+  return championScope(data.user?.id);
+}
 
 export type Champion = { userId: string; name: string; avatar: string | null; chapters: number };
 
 /** Membre qui a lu le plus de chapitres sur la journée (tous les membres, comme le champion livres). */
 async function championOf(date: string): Promise<Omit<Champion, "name" | "avatar"> | null> {
-  const { data } = await supabase.from("manga_logs").select("user_id, amount").eq("date", date).eq("unit", "chapter");
+  const [{ data }, inScope] = await Promise.all([
+    supabase.from("manga_logs").select("user_id, amount").eq("date", date).eq("unit", "chapter"),
+    viewerScope(),
+  ]);
   const byUser = new Map<string, number>();
-  for (const l of (data ?? []) as { user_id: string; amount: number }[]) {
+  for (const l of ((data ?? []) as { user_id: string; amount: number }[]).filter((r) => inScope(r.user_id))) {
     byUser.set(l.user_id, (byUser.get(l.user_id) ?? 0) + l.amount);
   }
   const top = [...byUser.entries()].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1])[0];
@@ -25,9 +34,12 @@ async function championOf(date: string): Promise<Omit<Champion, "name" | "avatar
 type Ranked = { userId: string; name: string; avatar: string | null; chapters: number };
 
 async function rankingOf(date: string): Promise<Ranked[]> {
-  const { data } = await supabase.from("manga_logs").select("user_id, amount").eq("date", date).eq("unit", "chapter");
+  const [{ data }, inScope] = await Promise.all([
+    supabase.from("manga_logs").select("user_id, amount").eq("date", date).eq("unit", "chapter"),
+    viewerScope(),
+  ]);
   const byUser = new Map<string, number>();
-  for (const l of (data ?? []) as { user_id: string; amount: number }[]) {
+  for (const l of ((data ?? []) as { user_id: string; amount: number }[]).filter((r) => inScope(r.user_id))) {
     byUser.set(l.user_id, (byUser.get(l.user_id) ?? 0) + l.amount);
   }
   const sorted = [...byUser.entries()].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]);

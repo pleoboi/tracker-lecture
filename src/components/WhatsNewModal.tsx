@@ -13,24 +13,17 @@ import { useState } from "react";
 
 /* ── Aperçus illustrant chaque nouveauté ───────────────────────────────── */
 
-function VisualCommunaute() {
+function VisualQuiz() {
   return (
     <div className="w-full max-w-[230px]">
-      <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-input px-2 py-1.5">
-        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" className="text-muted">
-          <circle cx="11" cy="11" r="7" />
-          <path d="m20 20-3.5-3.5" strokeLinecap="round" />
-        </svg>
-        <span className="text-[9.5px] text-muted">Un club ou un livre…</span>
-      </div>
-      <div className="grid grid-cols-2 gap-1.5">
-        {[
-          { name: "Club Polar", c: "#4f46e5" },
-          { name: "Lecture d'été", c: "#8b5a6b" },
-        ].map((club) => (
-          <div key={club.name} className="overflow-hidden rounded-lg border border-line bg-card">
-            <div className="h-6" style={{ background: club.c }} />
-            <p className="truncate px-1.5 py-1 text-[8px] font-semibold text-ink">{club.name}</p>
+      <p className="text-[7.5px] font-bold uppercase tracking-widest text-violet-deep">Question de lecture · 50 %</p>
+      <p className="mt-1 font-serif text-[10.5px] font-bold leading-tight text-ink">Qui fait chasser Boule de Neige de la ferme ?</p>
+      <div className="mt-2 flex flex-col gap-1">
+        {["Malabar", "Napoléon", "Old Major"].map((o, i) => (
+          <div key={o} className={`flex items-center gap-1.5 rounded-md border px-1.5 py-1 text-[8.5px] text-ink ${i === 1 ? "border-success bg-success/10" : "border-line bg-card"}`}>
+            <span className="flex h-3 w-3 items-center justify-center rounded-full bg-paper text-[6.5px] font-bold text-muted">{"ABC"[i]}</span>
+            {o}
+            {i === 1 && <span className="ml-auto text-[8px] font-black text-success">+10 XP</span>}
           </div>
         ))}
       </div>
@@ -38,51 +31,69 @@ function VisualCommunaute() {
   );
 }
 
-function VisualScanner() {
+function VisualStats() {
   return (
-    <div className="relative mx-auto w-[110px] overflow-hidden rounded-2xl border-2 border-line bg-[#111]">
-      <div className="flex h-[130px] items-center justify-center">
-        <div className="relative h-[46px] w-[80px] rounded-lg border-2 border-white/85">
-          <div className="absolute inset-x-3 top-1/2 flex -translate-y-1/2 gap-[1.5px]">
-            {[2, 1, 3, 1, 2, 1, 3, 2, 1, 2].map((w, i) => (
-              <div key={i} className="h-4 bg-white/90" style={{ width: `${w}px` }} />
-            ))}
-          </div>
-        </div>
+    <div className="flex w-full max-w-[230px] items-end gap-3">
+      <div className="flex flex-1 flex-wrap gap-1">
+        {[["Roman", "#8b5cf6", 11], ["Thriller", "#ec4899", 9.5], ["Fantasy", "#f59e0b", 9], ["Essai", "#10b981", 8]].map(([g, c, s]) => (
+          <span key={g as string} className="rounded-full border px-1.5 py-0.5 font-semibold"
+            style={{ fontSize: `${s}px`, color: c as string, borderColor: `${c}55`, backgroundColor: `${c}1a` }}>{g}</span>
+        ))}
+      </div>
+      <div className="relative h-[58px] w-[58px] shrink-0 rounded-full" style={{ background: "conic-gradient(#ec4899 0 72%, #6366f1 72% 100%)" }}>
+        <div className="absolute inset-[11px] flex items-center justify-center rounded-full bg-paper text-[10px] font-black text-ink">24</div>
       </div>
     </div>
   );
 }
 
-function VisualLeaderboard() {
+function VisualChat() {
+  return (
+    <div className="w-full max-w-[220px] overflow-hidden rounded-xl border border-line bg-paper shadow">
+      <div className="flex items-center gap-1.5 border-b border-line bg-card px-2 py-1.5">
+        <span className="flex h-4 w-4 items-center justify-center rounded-full bg-violet text-[7px] font-bold text-cream">C</span>
+        <span className="text-[8.5px] font-bold text-ink">Camille</span>
+        <span className="ml-auto text-[7.5px] font-semibold text-violet-deep">Ouvrir</span>
+      </div>
+      <div className="flex flex-col gap-1 p-2">
+        <span className="self-start rounded-xl rounded-bl-sm border border-line bg-card px-2 py-1 text-[8.5px] text-ink">Tu as fini Dune ?</span>
+        <span className="self-end rounded-xl rounded-br-sm bg-violet px-2 py-1 text-[8.5px] text-cream">Hier soir, quelle fin !</span>
+      </div>
+    </div>
+  );
+}
+
+function VisualLog() {
   return (
     <div className="w-full max-w-[230px]">
-      <div className="mb-2 flex justify-end gap-1">
-        <div className="flex overflow-hidden rounded-full border border-line text-[7.5px] font-semibold">
-          <span className="bg-violet px-1.5 py-0.5 text-cream">Mois</span>
-          <span className="bg-card px-1.5 py-0.5 text-muted">Année</span>
-        </div>
-        <div className="flex overflow-hidden rounded-full border border-line text-[7.5px] font-semibold">
-          <span className="bg-violet px-1.5 py-0.5 text-cream">Pages</span>
-          <span className="bg-card px-1.5 py-0.5 text-muted">Livres</span>
-        </div>
-      </div>
-      <div className="overflow-hidden rounded-xl border border-line bg-card">
-        {[
-          { n: "Céline", v: "612", i: 1 },
-          { n: "Toi", v: "588", i: 2, me: true },
-          { n: "Nicolas", v: "540", i: 3 },
-        ].map((r) => (
-          <div key={r.n} className={`flex items-center gap-2 px-2 py-1.5 ${r.me ? "bg-violet-soft" : ""}`}>
-            <span className="w-3 text-[8px] font-bold text-muted">{r.i}</span>
-            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-violet text-[7px] font-bold text-cream">
-              {r.n[0]}
-            </span>
-            <span className="flex-1 truncate text-[8.5px] font-medium text-ink">{r.n}</span>
-            <span className="text-[8.5px] font-bold text-ink">{r.v}</span>
-          </div>
+      <div className="flex gap-1.5">
+        {["#5b6bb5", "#c49ab5", "#a7b29a"].map((c, i) => (
+          <div key={c} className={`h-[42px] w-[29px] rounded ${i === 0 ? "ring-2 ring-violet ring-offset-1 ring-offset-paper" : "opacity-50"}`} style={{ background: c }} />
         ))}
       </div>
+      <p className="mt-2 text-[8px] font-semibold uppercase tracking-wider text-muted">Note du passage lu</p>
+      <p className="text-[15px] leading-none tracking-[2px] text-gold">★★★★<span className="text-line">★</span></p>
+      <div className="mt-1.5 rounded-md border border-line bg-card px-1.5 py-1 text-[8px] text-muted">Ce passage était…</div>
+    </div>
+  );
+}
+
+function VisualPrivate() {
+  return (
+    <div className="w-full max-w-[220px] rounded-xl border border-line bg-card p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <div>
+          <p className="font-serif text-[10px] font-bold text-ink">Compte privé</p>
+          <p className="text-[7.5px] text-muted">Champion du jour entre amis</p>
+        </div>
+        <span className="flex h-4 w-7 items-center justify-end rounded-full bg-violet p-0.5"><span className="h-3 w-3 rounded-full bg-white" /></span>
+      </div>
+      <div className="mt-2 grid grid-cols-6 gap-1">
+        {["#8b5cf6", "#ec4899", "#f59e0b", "#10b981", "#3b82f6", "#ef4444"].map((c) => (
+          <div key={c} className="aspect-square rounded" style={{ background: `${c}55` }} />
+        ))}
+      </div>
+      <p className="mt-1 text-[7.5px] font-semibold text-muted">Galerie de tes photos de lecture</p>
     </div>
   );
 }
@@ -90,21 +101,33 @@ function VisualLeaderboard() {
 const SLIDES = [
   {
     label: "Nouveau",
-    title: "La Communauté",
-    body: "Découverte et clubs de lecture n'en font plus qu'un. Une seule recherche pour trouver un club ou un livre, et tes suggestions de prochaines lectures personnalisées, au même endroit.",
-    visual: <VisualCommunaute />,
+    title: "Un quiz sur ta lecture",
+    body: "À la moitié et à la fin d'un livre, une question à choix multiples t'attend sur ce que tu viens de lire. Bonne réponse : +10 XP, et l'explication s'affiche dans tous les cas.",
+    visual: <VisualQuiz />,
   },
   {
     label: "Nouveau",
-    title: "Scanne un livre",
-    body: "Dans « Ajouter un livre », vise le code-barres au dos avec ta caméra : Swena retrouve le livre et remplit couverture, résumé et infos tout seul.",
-    visual: <VisualScanner />,
+    title: "Des statistiques à toucher",
+    body: "La page Statistiques a été refaite : genres, fiction ou non-fiction, longueur, époques, auteurs, coups de cœur. Touche un chiffre pour voir les livres qui se cachent derrière.",
+    visual: <VisualStats />,
   },
   {
     label: "Nouveau",
-    title: "Un classement à ta façon",
-    body: "Le classement de la Communauté se règle maintenant comme tu veux : sur le mois ou l'année, en pages ou en livres lus.",
-    visual: <VisualLeaderboard />,
+    title: "Écris à tes amis",
+    body: "Touche « Message » sur le profil d'un membre pour discuter. Quand on t'écrit, une petite fenêtre s'ouvre pour répondre tout de suite. Tes conversations sont dans l'icône bulle, en haut.",
+    visual: <VisualChat />,
+  },
+  {
+    label: "Amélioré",
+    title: "Noter ta lecture, en plus simple",
+    body: "Choisis ton livre par sa couverture, puis note le passage que tu viens de lire et ajoute une mini-review si tu veux. Tout est facultatif.",
+    visual: <VisualLog />,
+  },
+  {
+    label: "Nouveau",
+    title: "Compte privé et galerie",
+    body: "Dans Mon compte, passe en privé : le champion du jour se joue alors seulement entre toi et tes amis. Et ton profil a maintenant un onglet Galerie avec toutes tes photos de lecture.",
+    visual: <VisualPrivate />,
   },
 ];
 

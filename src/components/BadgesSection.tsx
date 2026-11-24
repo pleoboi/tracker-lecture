@@ -558,6 +558,7 @@ export function BadgesHub({ memberId, currentUserId, onClose, embedded }: {
   const [sprintCount,     setSprintCount]     = useState(0);
   const [sprintBonus,     setSprintBonus]     = useState(0);
   const [challengeBonus,  setChallengeBonus]  = useState(0);
+  const [quizBonus,       setQuizBonus]       = useState(0);
 
   useEffect(() => {
     if (embedded) return; // page normale : pas de verrouillage du scroll du body
@@ -596,17 +597,18 @@ export function BadgesHub({ memberId, currentUserId, onClose, embedded }: {
       }
 
       const [profileRes, ubRes, computedStats] = await Promise.all([
-        supabase.from("user_profiles").select("display_name, avatar_url, sprint_eclair_count, sprint_bonus_points, challenge_bonus_points").eq("id", memberId).single(),
+        supabase.from("user_profiles").select("display_name, avatar_url, sprint_eclair_count, sprint_bonus_points, challenge_bonus_points, quiz_bonus_points").eq("id", memberId).single(),
         supabase.from("user_badges").select("badge_id, unlocked_at").eq("user_id", memberId)
           .order("unlocked_at", { ascending: false }),
         fetchBadgeStats(memberId),
       ]);
 
-      const prof = profileRes.data as { display_name: string; avatar_url: string | null; sprint_eclair_count?: number; sprint_bonus_points?: number; challenge_bonus_points?: number } | null;
+      const prof = profileRes.data as { display_name: string; avatar_url: string | null; sprint_eclair_count?: number; sprint_bonus_points?: number; challenge_bonus_points?: number; quiz_bonus_points?: number } | null;
       setProfile(prof);
       setSprintCount(prof?.sprint_eclair_count ?? 0);
       setSprintBonus(prof?.sprint_bonus_points ?? 0);
       setChallengeBonus(prof?.challenge_bonus_points ?? 0);
+      setQuizBonus(prof?.quiz_bonus_points ?? 0);
       setUnlocked((ubRes.data ?? []) as { badge_id: string; unlocked_at: string }[]);
       setStats(computedStats);
       setAwardQueue(newlyAwarded);
@@ -616,7 +618,7 @@ export function BadgesHub({ memberId, currentUserId, onClose, embedded }: {
   }, [memberId, currentUserId]);
 
   const unlockedSet = new Set(unlocked.map((u) => u.badge_id));
-  const totalPoints = getTotalPoints(unlockedSet) + sprintBonus + challengeBonus;
+  const totalPoints = getTotalPoints(unlockedSet) + sprintBonus + challengeBonus + quizBonus;
   const lvl         = getLevelProgress(totalPoints);
 
   // ── Grille dédupliquée : une seule carte par famille, palier le plus haut en couleur ──

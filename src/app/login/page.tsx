@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 import { Button } from "../../components/ui";
+import AuthScene, { authCardClass } from "../../components/AuthScene";
 
 function LoginForm() {
   const router = useRouter();
@@ -37,13 +38,11 @@ function LoginForm() {
     router.refresh();
   };
 
+  const wanted = params.get("univers");
   return (
-    <div className="flex min-h-screen items-center justify-center bg-paper px-5 py-12">
-      <div className="w-full max-w-sm">
-        <div className="mb-8 text-center">
-          <h1 className="font-serif text-4xl font-black text-ink">Swena</h1>
-          <p className="mt-1.5 text-sm text-muted">Club de lecture privé</p>
-        </div>
+    <AuthScene initial={wanted === "manga" ? "manga" : wanted === "livres" ? "livres" : null}>
+      {(u) => (
+      <>
 
         {registered && (
           <div className="mb-4 flex items-start gap-3 rounded-2xl border border-[#cfe0cf] bg-[#eaf1ea] px-4 py-3.5">
@@ -62,7 +61,7 @@ function LoginForm() {
 
         <form
           onSubmit={handleSubmit}
-          className="flex flex-col gap-4 rounded-2xl border border-line bg-card p-6 shadow-sm"
+          className={authCardClass(u)}
         >
           <h2 className="font-serif text-xl font-bold text-ink">Connexion</h2>
 
@@ -116,8 +115,9 @@ function LoginForm() {
             S&apos;inscrire
           </Link>
         </p>
-      </div>
-    </div>
+      </>
+      )}
+    </AuthScene>
   );
 }
 

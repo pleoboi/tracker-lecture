@@ -15,6 +15,8 @@ import {
   CriticalDivergence,
   PublicationTimeline,
 } from "../../../../components/AdvancedStats";
+import BookSheet, { type SheetState } from "../../../../components/BookSheet";
+import ReadingStreak from "../../../../components/ReadingStreak";
 import MemberSectionHeader from "../../../../components/MemberSectionHeader";
 import { fetchAllReadingLogsForChampionDays, computeChampionDays } from "../../../../lib/championDays";
 
@@ -35,6 +37,8 @@ export default function MemberStatistiquesPage() {
   const [championDays, setChampionDays] = useState(0);
   const [sessionPhotos, setSessionPhotos] = useState<{ url: string; date: string; bookTitle: string }[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sheet, setSheet] = useState<SheetState>(null);
+  const pick = (title: string, list: Book[]) => { if (list.length) setSheet({ title, books: list }); };
 
   useEffect(() => {
     (async () => {
@@ -140,28 +144,7 @@ export default function MemberStatistiquesPage() {
             </div>
           )}
 
-          {/* Photos de sessions */}
-          {sessionPhotos.length > 0 && (
-            <section className="flex flex-col gap-3">
-              <h2 className="font-serif text-lg font-medium text-ink">Galerie</h2>
-              <div className="grid grid-cols-3 gap-2">
-                {sessionPhotos.map((p, i) => (
-                  <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="group relative overflow-hidden rounded-xl">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={p.url}
-                      alt={p.bookTitle}
-                      className="aspect-square w-full object-cover transition-transform group-hover:scale-105"
-                      onError={(e) => ((e.target as HTMLImageElement).parentElement!.style.display = "none")}
-                    />
-                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-ink/60 to-transparent px-2 pb-1.5 pt-4 opacity-0 transition-opacity group-hover:opacity-100">
-                      <p className="truncate text-[9px] font-semibold text-cream">{p.bookTitle}</p>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            </section>
-          )}
+          <ReadingStreak dates={logs.map((l) => l.date)} isOwn={isOwn} />
 
           {/* Histogramme des notes */}
           {ratedCount > 0 && (
@@ -188,12 +171,12 @@ export default function MemberStatistiquesPage() {
           {/* Stats avancées */}
           {completed.length >= 3 && (
             <>
-              <GenreBreakdown books={books} />
-              <FictionDonut books={books} />
-              <PageCountHistogram books={books} />
-              <AuthorDeepDive books={books} />
-              <CriticalDivergence books={books} />
-              <PublicationTimeline books={books} />
+              <GenreBreakdown books={books} onPick={pick} />
+              <FictionDonut books={books} onPick={pick} />
+              <PageCountHistogram books={books} onPick={pick} />
+              <AuthorDeepDive books={books} onPick={pick} />
+              <CriticalDivergence books={books} onPick={pick} />
+              <PublicationTimeline books={books} onPick={pick} />
             </>
           )}
 
@@ -205,6 +188,7 @@ export default function MemberStatistiquesPage() {
           )}
         </>
       )}
+      <BookSheet sheet={sheet} onClose={() => setSheet(null)} linkable={isOwn} />
     </div>
   );
 }

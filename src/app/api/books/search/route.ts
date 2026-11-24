@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { mapVolume } from "../../../../lib/googleBooks";
 import type { BookSuggestion } from "../../../../lib/googleBooks";
+import { normalizeGenres } from "../../../../lib/genres";
 
 export const dynamic = "force-dynamic";
 
@@ -142,5 +143,7 @@ export async function GET(req: Request) {
     } catch { /* Google Books optionnel, on ignore les erreurs */ }
   }
 
-  return NextResponse.json({ results: items.slice(0, 12) });
+  // Genres propres dès l'ajout : plus de mots parasites, avec l'étiquette Fiction / Non-Fiction quand on peut la déduire
+  const results = items.slice(0, 12).map((i) => ({ ...i, genre: normalizeGenres(i.genre).genre || null }));
+  return NextResponse.json({ results });
 }

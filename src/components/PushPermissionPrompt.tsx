@@ -14,9 +14,16 @@ export default function PushPermissionPrompt() {
     if (!("Notification" in window)) return;
     if (Notification.permission !== "default") return;
     if (sessionStorage.getItem(SESSION_KEY)) return;
+    // Pas sur les écrans de connexion / inscription : on ne peut pas abonner quelqu'un qui n'est pas connecté.
+    if (["/login", "/register", "/email-sent"].includes(window.location.pathname)) return;
 
-    const t = setTimeout(() => setVisible(true), 1800);
-    return () => clearTimeout(t);
+    let cancelled = false;
+    let t: ReturnType<typeof setTimeout> | undefined;
+    supabase.auth.getSession().then(({ data }) => {
+      if (cancelled || !data.session) return;
+      t = setTimeout(() => setVisible(true), 1800);
+    });
+    return () => { cancelled = true; if (t) clearTimeout(t); };
   }, []);
 
   const dismiss = () => {

@@ -329,13 +329,23 @@ export default function AccountView({ variant = "books" }: { variant?: "books" |
     setUniverseMsg(error ? "Impossible de modifier pour le moment." : next.includes(u) ? `${label} ajouté à ton compte.` : `${label} retiré de ton compte.`);
   };
 
+  const [isPrivate, setIsPrivate] = useState(false);
+  const togglePrivate = async () => {
+    if (!userId) return;
+    const next = !isPrivate;
+    setIsPrivate(next);
+    const { error } = await supabase.from("user_profiles").update({ is_private: next }).eq("id", userId);
+    if (error) setIsPrivate(!next);
+  };
+
   const loadProfile = async (uid: string) => {
     const { data } = await supabase
       .from("user_profiles")
-      .select("avatar_url, bio, favorite_book_ids")
+      .select("avatar_url, bio, favorite_book_ids, is_private")
       .eq("id", uid)
       .single();
-    const d = data as { avatar_url?: string | null; bio?: string | null; favorite_book_ids?: number[] | null } | null;
+    const d = data as { avatar_url?: string | null; bio?: string | null; favorite_book_ids?: number[] | null; is_private?: boolean | null } | null;
+    setIsPrivate(!!d?.is_private);
     const url = d?.avatar_url ?? null;
     setAvatarUrl(url);
     setAvatarDraft(url ?? "");
@@ -830,6 +840,22 @@ export default function AccountView({ variant = "books" }: { variant?: "books" |
               </svg>
             </Link>
           </div>
+
+          {/* Compte privé */}
+          <button
+            onClick={togglePrivate}
+            className="flex w-full items-center justify-between gap-3 rounded-2xl border border-line bg-card p-4 transition-colors hover:border-violet/40"
+          >
+            <div className="min-w-0">
+              <p className="text-left font-serif text-[15px] font-medium text-ink">Compte privé</p>
+              <p className="text-left text-xs text-muted">
+                {isPrivate
+                  ? "Le champion du jour se joue seulement entre toi et tes amis. Les autres membres ne te voient pas dans le classement."
+                  : "Tu apparais dans le champion du jour de tout le club."}
+              </p>
+            </div>
+            <Toggle on={isPrivate} />
+          </button>
 
           {/* Toggle mode sombre */}
           <button

@@ -1,5 +1,7 @@
 "use client";
 
+import { BOOK_PANEL } from "./BookSheet";
+
 import { useState } from "react";
 import {
   BarChart,
@@ -70,7 +72,7 @@ export function GoalIndicator({
   month: Period;
 }) {
   return (
-    <div className="flex flex-col gap-4 rounded-2xl border border-line bg-card p-4">
+    <div className={`flex flex-col gap-4 ${BOOK_PANEL} p-4`}>
       <div className="flex items-center gap-2">
         <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: accent }} />
         <h3 className="font-serif text-[16px] font-medium text-ink">{title}</h3>
@@ -153,7 +155,7 @@ export function ObjectiveChart({
   };
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
+    <div className={`flex flex-col gap-3 ${BOOK_PANEL} p-4`}>
       <div className="flex items-center justify-between gap-2">
         <h3 className="font-serif text-[15px] font-medium text-ink">{title}</h3>
         {objective !== null && (editing ? (
@@ -300,7 +302,7 @@ const HALF_LABELS = ["½", "1", "1½", "2", "2½", "3", "3½", "4", "4½", "5"];
 
 function barFill(stars: number) {
   const t = (stars - 0.5) / 4.5;
-  return `rgb(${Math.round(232 - 17 * t)},${Math.round(217 - 54 * t)},${Math.round(168 - 105 * t)})`;
+  return `color-mix(in srgb, var(--color-violet) ${Math.round(28 + t * 72)}%, var(--color-card))`;
 }
 
 function RatingsTooltip({ active, payload }: any) {
@@ -308,12 +310,12 @@ function RatingsTooltip({ active, payload }: any) {
   const p = payload[0].payload;
   return (
     <div className="rounded-lg border border-line bg-card px-3 py-2 text-xs font-semibold text-ink shadow-sm">
-      <span style={{ color: "#c9a227" }}>{p.label}</span> — {p.value} livre{p.value > 1 ? "s" : ""}
+      <span className="text-violet-deep">{p.label}</span> — {p.value} livre{p.value > 1 ? "s" : ""}
     </div>
   );
 }
 
-export function RatingsChart({ counts, average, total }: { counts: number[]; average: number; total: number }) {
+export function RatingsChart({ counts, average, total, onBarClick }: { counts: number[]; average: number; total: number; onBarClick?: (index: number) => void }) {
   const data = counts.map((c, i) => {
     const stars = (i + 1) * 0.5;
     return {
@@ -325,11 +327,11 @@ export function RatingsChart({ counts, average, total }: { counts: number[]; ave
   });
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
+    <div className={`flex flex-col gap-3 ${BOOK_PANEL} p-4`}>
       <div className="flex items-end justify-between">
         <h3 className="font-serif text-[15px] font-medium text-ink">Répartition des notes</h3>
         <div className="text-right">
-          <span className="font-serif text-xl font-black text-gold">
+          <span className="font-serif text-xl font-black text-ink">
             {average > 0 ? average.toFixed(2).replace(".", ",") : "—"}
           </span>
           <span className="ml-1 text-[11px] font-medium text-muted">moy.</span>
@@ -343,7 +345,7 @@ export function RatingsChart({ counts, average, total }: { counts: number[]; ave
       ) : (
         <>
           <ResponsiveContainer width="100%" height={130}>
-            <BarChart data={data} margin={{ top: 8, right: 4, left: 4, bottom: 0 }}>
+            <BarChart data={data} margin={{ top: 8, right: 4, left: 4, bottom: 0 }} barCategoryGap="12%">
               <XAxis
                 dataKey="name"
                 interval={0}
@@ -353,8 +355,8 @@ export function RatingsChart({ counts, average, total }: { counts: number[]; ave
                 tick={{ fontSize: 8, fill: "#968da1" }}
               />
               <YAxis hide domain={[0, "dataMax"]} />
-              <Tooltip cursor={{ fill: "rgba(215,163,63,0.10)" }} content={<RatingsTooltip />} />
-              <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={22}>
+              <Tooltip cursor={{ fill: "color-mix(in srgb, var(--color-violet) 10%, transparent)" }} content={<RatingsTooltip />} />
+              <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={34} className={onBarClick ? "cursor-pointer" : ""} onClick={(_, i) => onBarClick?.(i)}>
                 {data.map((d, i) => (
                   <Cell key={i} fill={barFill(d.stars)} />
                 ))}
@@ -362,9 +364,9 @@ export function RatingsChart({ counts, average, total }: { counts: number[]; ave
             </BarChart>
           </ResponsiveContainer>
           <div className="flex items-center justify-between px-1 text-[11px] font-medium text-muted">
-            <span className="text-gold">½★</span>
+            <span>½★</span>
             <span>{total} livre{total > 1 ? "s" : ""} noté{total > 1 ? "s" : ""}</span>
-            <span className="text-gold">★★★★★</span>
+            <span>★★★★★</span>
           </div>
         </>
       )}
@@ -415,7 +417,7 @@ export function DailyComparisonChart({
   if (chartData.length === 0) return null;
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-line bg-card p-4">
+    <div className={`flex flex-col gap-3 ${BOOK_PANEL} p-4`}>
       <div>
         <h3 className="font-serif text-[15px] font-medium text-ink">Pages / jour — 10 derniers jours</h3>
         <p className="text-[10px] text-muted">{MONTHS_FR[month]} {year}</p>
@@ -477,15 +479,18 @@ export function StatCard({
   unit,
   accent,
   vs,
+  onClick,
 }: {
   label: string;
   value: string;
   unit?: string;
   accent?: string;
   vs?: { label: string; value: string; color?: string };
+  onClick?: () => void;
 }) {
+  const Tag = onClick ? "button" : "div";
   return (
-    <div className="flex flex-col gap-1.5 rounded-2xl border border-line bg-card p-4">
+    <Tag onClick={onClick} className={`flex flex-col gap-1.5 ${BOOK_PANEL} p-4 text-left ${onClick ? "transition-transform active:scale-[0.97]" : ""}`}>
       <span className="text-[11px] font-medium uppercase tracking-wide text-muted">{label}</span>
       <span className="font-serif text-2xl font-black" style={{ color: accent || "var(--color-ink)" }}>
         {value} {unit && <span className="text-xs font-medium text-muted">{unit}</span>}
@@ -505,6 +510,6 @@ export function StatCard({
           </span>
         </div>
       )}
-    </div>
+    </Tag>
   );
 }
