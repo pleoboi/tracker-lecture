@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   }
   if (!mdId) return NextResponse.json({ cover: null });
 
-  const { cover, volume, chapter } = await findLogCover(mdId, log.unit, log.end_value);
+  const { cover, volume, chapter } = await findLogCover(mdId, log.unit, log.end_value, manga.title);
   if (cover) await adminSupabase.from("manga_logs").update({ cover_url: cover }).eq("id", log.id);
   // Tome des chapitres lus : sert à fusionner les sessions du même tome dans l'activité du club.
   // Mise à jour séparée pour que la couverture reste posée même si la colonne n'existe pas encore (v39).

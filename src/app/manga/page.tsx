@@ -52,7 +52,7 @@ export default function MangaPage() {
     if (!user) return;
     fetch("/api/manga/sync-chapters", { method: "POST" })
       .then((r) => (r.ok ? r.json() : null))
-      .then((res) => { if (res?.updated) load(); })
+      .then((res) => { if (res?.updated || res?.fixed) load(); })
       .catch(() => {});
   }, [user, load]);
 

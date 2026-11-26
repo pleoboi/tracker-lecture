@@ -176,16 +176,86 @@ export function needsReleaseTracking(r: { publication_status: string | null; sta
 
 type MdCover = { attributes: { volume: string | null; locale: string | null; fileName: string } };
 
-/** Tome qui contient un chapitre donné (agrégat MangaDex, toutes langues). */
-async function volumeOfChapter(mangadexId: string, chapter: number): Promise<number | null> {
-  const json = await md<{ volumes?: Record<string, { volume: string; chapters: Record<string, unknown> }> }>(
-    `/manga/${mangadexId}/aggregate`
-  );
-  for (const v of Object.values(json?.volumes ?? {})) {
-    if (v.volume === "none") continue;
-    if (Object.keys(v.chapters).some((c) => Math.floor(Number(c)) === chapter)) return Number(v.volume);
+type MdAggregate = { volumes?: Record<string, { volume: string; chapters: Record<string, unknown> }> };
+
+/** Agrégat MangaDex : tomes numérotés triés, et si les chapitres y sont vraiment rattachés aux tomes. */
+async function loadAggregate(mangadexId: string) {
+  const json = await md<MdAggregate>(`/manga/${mangadexId}/aggregate`);
+  const vols = Object.values(json?.volumes ?? {})
+    .filter((v) => v.volume !== "none" && Number.isFinite(Number(v.volume)))
+    .sort((x, y) => Number(x.volume) - Number(y.volume));
+  const mapped = vols.reduce((n, v) => n + Object.keys(v.chapters).length, 0);
+  // Séries licenciées (ex. Black Clover) : MangaDex n'a que quelques chapitres rattachés à un tome,
+  // l'agrégat n'est alors pas fiable.
+  return { vols, wellMapped: mapped >= 30 };
+}
+
+type VolRange = { volume: number; last: number };
+const wikiCache = new Map<string, VolRange[] | null>();
+const WIKI_HEADERS = { "User-Agent": "Swena/1.0 (manga volume lookup)" };
+
+/**
+ * Dernier chapitre de chaque tome, d'après la page Wikipédia « List of X chapters » (nombre de
+ * chapitres listés par tome, cumulés). Sert quand MangaDex ne relie pas les chapitres aux tomes.
+ */
+async function wikipediaVolumeRanges(title: string): Promise<VolRange[] | null> {
+  const key = title.trim().toLowerCase();
+  if (wikiCache.has(key)) return wikiCache.get(key)!;
+  let ranges: VolRange[] | null = null;
+  try {
+    const q = encodeURIComponent(`List of ${title} chapters`);
+    const search = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=query&list=search&format=json&srlimit=3&srsearch=${q}`,
+      { headers: WIKI_HEADERS, signal: AbortSignal.timeout(8000) }
+    ).then((r) => r.json());
+    const page = (search?.query?.search ?? [])
+      .map((x: { title: string }) => x.title)
+      .find((t: string) => /^List of .+ chapters$/i.test(t));
+    if (page) {
+      const parsed = await fetch(
+        `https://en.wikipedia.org/w/api.php?action=parse&page=${encodeURIComponent(page)}&prop=wikitext&format=json&formatversion=2`,
+        { headers: WIKI_HEADERS, signal: AbortSignal.timeout(8000) }
+      ).then((r) => r.json());
+      const text: string = parsed?.parse?.wikitext ?? "";
+      let cum = 0;
+      const out: VolRange[] = [];
+      for (const block of text.split(/\{\{Graphic novel list/i).slice(1)) {
+        const vn = Number(block.match(/VolumeNumber\s*=\s*([\d.]+)/i)?.[1]);
+        const n = (block.match(/\{\{Nihongo/g) ?? []).length;
+        if (!Number.isFinite(vn) || !n) continue;
+        cum += n;
+        out.push({ volume: vn, last: cum });
+      }
+      if (out.length >= 2) ranges = out;
+    }
+  } catch {
+    ranges = null;
   }
-  return null;
+  wikiCache.set(key, ranges);
+  return ranges;
+}
+
+/** Tome qui contient un chapitre. `beyond` : le chapitre est plus récent que le dernier tome relié. */
+async function resolveVolume(
+  mangadexId: string,
+  chapter: number,
+  title?: string | null
+): Promise<{ vol: number | null; beyond: boolean }> {
+  const { vols, wellMapped } = await loadAggregate(mangadexId);
+  const fromAggregate = () => {
+    for (const v of vols) if (Object.keys(v.chapters).some((c) => Math.floor(Number(c)) === chapter)) return Number(v.volume);
+    return null;
+  };
+  if (wellMapped) {
+    const vol = fromAggregate();
+    return { vol, beyond: vol == null };
+  }
+  const ranges = title ? await wikipediaVolumeRanges(title) : null;
+  if (ranges) {
+    const hit = ranges.find((r) => Math.floor(chapter) <= r.last);
+    return hit ? { vol: hit.volume, beyond: false } : { vol: null, beyond: true };
+  }
+  return { vol: fromAggregate(), beyond: false };
 }
 
 /**
@@ -194,13 +264,12 @@ async function volumeOfChapter(mangadexId: string, chapter: number): Promise<num
  * éditions) : on parcourt les tomes dans l'ordre et on ne garde que les chapitres entiers
  * au-delà de la fin du tome précédent.
  */
-export async function lastChapterOfVolume(mangadexId: string, volume: number): Promise<number | null> {
-  const json = await md<{ volumes?: Record<string, { volume: string; chapters: Record<string, unknown> }> }>(
-    `/manga/${mangadexId}/aggregate`
-  );
-  const vols = Object.values(json?.volumes ?? {})
-    .filter((v) => v.volume !== "none" && Number.isFinite(Number(v.volume)))
-    .sort((x, y) => Number(x.volume) - Number(y.volume));
+export async function lastChapterOfVolume(mangadexId: string, volume: number, title?: string | null): Promise<number | null> {
+  const { vols, wellMapped } = await loadAggregate(mangadexId);
+  if (!wellMapped && title) {
+    const hit = (await wikipediaVolumeRanges(title))?.find((r) => r.volume === volume);
+    if (hit) return hit.last;
+  }
   let prevMax = 0;
   for (const v of vols) {
     const nums = Object.keys(v.chapters)
@@ -221,10 +290,14 @@ export async function lastChapterOfVolume(mangadexId: string, volume: number): P
 export async function findLogCover(
   mangadexId: string,
   unit: "chapter" | "volume",
-  value: number
+  value: number,
+  title?: string | null
 ): Promise<{ cover: string | null; volume: number | null; chapter: number | null }> {
-  const vol = unit === "volume" ? value : await volumeOfChapter(mangadexId, value);
-  const chapter = unit === "volume" ? await lastChapterOfVolume(mangadexId, value) : null;
+  const resolved = unit === "volume" ? { vol: value, beyond: false } : await resolveVolume(mangadexId, value, title);
+  const vol = resolved.vol;
+  const chapter = unit === "volume" ? await lastChapterOfVolume(mangadexId, value, title) : null;
+  // Tome inconnu alors que le chapitre devrait en avoir un : pas de couverture plutôt que celle du dernier tome.
+  if (vol == null && !resolved.beyond) return { cover: null, volume: null, chapter };
   const covers: MdCover[] = [];
   for (let offset = 0; offset < 300; offset += 100) {
     const json = await md<{ data: MdCover[]; total: number }>(
