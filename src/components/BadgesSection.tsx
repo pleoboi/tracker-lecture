@@ -7,6 +7,7 @@ import {
   BADGE_CUTOFF_DATE,
   type BadgeDef, type BadgeTier, type IconKey, type BadgeType, type UserBadgeStats,
 } from "../lib/badges";
+import BookmarkBadge from "./BookmarkArt";
 
 // ── Gradients par (type, palier) [top, bottom] ───────────────────────────────
 const TYPE_GRADIENT: Record<BadgeType, [string, string][]> = {
@@ -239,71 +240,7 @@ function BadgeIcon({ iconKey, size = 22 }: { iconKey: IconKey; size?: number }) 
   return icons[iconKey] ?? null;
 }
 
-// ── BookmarkBadge ─────────────────────────────────────────────────────────────
-export function BookmarkBadge({ def, unlocked, unlockedAt, size = 56 }: {
-  def: BadgeDef; unlocked: boolean; unlockedAt?: string; size?: number;
-}) {
-  const w      = size;
-  const h      = Math.round(w * 1.42);
-  const notch  = Math.round(h * 0.13);
-  const hdrH   = Math.round(h * 0.26);
-  const gradId   = `bk-g-${def.id}-${size}`;
-  const shadowId = `bk-s-${def.id}-${size}`;
-  const tierMeta = TIER_META[def.tier as BadgeTier];
-  const [c1, c2] = unlocked
-    ? TYPE_GRADIENT[def.type as BadgeType][def.tier - 1]
-    : ["#374151", "#1f2937"];
-
-  const path    = `M 4,0 L ${w - 4},0 Q ${w},0 ${w},4 L ${w},${h} L ${w / 2},${h - notch} L 0,${h} L 0,4 Q 0,0 4,0 Z`;
-  const hdrPath = `M 4,0 L ${w - 4},0 Q ${w},0 ${w},4 L ${w},${hdrH} L 0,${hdrH} L 0,4 Q 0,0 4,0 Z`;
-  const iconY   = hdrH + (h - notch - hdrH) / 2 - 12;
-
-  return (
-    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} overflow="visible">
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="0.3" y2="1">
-          <stop offset="0%" stopColor={c1} />
-          <stop offset="100%" stopColor={c2} />
-        </linearGradient>
-        <filter id={shadowId} x="-30%" y="-15%" width="160%" height="145%">
-          <feDropShadow dx="0" dy={unlocked ? 3 : 1} stdDeviation={unlocked ? 4 : 2}
-            floodOpacity={unlocked ? 0.4 : 0.12} floodColor="#000" />
-        </filter>
-      </defs>
-      <path d={path} fill={`url(#${gradId})`} filter={`url(#${shadowId})`} />
-      <path d={hdrPath} fill="white" fillOpacity={0.14} />
-      <line x1={w * 0.14} y1={hdrH} x2={w * 0.86} y2={hdrH} stroke="white" strokeWidth="0.6" opacity={0.28} />
-      {unlocked && (
-        <>
-          <line x1={w * 0.2} y1={h * 0.72} x2={w * 0.8} y2={h * 0.72} stroke="white" strokeWidth="0.8" opacity={0.22} />
-          <line x1={w * 0.27} y1={h * 0.8} x2={w * 0.73} y2={h * 0.8} stroke="white" strokeWidth="0.7" opacity={0.14} />
-        </>
-      )}
-      <g transform={`translate(${w / 2 - 11}, ${iconY})`} opacity={unlocked ? 1 : 0.28}>
-        <BadgeIcon iconKey={def.iconKey} size={22} />
-      </g>
-      {unlocked && (
-        <>
-          <circle cx={w - 9} cy={9} r={7.5} fill={tierMeta.stroke} />
-          <text x={w - 9} y={12.5} textAnchor="middle" fill="white"
-            fontSize={7} fontWeight="800" fontFamily="system-ui">{def.tier}</text>
-        </>
-      )}
-      <circle cx={w / 2} cy={5.5} r={3.5} fill="black" fillOpacity={unlocked ? 0.32 : 0.18} />
-      <circle cx={w / 2} cy={5.5} r={2}   fill={unlocked ? c1 : "#444"} fillOpacity={0.65} />
-      {unlocked && unlockedAt && (
-        <text x={w / 2} y={hdrH - 3} textAnchor="middle" fill="white"
-          fontSize={Math.max(5.5, w * 0.095)} fontWeight="600" fontFamily="system-ui" opacity={0.7}>
-          {new Date(unlockedAt).toLocaleDateString("fr-FR", { month: "short", year: "2-digit" })}
-        </text>
-      )}
-      {unlocked && (
-        <ellipse cx={w * 0.28} cy={hdrH * 0.45} rx={w * 0.12} ry={hdrH * 0.2}
-          fill="white" fillOpacity={0.12} />
-      )}
-    </svg>
-  );
-}
+export { BookmarkBadge };
 
 // ── VictoryModal ──────────────────────────────────────────────────────────────
 export function VictoryModal({ def, onClose }: { def: BadgeDef; onClose: () => void }) {

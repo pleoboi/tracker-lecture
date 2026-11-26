@@ -3,8 +3,46 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
-import { MAX_MESSAGE, markConversationRead, sendDirectMessage, type DirectMessage } from "../../lib/chat";
+import Link from "next/link";
+import { MAX_MESSAGE, markConversationRead, parseMessage, sendDirectMessage, type DirectMessage } from "../../lib/chat";
 import QuickActions from "./QuickActions";
+
+type AttachedBook = { id: number; title: string; author: string; cover_url: string | null };
+const bookCache = new Map<number, AttachedBook | null>();
+
+/** Livre joint à un message : couverture au-dessus du texte, un clic ouvre la fiche du livre. */
+function BookAttachment({ body, mine }: { body: string; mine: boolean }) {
+  const bookId = parseMessage(body).bookId;
+  const [book, setBook] = useState<AttachedBook | null | undefined>(bookId != null ? bookCache.get(bookId) : null);
+  useEffect(() => {
+    if (bookId == null || bookCache.has(bookId)) return;
+    let alive = true;
+    supabase.from("books").select("id, title, author, cover_url").eq("id", bookId).maybeSingle().then(({ data }) => {
+      const b = (data as AttachedBook | null) ?? null;
+      bookCache.set(bookId, b);
+      if (alive) setBook(b);
+    });
+    return () => { alive = false; };
+  }, [bookId]);
+  if (bookId == null || book === null) return null;
+  return (
+    <Link
+      href={`/livre/${bookId}`}
+      onClick={() => window.dispatchEvent(new Event("swena:close-chat"))}
+      className={`mb-2 block w-[132px] max-w-full overflow-hidden rounded-xl shadow-md transition-transform duration-[140ms] ease-[cubic-bezier(0.32,0.72,0,1)] hover:scale-[1.03] active:scale-[0.97] ${mine ? "ring-1 ring-cream/30" : "ring-1 ring-line"}`}
+      aria-label={book ? `Voir la fiche de ${book.title}` : "Voir la fiche du livre"}
+    >
+      {book === undefined ? (
+        <span className="block aspect-[2/3] w-full animate-pulse bg-black/10" />
+      ) : book.cover_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={book.cover_url} alt={book.title} className="aspect-[2/3] w-full object-cover" />
+      ) : (
+        <span className="flex aspect-[2/3] w-full items-center justify-center bg-violet-soft p-2 text-center font-serif text-[12px] font-semibold text-violet-deep">{book.title}</span>
+      )}
+    </Link>
+  );
+}
 
 function dayLabel(iso: string) {
   const d = new Date(iso);
@@ -103,7 +141,8 @@ export default function ChatThread({ otherId, otherName, compact = false }: { ot
                 <div className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                   <div className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl leading-snug ${bubble} ${
                     mine ? "rounded-br-md bg-violet text-cream" : "rounded-bl-md border border-line bg-card text-ink"}`}>
-                    {m.body}
+                    <BookAttachment body={m.body} mine={mine} />
+                    {parseMessage(m.body).text}
                     <span className={`ml-2 inline-block align-bottom text-[10px] ${mine ? "text-cream/70" : "text-muted"}`}>
                       {new Date(m.created_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
                     </span>

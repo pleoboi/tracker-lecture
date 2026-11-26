@@ -559,6 +559,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     book_id: number;
     book_title: string;
     manga?: boolean;
+    kind?: "activity" | "review" | "comment";
     created_at: string;
     isNew: boolean;
   }[]>([]);
@@ -662,7 +663,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         .from("notifications")
         .select("id, type, from_user_id, book_id, book_title, created_at")
         .eq("user_id", uid)
-        .in("type", ["review_like", "manga_like"])
+        .in("type", ["review_like", "session_like", "session_comment", "manga_like"])
         .order("created_at", { ascending: false })
         .limit(20),
       supabase
@@ -703,7 +704,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     setNotifFollowers(enriched);
 
     // Likes
-    let enrichedLikes: { id: string; from_user_id: string; from_name: string; book_id: number; book_title: string; manga?: boolean; created_at: string; isNew: boolean }[] = [];
+    let enrichedLikes: { id: string; from_user_id: string; from_name: string; book_id: number; book_title: string; manga?: boolean; kind?: "activity" | "review" | "comment"; created_at: string; isNew: boolean }[] = [];
     if (likeRows && likeRows.length > 0) {
       type LikeRow = { id: string; type: string; from_user_id: string; book_id: number; book_title: string; created_at: string };
       const senderIds = [...new Set((likeRows as LikeRow[]).map((r) => r.from_user_id))];
@@ -716,6 +717,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         book_id: r.book_id,
         book_title: r.book_title ?? (r.type === "manga_like" ? "un manga" : "un livre"),
         manga: r.type === "manga_like",
+        kind: r.type === "session_like" || r.type === "manga_like" ? "activity" : r.type === "session_comment" ? "comment" : "review",
         created_at: r.created_at,
         isNew: r.created_at > lastSeen,
       }));
@@ -1191,7 +1193,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-[12.5px] font-semibold text-ink">
                             {(item as typeof likeNotifs[0] & { _type: "like" }).from_name}{" "}
-                            <span className="font-normal text-muted">a aimé ton activité sur</span>
+                            <span className="font-normal text-muted">
+                              {(() => { const k = (item as typeof likeNotifs[0] & { _type: "like" }).kind; return k === "review" ? "a aimé ta critique sur" : k === "comment" ? "a commenté ton activité sur" : "a aimé ton activité sur"; })()}
+                            </span>
                           </p>
                           <p className="truncate text-[11px] text-muted italic">
                             {(item as typeof likeNotifs[0] & { _type: "like" }).book_title} · {relativeTime(item.created_at)}

@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { supabase } from "../lib/supabase";
 import { useAuth } from "../lib/auth-context";
 import { AvatarImg } from "./ui";
-import { unreadCount, type DirectMessage } from "../lib/chat";
+import { parseMessage, unreadCount, type DirectMessage } from "../lib/chat";
 import ChatThread from "./chat/ChatThread";
 import ConversationList, { useConversations, type Convo } from "./chat/ConversationList";
 import NewConversation, { useFriends, type Friend } from "./chat/NewConversation";
@@ -112,6 +112,13 @@ export default function ChatPopup({ demo }: { demo?: { convos: Convo[]; friends?
   const openRef = useRef(open);
   useEffect(() => { openRef.current = open; }, [open]);
 
+  // Fermeture demandée par un lien de la conversation (ex. fiche d'un livre joint) : sinon le panneau reste par-dessus la page
+  useEffect(() => {
+    const onClose = () => { setOpen(false); setPeer(null); setComposing(false); };
+    window.addEventListener("swena:close-chat", onClose);
+    return () => window.removeEventListener("swena:close-chat", onClose);
+  }, []);
+
   // Ouverture depuis l'en-tête ou un autre écran
   useEffect(() => {
     const onOpen = (e: Event) => {
@@ -144,7 +151,7 @@ export default function ChatPopup({ demo }: { demo?: { convos: Convo[]; friends?
           setComposing(false);
           setOpen(true);
         } else {
-          if (!openRef.current) setBanner({ ...from, body: m.body });
+          if (!openRef.current) setBanner({ ...from, body: parseMessage(m.body).text });
         }
       })
       .subscribe();

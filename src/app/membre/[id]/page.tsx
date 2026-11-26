@@ -219,19 +219,8 @@ export default function MembrePage() {
       {/* Profile header — le bouton options/message flotte dans le coin de la
           carte plutôt que d'occuper une ligne à part (le bouton retour a été
           retiré : chaque section a désormais son propre lien de retour). */}
-      <div className="relative flex items-center gap-4 rounded-2xl bg-violet-soft px-5 py-6">
-        {!isOwn && user?.id && (
-          <Link
-            href={`/messages/${memberId}`}
-            className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border border-line bg-card text-muted transition-colors hover:border-violet/40 hover:text-ink"
-            aria-label="Envoyer un message"
-            title="Envoyer un message"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.4A8 8 0 1 1 21 12Z" />
-            </svg>
-          </Link>
-        )}
+      <div className="relative flex flex-col gap-4 rounded-2xl bg-violet-soft px-5 py-6">
+        <div className="flex items-center gap-4">
         <AvatarImg url={profile.avatar_url} name={profile.display_name} className="h-16 w-16 text-2xl" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -259,42 +248,45 @@ export default function MembrePage() {
               <span className="text-muted"> abonnement{followingCount !== 1 ? "s" : ""}</span>
             </button>
           </div>
-          {!isOwn && user?.id && (
-            <div className="mt-3 flex gap-2">
-              <button
-                onClick={handleFollow}
-                disabled={loadingFollow}
-                className={`flex-1 rounded-2xl py-3 text-sm font-semibold transition-colors disabled:opacity-50 sm:flex-none sm:rounded-xl sm:px-5 sm:py-2 ${
-                  isFollowing
-                    ? "border border-line bg-card text-muted hover:border-danger/50 hover:text-danger"
-                    : "bg-violet text-cream hover:opacity-90"
-                }`}
-              >
-                {loadingFollow ? "…" : isFollowing ? "Abonné ✓" : "S'abonner"}
-              </button>
-              <button
-                onClick={async () => {
-                  if (!user?.id) return;
-                  const { data } = await supabase.from("books").select("id, title, author, cover_url").eq("user_id", user.id).order("title");
-                  setRecoBooks((data ?? []) as { id: number; title: string; author: string; cover_url: string | null }[]);
-                  setRecoSelected(null);
-                  setRecoMessage("");
-                  setRecoSearch("");
-                  setShowRecoModal(true);
-                }}
-                className="flex-1 rounded-2xl border border-violet/40 bg-violet-soft py-3 text-sm font-semibold text-violet-deep transition-colors hover:bg-violet/10 sm:flex-none sm:rounded-xl sm:px-5 sm:py-2"
-              >
-                Recommander un livre
-              </button>
-              <Link
-                href={`/messages/${memberId}`}
-                className="flex items-center justify-center rounded-2xl border border-line bg-card px-4 py-3 text-sm font-semibold text-ink transition-colors hover:border-violet/40 sm:rounded-xl sm:py-2"
-              >
-                Message
-              </Link>
-            </div>
-          )}
         </div>
+        </div>
+        {!isOwn && user?.id && (
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={handleFollow}
+              disabled={loadingFollow}
+              className={`w-full rounded-2xl py-3 text-sm font-semibold transition-colors disabled:opacity-50 ${
+                isFollowing
+                  ? "border border-line bg-card text-muted hover:border-danger/50 hover:text-danger"
+                  : "bg-violet text-cream hover:opacity-90"
+              }`}
+            >
+              {loadingFollow ? "…" : isFollowing ? "Abonné ✓" : "S'abonner"}
+            </button>
+            <div className="flex gap-2">
+              <button
+              onClick={async () => {
+                if (!user?.id) return;
+                const { data } = await supabase.from("books").select("id, title, author, cover_url").eq("user_id", user.id).order("title");
+                setRecoBooks((data ?? []) as { id: number; title: string; author: string; cover_url: string | null }[]);
+                setRecoSelected(null);
+                setRecoMessage("");
+                setRecoSearch("");
+                setShowRecoModal(true);
+              }}
+              className="flex-1 rounded-2xl border border-violet/40 bg-card py-3 text-[13px] font-semibold text-violet-deep transition-colors hover:bg-violet/10"
+            >
+              Recommander un livre
+            </button>
+            <Link
+              href={`/messages/${memberId}`}
+              className="flex flex-1 items-center justify-center rounded-2xl border border-line bg-card py-3 text-[13px] font-semibold text-ink transition-colors hover:border-violet/40"
+            >
+              Message
+            </Link>
+            </div>
+        </div>
+      )}
       </div>
 
       {/* Stats chips */}

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../lib/auth-context";
 import { AvatarImg } from "../ui";
-import { shortTime, type DirectMessage } from "../../lib/chat";
+import { parseMessage, shortTime, type DirectMessage } from "../../lib/chat";
 
 export type Convo = { otherId: string; name: string; avatar: string | null; last: DirectMessage; unread: number };
 
@@ -74,7 +74,7 @@ export default function ConversationList({ convos, me, onSelect, compact = false
               </div>
               <div className="flex items-center justify-between gap-2">
                 <p className={`truncate text-[12.5px] ${c.unread ? "font-semibold text-ink" : "text-muted"}`}>
-                  {c.last.sender_id === me ? "Toi : " : ""}{c.last.body}
+                  {c.last.sender_id === me ? "Toi : " : ""}{parseMessage(c.last.body).bookId ? "Livre · " : ""}{parseMessage(c.last.body).text}
                 </p>
                 {c.unread > 0 && <span className="h-2 w-2 shrink-0 rounded-full bg-violet" />}
               </div>

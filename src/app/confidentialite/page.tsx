@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import LegalPage, { LegalSection } from "../../components/LegalPage";
+import CookieSettingsButton from "../../components/CookieSettingsButton";
 
 export const metadata: Metadata = {
   title: "Politique de confidentialité · Swena",
@@ -70,8 +71,13 @@ export default function ConfidentialitePage() {
         <p>
           Swena n&apos;utilise que des cookies strictement nécessaires : ils maintiennent
           votre session ouverte et mémorisent vos préférences d&apos;affichage (thème,
-          filtres). Ils ne servent ni au suivi publicitaire ni à la mesure d&apos;audience,
-          et ne nécessitent donc pas de bandeau de consentement.
+          filtres). Ils ne servent ni au suivi publicitaire ni à la mesure d&apos;audience.
+          Une mesure d&apos;audience anonyme pourra être proposée plus tard : elle ne sera
+          activée qu&apos;avec votre accord, que vous pouvez donner, refuser ou retirer à
+          tout moment.
+        </p>
+        <p>
+          <CookieSettingsButton />
         </p>
       </LegalSection>
 

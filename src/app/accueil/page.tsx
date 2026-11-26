@@ -443,7 +443,7 @@ export default function AccueilPage() {
         await supabase.from("notifications").insert({
           user_id: log.user_id,
           from_user_id: userId,
-          type: "review_like",
+          type: "session_like",
           book_id: log.bookId,
           book_title: log.bookTitle,
         });
@@ -525,8 +525,6 @@ export default function AccueilPage() {
 
   // IntersectionObserver — révélation des éléments .reveal au scroll
   useEffect(() => {
-    const els = document.querySelectorAll<HTMLElement>(".reveal");
-    if (!els.length) return;
     const io = new IntersectionObserver(
       (entries) => entries.forEach((e) => {
         if (e.isIntersecting) {
@@ -536,9 +534,17 @@ export default function AccueilPage() {
       }),
       { threshold: 0.08, rootMargin: "0px 0px -20px 0px" }
     );
-    els.forEach((el) => io.observe(el));
-    return () => io.disconnect();
-  }, [loading, activityLoading]);
+    const seen = new WeakSet<Element>();
+    const scan = () => document.querySelectorAll<HTMLElement>(".reveal:not(.visible)").forEach((el) => {
+      if (!seen.has(el)) { seen.add(el); io.observe(el); }
+    });
+    scan();
+    // Les blocs qui arrivent après coup (teaser Wrapped, challenges…) sont aussi observés :
+    // sans ça ils restaient invisibles et laissaient un grand vide dans la page.
+    const mo = new MutationObserver(scan);
+    mo.observe(document.body, { childList: true, subtree: true });
+    return () => { mo.disconnect(); io.disconnect(); };
+  }, []);
 
   const showToast = (m: string) => {
     setToast(m);
@@ -619,7 +625,7 @@ export default function AccueilPage() {
         setNoteLikeCount((n) => n + 1);
         await supabase.from("notifications").insert({
           user_id: noteModal.reviewerUserId,
-          type: "review_like",
+          type: "session_like",
           from_user_id: userId,
           book_id: noteModal.bookId,
           book_title: noteModal.bookTitle,
@@ -656,7 +662,7 @@ export default function AccueilPage() {
         notifyUser(
           noteModal.reviewerUserId,
           "Swena",
-          `${displayName} a aimé ton activité sur «${noteModal.bookTitle || "ton livre"}»`,
+          `${displayName} a aimé ta critique sur «${noteModal.bookTitle || "ton livre"}»`,
           undefined,
           "likes",
         );
@@ -686,7 +692,7 @@ export default function AccueilPage() {
       if (noteModal.reviewerUserId !== userId) {
         await supabase.from("notifications").insert({
           user_id: noteModal.reviewerUserId,
-          type: "review_like",
+          type: "session_comment",
           from_user_id: userId,
           book_id: noteModal.bookId,
           book_title: noteModal.bookTitle,
@@ -1215,13 +1221,13 @@ export default function AccueilPage() {
                   }`}
                 >
                   <span className="text-sm">{noteLiked ? "♥" : "♡"}</span>
-                  {noteLikeCount > 0 ? `${noteLikeCount} j'aime` : "J'aime"}
+                  {noteLikeCount > 0 ? `${noteLikeCount} j'aime` : "J'aime"} cette {noteModal.type === "review" ? "critique" : "activité"}
                 </button>
               ) : (
                 noteLikeCount > 0 && (
                   <p className="flex items-center gap-1.5 px-1 text-[12px] font-medium text-muted">
                     <span className="text-danger">♥</span>
-                    {noteLikeCount} j&apos;aime
+                    {noteLikeCount} j&apos;aime sur cette {noteModal.type === "review" ? "critique" : "activité"}
                   </p>
                 )
               )}

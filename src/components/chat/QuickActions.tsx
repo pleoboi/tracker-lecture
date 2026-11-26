@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { supabase } from "../../lib/supabase";
+import { bookMessage } from "../../lib/chat";
 
 type MiniBook = { id: number; title: string; author: string; cover_url: string | null; status: string; progress: number | null; pages: number | null };
 
@@ -48,7 +49,7 @@ export default function QuickActions({ me, otherId, onSend, onPrefill }: {
       const where = b.pages && b.progress ? ` (page ${b.progress} sur ${b.pages})` : "";
       text = `Je lis en ce moment « ${b.title} »${b.author ? ` de ${b.author}` : ""}${where}.`;
     }
-    const ok = await onSend(text);
+    const ok = await onSend(bookMessage(b.id, text));
     setBusy(false);
     if (ok) setPicker(null);
   };

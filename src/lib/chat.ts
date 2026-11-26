@@ -13,6 +13,15 @@ export type DirectMessage = {
 
 export const MAX_MESSAGE = 1000;
 
+// Un message peut porter un livre : la couverture s'affiche au-dessus du texte et mène à la fiche.
+// Stocké en tête du texte (« ⟦livre:12⟧Je te recommande… ») pour ne pas toucher à la base.
+const BOOK_TAG = /^⟦livre:(\d+)⟧/;
+export const bookMessage = (bookId: number, text: string) => `⟦livre:${bookId}⟧${text}`;
+export function parseMessage(body: string): { bookId: number | null; text: string } {
+  const m = body.match(BOOK_TAG);
+  return m ? { bookId: Number(m[1]), text: body.slice(m[0].length) } : { bookId: null, text: body };
+}
+
 export async function sendDirectMessage(fromId: string, fromName: string, toId: string, text: string): Promise<DirectMessage | null> {
   const body = text.trim().slice(0, MAX_MESSAGE);
   if (!body) return null;
@@ -22,8 +31,9 @@ export async function sendDirectMessage(fromId: string, fromName: string, toId: 
     .select()
     .single();
   if (error) return null;
+  const preview = parseMessage(body).text;
   if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("swena:message-sent"));
-  notifyUser(toId, "Swena", `${fromName} : ${body.length > 90 ? body.slice(0, 90) + "…" : body}`, `/messages/${fromId}`, "messages");
+  notifyUser(toId, "Swena", `${fromName} : ${preview.length > 90 ? preview.slice(0, 90) + "…" : preview}`, `/messages/${fromId}`, "messages");
   return data as DirectMessage;
 }
 

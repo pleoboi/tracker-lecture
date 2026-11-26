@@ -17,18 +17,9 @@ import Lightbox from "../../../components/Lightbox";
 import { notifyUser } from "../../../lib/push.client";
 import { stripHtml } from "../../../lib/googleBooks";
 import BookQuotes from "../../../components/BookQuotes";
+import { CANONICAL_GENRES, normalizeGenres } from "../../../lib/genres";
 
-const GENRES = [
-  "Roman", "Fiction", "Non-Fiction", "Classique", "Nouvelle",
-  "Thriller", "Policier", "Crime", "Mystère",
-  "Fantasy", "Science-Fiction",
-  "Histoire", "Biographie", "Témoignage", "Jeunesse",
-  "BD / Roman graphique", "Manga", "Comics",
-  "Développement personnel", "Philosophie", "Poésie", "Psychologie",
-  "Économie", "Science", "Sciences humaines", "Sciences politiques",
-  "Essai", "Aventure", "Romance", "Humour", "Sport", "Cinéma",
-  "Musique", "Drame", "Suspense", "Théâtre", "Guerre",
-];
+const GENRES: string[] = [...CANONICAL_GENRES];
 
 interface MemberEntry {
   userId: string;
@@ -187,11 +178,9 @@ export default function BookDetailPage() {
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesDraft, setNotesDraft] = useState("");
   const [editingInfo, setEditingInfo] = useState(false);
-  const [infoDraft, setInfoDraft] = useState({ title: "", author: "", year: "", pages: "", summary: "", coverUrl: "", isbn: "" });
+  const [infoDraft, setInfoDraft] = useState({ title: "", author: "", year: "", pages: "", summary: "", coverUrl: "", isbn: "", genre: "" });
   const [enrichingInfo, setEnrichingInfo] = useState(false);
   const [enrichInfoMsg, setEnrichInfoMsg] = useState<string | null>(null);
-  const [detectedGenres, setDetectedGenres] = useState<string[]>([]);
-  const [applyingGenres, setApplyingGenres] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
 
   // Social
@@ -271,6 +260,7 @@ export default function BookDetailPage() {
       summary: urlBook.summary || "",
       coverUrl: urlBook.cover_url || "",
       isbn: urlBook.isbn13 || "",
+      genre: urlBook.genre || "",
     });
 
     // Étape B : copie de l'utilisateur connecté (peut être le même livre)
@@ -445,7 +435,7 @@ export default function BookDetailPage() {
           book_title: book.title,
         });
         const senderName = user?.user_metadata?.display_name || user?.email?.split("@")[0] || "Quelqu'un";
-        notifyUser(selectedMember.userId, "Swena", `${senderName} a aimé ton activité sur «${book.title}»`, undefined, "likes");
+        notifyUser(selectedMember.userId, "Swena", `${senderName} a aimé ta critique sur «${book.title}»`, undefined, "likes");
       }
     }
     setLikeLoading(false);
@@ -471,7 +461,6 @@ export default function BookDetailPage() {
     if (!title) { setEnrichInfoMsg("Renseigne au moins le titre."); return; }
     setEnrichingInfo(true);
     setEnrichInfoMsg(null);
-    setDetectedGenres([]);
     try {
       const [enrichRes, coversRes] = await Promise.all([
         fetch(`/api/books/enrich?title=${encodeURIComponent(title)}&author=${encodeURIComponent(author)}`)
@@ -491,21 +480,17 @@ export default function BookDetailPage() {
         // On conserve la couverture actuelle si elle existe ; on ne la remplit que si vide.
         coverUrl: d.coverUrl || cover,
       }));
-      // Genres : on ne propose que ceux détectés dans la liste canonique et pas
-      // déjà présents sur le livre — validés d'un clic via le bouton dédié
-      // (pas via le panneau "Modifier le genre", qui réinitialise sa sélection
-      // à chaque ouverture depuis le genre déjà enregistré).
-      const canonical = new Set(GENRES);
-      const currentGenres = new Set((book?.genre ?? "").split(", ").filter(Boolean));
-      const fetchedGenres = (enrichRes.genres ?? []) as string[];
-      const newGenres = [...new Set(fetchedGenres.filter((g) => canonical.has(g)))]
-        .filter((g) => !currentGenres.has(g));
-      setDetectedGenres(newGenres);
+      // Genres : ajoutés directement à ceux du livre (liste canonique, étiquette Fiction / Non-Fiction
+      // déduite). Visibles et modifiables dans le formulaire avant d'enregistrer.
+      const currentGenres = infoDraft.genre.split(", ").filter(Boolean);
+      const mergedGenres = normalizeGenres([...currentGenres, ...((enrichRes.genres ?? []) as string[])], { web: true }).genre;
+      const newGenres = mergedGenres.split(", ").filter((g) => g && !currentGenres.includes(g));
+      if (mergedGenres) setInfoDraft((d) => ({ ...d, genre: mergedGenres }));
 
       const got = !!enrichRes.summary || !!enrichRes.year || (coversRes.covers?.length ?? 0) > 0 || newGenres.length > 0;
       setEnrichInfoMsg(
         got
-          ? "Infos récupérées. Utilise ✎ pour changer la couverture (l'actuelle reste proposée)."
+          ? `Infos récupérées${newGenres.length ? `, genres ajoutés : ${newGenres.join(", ")}` : ""}. Vérifie puis enregistre. Utilise ✎ pour changer la couverture.`
           : "Aucune information trouvée pour ce titre.",
       );
     } catch {
@@ -513,21 +498,6 @@ export default function BookDetailPage() {
     } finally {
       setEnrichingInfo(false);
     }
-  };
-
-  // Ajoute les genres détectés par l'enrichissement web au genre déjà enregistré
-  // (fusion, sans rien retirer). Écrit directement, indépendamment du panneau
-  // "Modifier le genre" qui a sa propre logique d'édition manuelle.
-  const applyDetectedGenres = async () => {
-    if (!activeBook || detectedGenres.length === 0 || applyingGenres) return;
-    setApplyingGenres(true);
-    const current = activeBook.genre?.split(", ").filter(Boolean) ?? [];
-    const merged = [...new Set([...current, ...detectedGenres])];
-    const genre = merged.join(", ");
-    await supabase.from("books").update({ genre }).eq("id", activeBook.id);
-    updateActiveBook({ ...activeBook, genre });
-    setDetectedGenres([]);
-    setApplyingGenres(false);
   };
 
   const saveInfo = async () => {
@@ -541,6 +511,7 @@ export default function BookDetailPage() {
       summary: infoDraft.summary.trim() || null,
       cover_url: infoDraft.coverUrl.trim() || null,
       isbn13: infoDraft.isbn.replace(/[^0-9Xx]/g, "") || null,
+      genre: infoDraft.genre.trim() || null,
     };
     if (isAdmin) {
       // Admin : métadonnées globales (toutes les copies), pages uniquement sur sa propre copie
@@ -653,11 +624,22 @@ export default function BookDetailPage() {
   };
 
   const saveGenreMulti = async () => {
-    if (!activeBook || savingGenreEdit) return;
+    if (!book || savingGenreEdit) return;
     setSavingGenreEdit(true);
     const genre = genreSelection.length > 0 ? genreSelection.join(", ") : null;
-    await supabase.from("books").update({ genre }).eq("id", activeBook.id);
-    updateActiveBook({ ...activeBook, genre });
+    if (isAdmin) {
+      // Admin : le genre s'applique à toutes les copies du livre
+      const { data: { session } } = await supabase.auth.getSession();
+      await fetch("/api/books/update-metadata", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token ?? ""}` },
+        body: JSON.stringify({ title: book.title, update: { genre } }),
+      });
+    } else if (activeBook) {
+      await supabase.from("books").update({ genre }).eq("id", activeBook.id);
+    }
+    setBook({ ...book, genre });
+    if (activeBook) updateActiveBook({ ...activeBook, genre });
     setSavingGenreEdit(false);
     setEditingGenre(false);
   };
@@ -829,15 +811,15 @@ export default function BookDetailPage() {
             {stats.durationDays != null && (
               <Pill tone="violet">Lu en {stats.durationDays} jour{stats.durationDays > 1 ? "s" : ""}</Pill>
             )}
-            {isOwner && (
+            {canEdit && (
               <button
                 onClick={() => {
-                  setGenreSelection(activeBook!.genre?.split(", ").filter(Boolean) || []);
+                  setGenreSelection((activeBook?.genre ?? book.genre)?.split(", ").filter(Boolean) || []);
                   setEditingGenre((v) => !v);
                 }}
                 className="rounded-full border border-dashed border-violet/40 px-2.5 py-0.5 text-[10.5px] font-medium text-muted transition-colors hover:border-violet hover:text-violet-deep"
               >
-                {editingGenre ? "✕ Fermer" : activeBook!.genre ? "Modifier le genre" : "+ Genre"}
+                {editingGenre ? "✕ Fermer" : (activeBook?.genre ?? book.genre) ? "Modifier le genre" : "+ Genre"}
               </button>
             )}
           </div>
@@ -1551,29 +1533,33 @@ export default function BookDetailPage() {
             </button>
             {enrichInfoMsg && <p className="text-[10.5px] font-medium text-muted">{enrichInfoMsg}</p>}
 
-            {/* Genres détectés par l'enrichissement — ajout d'un clic */}
-            {detectedGenres.length > 0 && (
-              <div className="flex flex-col gap-2 rounded-xl border border-violet/30 bg-violet-soft p-3">
-                <p className="text-[10.5px] font-medium text-violet-deep">
-                  Genre{detectedGenres.length > 1 ? "s" : ""} détecté{detectedGenres.length > 1 ? "s" : ""} :
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {detectedGenres.map((g) => (
-                    <span key={g} className="rounded-full bg-violet px-2.5 py-1 text-[10.5px] font-medium text-cream">
+            {/* Genres du livre : ajoutés par « Récupérer les infos », modifiables à la main */}
+            <div className="flex flex-col gap-2 rounded-xl border border-line bg-paper p-3">
+              <p className="text-[10.5px] font-medium text-muted">Genres</p>
+              <div className="flex flex-wrap gap-1.5">
+                {GENRES.map((g) => {
+                  const picked = infoDraft.genre.split(", ").filter(Boolean);
+                  const active = picked.includes(g);
+                  return (
+                    <button
+                      key={g}
+                      type="button"
+                      onClick={() => {
+                        const next = active ? picked.filter((x) => x !== g) : [...picked, g];
+                        const order = new Map(GENRES.map((x, i) => [x, i]));
+                        next.sort((a, b) => (order.get(a) ?? 99) - (order.get(b) ?? 99));
+                        setInfoDraft((d) => ({ ...d, genre: next.join(", ") }));
+                      }}
+                      className={`rounded-full border px-2.5 py-1 text-[10.5px] font-medium transition-colors ${
+                        active ? "border-violet bg-violet text-cream" : "border-line bg-input text-ink hover:border-violet/40"
+                      }`}
+                    >
                       {g}
-                    </span>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={applyDetectedGenres}
-                  disabled={applyingGenres}
-                  className="rounded-lg border border-violet/40 bg-paper py-1.5 text-[11px] font-semibold text-violet-deep transition-colors hover:border-violet disabled:opacity-50"
-                >
-                  {applyingGenres ? "Ajout…" : "Ajouter ce" + (detectedGenres.length > 1 ? "s genres" : " genre")}
-                </button>
+                    </button>
+                  );
+                })}
               </div>
-            )}
+            </div>
 
             <div className="flex gap-2">
               <input

@@ -6,6 +6,7 @@ import { AuthProvider } from "../lib/auth-context";
 import GlobalBadgeChecker from "../components/GlobalBadgeChecker";
 import PushPermissionPrompt from "../components/PushPermissionPrompt";
 import ServiceWorkerRegistrar from "../components/ServiceWorkerRegistrar";
+import CookieBanner from "../components/CookieBanner";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -80,6 +81,7 @@ export default function RootLayout({
           <PushPermissionPrompt />
           <ServiceWorkerRegistrar />
         </AuthProvider>
+        <CookieBanner />
       </body>
     </html>
   );
