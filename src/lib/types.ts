@@ -52,4 +52,6 @@ export interface ReadingLog {
   user_id?: string | null;
   session_notes?: string | null;
   session_photo_url?: string | null;
+  /** Note et photo de la session visibles seulement par leur auteur (migration v47). */
+  session_private?: boolean | null;
 }

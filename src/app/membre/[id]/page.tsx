@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../lib/supabase";
+import { maskPrivateSessions } from "../../../lib/privacy";
 import { useAuth } from "../../../lib/auth-context";
 import type { Book, ReadingLog } from "../../../lib/types";
 import { pct, isCompleted } from "../../../lib/books";
@@ -93,8 +94,9 @@ export default function MembrePage() {
       const profileData = prof as Profile;
       setProfile(profileData);
       const booksData = (bs as Book[]) || [];
+      const visibleLogs = maskPrivateSessions((ls as ReadingLog[]) || [], user?.id, memberId);
       setBooks(booksData);
-      setLogs((ls as ReadingLog[]) || []);
+      setLogs(visibleLogs);
 
       const favIds = (profileData?.favorite_book_ids ?? []).filter(Boolean);
       if (favIds.length > 0) {

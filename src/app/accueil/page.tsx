@@ -18,6 +18,7 @@ import Lightbox from "../../components/Lightbox";
 import WrappedStory, { IconGlyph } from "../../components/WrappedStory";
 import { getMonthlyWrapped, type WrappedStats } from "../../lib/wrapped";
 import { notifyUser } from "../../lib/push.client";
+import { maskPrivateSessions } from "../../lib/privacy";
 
 const today = new Intl.DateTimeFormat("fr-FR", {
   weekday: "long",
@@ -201,7 +202,7 @@ export default function AccueilPage() {
         .limit(10),
     ]);
 
-    const logs = (logsData as ReadingLog[]) || [];
+    const logs = maskPrivateSessions((logsData as ReadingLog[]) || [], userId);
     const profiles = (profilesData as Profile[]) || [];
 
     setMembers(profiles.filter((p) => p.id !== userId));

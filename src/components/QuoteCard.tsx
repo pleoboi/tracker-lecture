@@ -56,6 +56,9 @@ export default function QuoteCard({ quote, me, showBook = true, showMember = tru
             <span className="truncate">{mine ? "Toi" : quote.author_name}</span>
           </Link>
         )}
+        {mine && quote.is_public === false && (
+          <span className="rounded-full border border-line bg-paper px-2 py-0.5 text-[10.5px] font-semibold text-muted">Privée</span>
+        )}
         <div className="ml-auto flex items-center gap-1">
           {mine && (
             confirm ? (

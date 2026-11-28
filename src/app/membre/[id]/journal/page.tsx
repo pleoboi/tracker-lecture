@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "../../../../lib/supabase";
+import { maskPrivateSessionsForViewer } from "../../../../lib/privacy";
 import type { Book, ReadingLog } from "../../../../lib/types";
 import { Cover } from "../../../../components/ui";
 import MemberSectionHeader from "../../../../components/MemberSectionHeader";
@@ -26,7 +27,7 @@ export default function MemberJournalPage() {
       ]);
       setFirstName(((prof as { display_name?: string } | null)?.display_name ?? "").split(" ")[0]);
       setBooks((bs as Book[]) || []);
-      setLogs((ls as ReadingLog[]) || []);
+      setLogs(await maskPrivateSessionsForViewer((ls as ReadingLog[]) || [], memberId));
       setLoading(false);
     })();
   }, [memberId]);

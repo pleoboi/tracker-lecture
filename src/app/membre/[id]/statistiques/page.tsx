@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
+import { maskPrivateSessions } from "../../../../lib/privacy";
 import { useAuth } from "../../../../lib/auth-context";
 import type { Book, ReadingLog } from "../../../../lib/types";
 import { isCompleted } from "../../../../lib/books";
@@ -49,7 +50,7 @@ export default function MemberStatistiquesPage() {
         fetchAllReadingLogsForChampionDays(),
         supabase
           .from("reading_logs")
-          .select("session_photo_url, date, book_id")
+          .select("session_photo_url, session_private, date, book_id")
           .eq("user_id", memberId)
           .not("session_photo_url", "is", null)
           .order("date", { ascending: false })
@@ -60,10 +61,10 @@ export default function MemberStatistiquesPage() {
       setFirstName(dn.split(" ")[0]);
       const booksData = (bs as Book[]) || [];
       setBooks(booksData);
-      setLogs((ls as ReadingLog[]) || []);
+      setLogs(maskPrivateSessions((ls as ReadingLog[]) || [], user?.id, memberId));
 
-      type PhotoRow = { session_photo_url: string | null; date: string; book_id: number };
-      const photosRaw = (logsWithPhotos as PhotoRow[]) || [];
+      type PhotoRow = { session_photo_url: string | null; session_private?: boolean | null; date: string; book_id: number };
+      const photosRaw = maskPrivateSessions((logsWithPhotos as PhotoRow[]) || [], user?.id, memberId);
       const bookMap = new Map(booksData.map((b) => [b.id, b.title]));
       setSessionPhotos(
         photosRaw

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Modal } from "./ui";
 import { useAuth } from "../lib/auth-context";
 import { addQuote, MAX_QUOTE } from "../lib/quotes";
+import VisibilityToggle from "./VisibilityToggle";
 
 export type QuoteBook = { id: number; title: string; author: string; cover_url?: string | null };
 
@@ -46,6 +47,7 @@ export default function QuoteComposer({ open, onClose, books, defaultBookId, onS
   const [bookId, setBookId] = useState<number | null>(null);
   const [body, setBody] = useState("");
   const [page, setPage] = useState("");
+  const [isPublic, setIsPublic] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -56,7 +58,7 @@ export default function QuoteComposer({ open, onClose, books, defaultBookId, onS
   useEffect(() => {
     if (!open) return;
     setBookId(defaultBookId ?? books[0]?.id ?? null);
-    setBody(""); setPage(""); setError(null); setScanning(false); setScanned(false); setProgress(0);
+    setBody(""); setPage(""); setIsPublic(true); setError(null); setScanning(false); setScanned(false); setProgress(0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -83,7 +85,7 @@ export default function QuoteComposer({ open, onClose, books, defaultBookId, onS
     if (!user?.id || !book || saving) return;
     setSaving(true);
     setError(null);
-    const r = await addQuote({ userId: user.id, book, body, page: Number(page) || null });
+    const r = await addQuote({ userId: user.id, book, body, page: Number(page) || null, isPublic });
     setSaving(false);
     if (!r.ok) { setError(r.error ?? "Erreur."); return; }
     onSaved?.();
@@ -168,6 +170,13 @@ export default function QuoteComposer({ open, onClose, books, defaultBookId, onS
             className="w-28 rounded-xl border border-line bg-input px-3 py-2.5 text-[14px] text-ink outline-none focus:border-violet"
           />
         </label>
+
+        <VisibilityToggle
+          isPublic={isPublic}
+          onChange={setIsPublic}
+          publicHint="Visible sur ton profil et sur la page du livre, par les autres membres."
+          privateHint="Seul toi la vois, dans ton onglet Citations."
+        />
 
         {error && <p className="text-[12.5px] font-medium text-danger">{error}</p>}
       </div>

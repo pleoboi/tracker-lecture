@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "../../../../lib/supabase";
+import { maskPrivateSessionsForViewer } from "../../../../lib/privacy";
 import MemberSectionHeader from "../../../../components/MemberSectionHeader";
 import Lightbox from "../../../../components/Lightbox";
 
@@ -22,14 +23,14 @@ export default function MemberGaleriePage() {
         supabase.from("user_profiles").select("display_name").eq("id", memberId).single(),
         supabase
           .from("reading_logs")
-          .select("id, session_photo_url, session_notes, date, book_id")
+          .select("id, session_photo_url, session_notes, session_private, date, book_id")
           .eq("user_id", memberId)
           .not("session_photo_url", "is", null)
           .order("date", { ascending: false }),
       ]);
       setFirstName(((prof as { display_name?: string } | null)?.display_name ?? "").split(" ")[0]);
-      type Row = { id: number; session_photo_url: string | null; session_notes: string | null; date: string; book_id: number };
-      const rows = ((logs as Row[]) ?? []).filter((r) => r.session_photo_url);
+      type Row = { id: number; session_photo_url: string | null; session_notes: string | null; session_private?: boolean | null; date: string; book_id: number };
+      const rows = (await maskPrivateSessionsForViewer((logs as Row[]) ?? [], memberId)).filter((r) => r.session_photo_url);
       const ids = [...new Set(rows.map((r) => r.book_id))];
       const { data: books } = ids.length ? await supabase.from("books").select("id, title").in("id", ids) : { data: [] };
       const titles = new Map(((books as { id: number; title: string }[]) ?? []).map((b) => [b.id, b.title]));

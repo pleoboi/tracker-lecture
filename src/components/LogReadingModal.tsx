@@ -8,6 +8,7 @@ import { todayISO, pct, shiftDateISO } from "../lib/books";
 import { Modal, Button, FieldLabel, inputClass, Cover } from "./ui";
 import { compressImage } from "../lib/image";
 import QuizModal from "./QuizModal";
+import VisibilityToggle from "./VisibilityToggle";
 import QuoteComposer from "./QuoteComposer";
 import type { QuizQuestion, QuizResult } from "../lib/quiz";
 
@@ -191,6 +192,7 @@ export default function LogReadingModal({
   const [date, setDate] = useState(todayISO());
   const [endPage, setEndPage] = useState("");
   const [sessionNotes, setSessionNotes] = useState("");
+  const [sessionPublic, setSessionPublic] = useState(true);
   const [sessionPhotoUrl, setSessionPhotoUrl] = useState("");
   const [sessionRating, setSessionRating] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -303,6 +305,8 @@ export default function LogReadingModal({
         user_id: user.id,
         session_notes: sessionNotes.trim() || null,
         session_photo_url: sessionPhotoUrl.trim() || null,
+        // Colonne ajoutée par la migration v47 : envoyée seulement quand la session est privée
+        ...(sessionPublic ? {} : { session_private: true }),
       });
     }
     if (sessionRating > 0) {
@@ -703,6 +707,18 @@ export default function LogReadingModal({
               </label>
             )}
           </div>
+
+          {(!!sessionNotes.trim() || !!sessionPhotoUrl.trim()) && (
+            <div>
+              <FieldLabel>Qui voit ta mini-review et ta photo ?</FieldLabel>
+              <VisibilityToggle
+                isPublic={sessionPublic}
+                onChange={setSessionPublic}
+                publicHint="Elles apparaissent dans l'activité du club et sur la page du livre."
+                privateHint="Seul toi les vois. Les pages lues comptent quand même dans tes statistiques."
+              />
+            </div>
+          )}
 
           {book && (
             <div>

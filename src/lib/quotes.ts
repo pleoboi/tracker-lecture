@@ -11,6 +11,8 @@ export type Quote = {
   book_cover: string | null;
   body: string;
   page: number | null;
+  /** false = citation privée, visible seulement par son auteur (migration v47). */
+  is_public?: boolean | null;
   created_at: string;
   // Ajoutés côté client
   author_name?: string;
@@ -51,6 +53,7 @@ export async function addQuote(input: {
   book: { id?: number | null; title: string; author?: string | null; cover_url?: string | null };
   body: string;
   page?: number | null;
+  isPublic?: boolean;
 }): Promise<{ ok: boolean; error?: string }> {
   const body = input.body.trim();
   if (body.length < 3) return { ok: false, error: "La citation est trop courte." };
@@ -63,9 +66,11 @@ export async function addQuote(input: {
     book_cover: input.book.cover_url ?? null,
     body: body.slice(0, MAX_QUOTE),
     page: input.page && input.page > 0 ? input.page : null,
+    // Colonne ajoutée par la migration v47 : envoyée seulement pour une citation privée
+    ...(input.isPublic === false ? { is_public: false } : {}),
   });
   if (error) {
-    return { ok: false, error: /does not exist|relation/.test(error.message) ? "Les citations ne sont pas encore activées (migration v46)." : "Impossible d'enregistrer la citation." };
+    return { ok: false, error: /is_public/.test(error.message) ? "Les citations privées ne sont pas encore activées (migration v47)." : /does not exist|relation/.test(error.message) ? "Les citations ne sont pas encore activées (migration v46)." : "Impossible d'enregistrer la citation." };
   }
   window.dispatchEvent(new CustomEvent("swena:quote-added"));
   return { ok: true };

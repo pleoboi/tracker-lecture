@@ -394,8 +394,9 @@ export default function BookDetailPage() {
       if (!mb) { setSelectedMemberSessionNotes([]); return; }
       const { data: mlogs } = await supabase
         .from("reading_logs")
-        .select("date, session_notes, session_photo_url")
+        .select("date, session_notes, session_photo_url, session_private")
         .eq("book_id", (mb as any).id)
+        .or("session_private.is.null,session_private.eq.false")
         .not("session_notes", "is", null)
         .order("date", { ascending: true });
       setSelectedMemberSessionNotes(
