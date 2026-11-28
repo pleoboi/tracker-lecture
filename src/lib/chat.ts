@@ -13,13 +13,16 @@ export type DirectMessage = {
 
 export const MAX_MESSAGE = 1000;
 
-// Un message peut porter un livre : la couverture s'affiche au-dessus du texte et mène à la fiche.
-// Stocké en tête du texte (« ⟦livre:12⟧Je te recommande… ») pour ne pas toucher à la base.
-const BOOK_TAG = /^⟦livre:(\d+)⟧/;
+// Un message peut porter un livre ou une série manga : la couverture s'affiche au-dessus du texte
+// et mène à la fiche. Stocké en tête du texte (« ⟦livre:12⟧Je te recommande… ») pour ne pas toucher à la base.
+const TAG = /^⟦(livre|manga):(\d+)⟧/;
 export const bookMessage = (bookId: number, text: string) => `⟦livre:${bookId}⟧${text}`;
-export function parseMessage(body: string): { bookId: number | null; text: string } {
-  const m = body.match(BOOK_TAG);
-  return m ? { bookId: Number(m[1]), text: body.slice(m[0].length) } : { bookId: null, text: body };
+export const mangaMessage = (mangaId: number, text: string) => `⟦manga:${mangaId}⟧${text}`;
+export function parseMessage(body: string): { bookId: number | null; mangaId: number | null; text: string } {
+  const m = body.match(TAG);
+  if (!m) return { bookId: null, mangaId: null, text: body };
+  const id = Number(m[2]);
+  return { bookId: m[1] === "livre" ? id : null, mangaId: m[1] === "manga" ? id : null, text: body.slice(m[0].length) };
 }
 
 export async function sendDirectMessage(fromId: string, fromName: string, toId: string, text: string): Promise<DirectMessage | null> {

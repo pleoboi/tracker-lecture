@@ -7,38 +7,41 @@ import Link from "next/link";
 import { MAX_MESSAGE, markConversationRead, parseMessage, sendDirectMessage, type DirectMessage } from "../../lib/chat";
 import QuickActions from "./QuickActions";
 
-type AttachedBook = { id: number; title: string; author: string; cover_url: string | null };
-const bookCache = new Map<number, AttachedBook | null>();
+type Attached = { id: number; title: string; cover_url: string | null };
+const attachCache = new Map<string, Attached | null>();
 
-/** Livre joint à un message : couverture au-dessus du texte, un clic ouvre la fiche du livre. */
+/** Livre ou série jointe à un message : couverture au-dessus du texte, un clic ouvre la fiche. */
 function BookAttachment({ body, mine }: { body: string; mine: boolean }) {
-  const bookId = parseMessage(body).bookId;
-  const [book, setBook] = useState<AttachedBook | null | undefined>(bookId != null ? bookCache.get(bookId) : null);
+  const { bookId, mangaId } = parseMessage(body);
+  const kind = bookId != null ? "livre" : mangaId != null ? "manga" : null;
+  const id = bookId ?? mangaId;
+  const cacheKey = kind && id != null ? `${kind}:${id}` : null;
+  const [item, setItem] = useState<Attached | null | undefined>(cacheKey ? attachCache.get(cacheKey) : null);
   useEffect(() => {
-    if (bookId == null || bookCache.has(bookId)) return;
+    if (!cacheKey || !kind || id == null || attachCache.has(cacheKey)) return;
     let alive = true;
-    supabase.from("books").select("id, title, author, cover_url").eq("id", bookId).maybeSingle().then(({ data }) => {
-      const b = (data as AttachedBook | null) ?? null;
-      bookCache.set(bookId, b);
-      if (alive) setBook(b);
+    supabase.from(kind === "livre" ? "books" : "mangas").select("id, title, cover_url").eq("id", id).maybeSingle().then(({ data }) => {
+      const b = (data as Attached | null) ?? null;
+      attachCache.set(cacheKey, b);
+      if (alive) setItem(b);
     });
     return () => { alive = false; };
-  }, [bookId]);
-  if (bookId == null || book === null) return null;
+  }, [cacheKey, kind, id]);
+  if (!cacheKey || item === null) return null;
   return (
     <Link
-      href={`/livre/${bookId}`}
+      href={kind === "manga" ? `/manga/${id}` : `/livre/${id}`}
       onClick={() => window.dispatchEvent(new Event("swena:close-chat"))}
       className={`mb-2 block w-[132px] max-w-full overflow-hidden rounded-xl shadow-md transition-transform duration-[140ms] ease-[cubic-bezier(0.32,0.72,0,1)] hover:scale-[1.03] active:scale-[0.97] ${mine ? "ring-1 ring-cream/30" : "ring-1 ring-line"}`}
-      aria-label={book ? `Voir la fiche de ${book.title}` : "Voir la fiche du livre"}
+      aria-label={item ? `Voir la fiche de ${item.title}` : "Voir la fiche"}
     >
-      {book === undefined ? (
+      {item === undefined ? (
         <span className="block aspect-[2/3] w-full animate-pulse bg-black/10" />
-      ) : book.cover_url ? (
+      ) : item.cover_url ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={book.cover_url} alt={book.title} className="aspect-[2/3] w-full object-cover" />
+        <img src={item.cover_url} alt={item.title} className="aspect-[2/3] w-full object-cover" />
       ) : (
-        <span className="flex aspect-[2/3] w-full items-center justify-center bg-violet-soft p-2 text-center font-serif text-[12px] font-semibold text-violet-deep">{book.title}</span>
+        <span className="flex aspect-[2/3] w-full items-center justify-center bg-violet-soft p-2 text-center font-serif text-[12px] font-semibold text-violet-deep">{item.title}</span>
       )}
     </Link>
   );

@@ -174,55 +174,77 @@ export default function FriendsMangaActivity({ userId }: { userId: string }) {
     );
   }
 
-  const groups: { date: string; items: typeof items }[] = [];
+  // Par jour, puis par personne : chaque lecteur a son bloc (avatar, nom, couleur), ses séries dedans
+  type Item = (typeof items)[number];
+  const days: { date: string; people: { userId: string; items: Item[] }[] }[] = [];
   for (const it of items) {
-    const last = groups[groups.length - 1];
-    if (last && last.date === it.date) last.items.push(it);
-    else groups.push({ date: it.date, items: [it] });
+    let day = days[days.length - 1];
+    if (!day || day.date !== it.date) { day = { date: it.date, people: [] }; days.push(day); }
+    const person = day.people.find((p) => p.userId === it.user_id);
+    if (person) person.items.push(it);
+    else day.people.push({ userId: it.user_id, items: [it] });
   }
 
   return (
     <div className="flex flex-col gap-3">
     {followPrompt}
-    <div className="-mx-5 flex items-stretch gap-4 overflow-x-auto px-5 pb-2 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden">
-      {groups.map((g) => (
-        <div key={g.date} className="flex shrink-0 flex-col gap-2">
-          <span className="text-[9.5px] font-bold uppercase tracking-widest text-muted">{dayLabel(g.date)}</span>
+    <div className="-mx-5 flex items-stretch gap-5 overflow-x-auto px-5 pb-2 [scrollbar-width:none] md:mx-0 md:px-0 [&::-webkit-scrollbar]:hidden">
+      {days.map((day) => (
+        <div key={day.date} className="flex shrink-0 flex-col gap-2">
+          <span className="text-[9.5px] font-bold uppercase tracking-widest text-muted">{dayLabel(day.date)}</span>
           <div className="flex flex-1 items-stretch gap-3">
-            {g.items.map((it) => {
-              const p = profiles.get(it.user_id);
-              const name = it.user_id === userId ? "Toi" : p?.display_name ?? "Membre";
-              const mine = likes.filter((l) => it.ids.includes(l.log_id));
-              const likers = new Set(mine.map((l) => l.liker_id));
+            {day.people.map((person) => {
+              const p = profiles.get(person.userId);
+              const isMe = person.userId === userId;
+              const name = isMe ? "Toi" : p?.display_name ?? "Membre";
               return (
-                <div key={it.id} className="manga-panel flex w-[158px] flex-col gap-2 p-2.5">
-                  <Link href={mangaProfileHref(it.user_id)} className="flex min-w-0 items-center gap-1.5">
-                    <AvatarImg url={p?.avatar_url} name={name} className="h-5 w-5 shrink-0 text-[9px]" />
-                    <span className="truncate text-[11.5px] font-bold text-ink">{name}</span>
+                <div
+                  key={person.userId}
+                  className="flex flex-col gap-2 rounded-xl border border-line bg-card/40 p-2"
+                >
+                  {/* Qui a lu : avatar, prénom et nombre de séries */}
+                  <Link href={mangaProfileHref(person.userId)} className="flex min-w-0 items-center gap-2 pr-1">
+                    <AvatarImg url={p?.avatar_url} name={name} className="h-8 w-8 shrink-0 text-[12px]" />
+                    <span className="min-w-0">
+                      <span className="block truncate text-[13.5px] font-bold leading-tight text-ink">{name}</span>
+                      <span className="block text-[10.5px] font-semibold leading-tight text-muted">
+                        {isMe ? "ta lecture" : "a lu"} · {person.items.length} série{person.items.length > 1 ? "s" : ""}
+                      </span>
+                    </span>
                   </Link>
-                  <Link href={`/manga/${it.manga_id}`} className="flex flex-col gap-2">
-                    {/* Couverture du tome lu (ou qui contient le chapitre), sinon celle de la série */}
-                    <MangaCover id={it.manga_id} title={it.mangas?.title ?? "?"} coverUrl={it.cover_url ?? it.mangas?.cover_url} className="aspect-[2/3] h-auto w-full" />
-                    {/* Hauteurs fixes : toutes les cartes ont la même taille, quel que soit le titre */}
-                    <p className="line-clamp-2 h-[2.5em] text-[12.5px] font-bold leading-tight text-ink">{it.mangas?.title ?? "Série"}</p>
-                    <div className="flex items-baseline justify-between gap-1.5 whitespace-nowrap">
-                      <p className="nums truncate font-serif text-[16px] leading-none text-violet-deep">
-                        +{it.amount} {unitLabel(it.unit, it.amount, true)}
-                      </p>
-                      <p className="nums shrink-0 text-[11px] font-semibold text-muted">
-                        {it.unit === "chapter" ? "ch." : "t."} {it.end_value}
-                      </p>
-                    </div>
-                  </Link>
-                  {it.notes && <p className="line-clamp-2 text-[11.5px] italic leading-snug text-ink-2">« {it.notes} »</p>}
-                  <div className="mt-auto flex items-center justify-between gap-2">
-                    <div className="min-w-0">{it.avgRating != null && <RatingTag value={it.avgRating} className="text-[11px]" />}</div>
-                    <LikeStamp
-                      count={likers.size}
-                      liked={likers.has(userId)}
-                      own={it.user_id === userId}
-                      onToggle={() => toggleLike(it)}
-                    />
+                  <div className="flex items-stretch gap-2">
+                    {person.items.map((it) => {
+                      const mine = likes.filter((l) => it.ids.includes(l.log_id));
+                      const likers = new Set(mine.map((l) => l.liker_id));
+                      return (
+                        <div key={it.id} className="manga-panel flex w-[148px] flex-col gap-2 p-2">
+                          <Link href={`/manga/${it.manga_id}`} className="flex flex-col gap-2">
+                            {/* Couverture du tome lu (ou qui contient le chapitre), sinon celle de la série */}
+                            <MangaCover id={it.manga_id} title={it.mangas?.title ?? "?"} coverUrl={it.cover_url ?? it.mangas?.cover_url} className="aspect-[2/3] h-auto w-full" />
+                            {/* Hauteurs fixes : toutes les cartes ont la même taille, quel que soit le titre */}
+                            <p className="line-clamp-2 h-[2.5em] text-[12.5px] font-bold leading-tight text-ink">{it.mangas?.title ?? "Série"}</p>
+                            <div className="flex items-baseline justify-between gap-1.5 whitespace-nowrap">
+                              <p className="nums truncate font-serif text-[16px] leading-none text-violet-deep">
+                                +{it.amount} {unitLabel(it.unit, it.amount, true)}
+                              </p>
+                              <p className="nums shrink-0 text-[11px] font-semibold text-muted">
+                                {it.unit === "chapter" ? "ch." : "t."} {it.end_value}
+                              </p>
+                            </div>
+                          </Link>
+                          {it.notes && <p className="line-clamp-2 text-[11.5px] italic leading-snug text-ink-2">« {it.notes} »</p>}
+                          <div className="mt-auto flex items-center justify-between gap-2">
+                            <div className="min-w-0">{it.avgRating != null && <RatingTag value={it.avgRating} className="text-[11px]" />}</div>
+                            <LikeStamp
+                              count={likers.size}
+                              liked={likers.has(userId)}
+                              own={isMe}
+                              onToggle={() => toggleLike(it)}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
